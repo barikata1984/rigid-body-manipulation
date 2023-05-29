@@ -7,14 +7,10 @@
             <body name="link_2">
                 <joint name="ty" type="slide" axis="0 1 0"/>
                 <inertial pos="0 0 0" mass="0.006" diaginertia="0.00005 0.000065 0.000025"/>
-                <body name="link_3">
+                <body name="object">
                     <joint name="tz" type="slide" axis="0 0 1"/>
-                    <inertial pos="0 0 0" mass="0.006" diaginertia="0.00005 0.000065 0.000025"/>
-                    <body name="object">
-                        <joint name="rx" type="hinge" axis="1 0 0"/>
-                        <site name="ft_sen"/>
-                        <geom name="red_box" type="box" size=".05 .1 .15" rgba="1 0 0 1"/>
-                    </body>
+                    <site name="ft_sen"/>
+                    <geom name="red_box" type="box" size=".05 .1 .15" rgba="1 0 0 1"/>
                 </body>
             </body>
         </body>
@@ -24,22 +20,18 @@
         <motor name="mtr_tx" joint="tx"/>
         <motor name="mtr_ty" joint="ty"/>
         <motor name="mtr_tz" joint="tz"/>
-        <motor name="mtr_rx" joint="rx"/>
     </actuator>
 
     <sensor>
         <jointpos name="tx" joint="tx"/>
         <jointpos name="ty" joint="ty"/>
         <jointpos name="tz" joint="tz"/>
-        <jointpos name="rx" joint="rx"/>
         <jointvel name="dtx" joint="tx"/>
         <jointvel name="dty" joint="ty"/>
         <jointvel name="dtz" joint="tz"/>
-        <jointvel name="drx" joint="rx"/>
         <actuatorfrc name="frc_tx" actuator="mtr_tx"/>
         <actuatorfrc name="frc_ty" actuator="mtr_ty"/>
         <actuatorfrc name="frc_tz" actuator="mtr_tz"/>
-        <actuatorfrc name="frc_rx" actuator="mtr_rx"/>
     </sensor>
 
     <visual>

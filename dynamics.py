@@ -1,5 +1,8 @@
+import scipy
 import numpy as np
+import mujoco as mj
 from liegroups import SO3, SE3
+from numpy import linalg as la
 
 
 def compose_sinert_i(mass, principal_inertia):

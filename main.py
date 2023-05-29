@@ -1,16 +1,15 @@
 import os
 import cv2
-import scipy
 import numpy as np
 import mujoco as mj
 import planners as pln
 import matplotlib as mpl
-import visualization as vis
 import transformations as tf
+from visualization import axes_plot_frc, ax_plot_lines_w_tgt
 from matplotlib import pyplot as plt
 from utilities import store
 from dynamics import compose_sinert_i, inverse
-from numpy import linalg as la
+from scipy import linalg as la
 from math import pi, radians as rad, degrees as deg
 
 
@@ -55,15 +54,18 @@ def main():
     # Numerically compute A and B with a finite differentiation
     epsilon = 1e-6  # Differential displacement
     centered = True  # Use the centred differentiation; False for the forward
+    # Initilize state-space and cost matrices
     A = np.zeros((2 * nv + na, 2 * nv + na))  # State matrix
     B = np.zeros((2 * nv + na, nu))  # Input matrix
     C = None  # Ignore C in this code
     D = None  # Ignore D as well
-    mj.mjd_transitionFD(m, d, epsilon, centered, A, B, C, D)
-    # Compute the feedback gain matrix K
     Q = np.eye(2 * nv)  # State cost matrix
+#    Q[3, 3] = 1e-3*2
     R = np.eye(nu)  # Input cost matrix
-    P = scipy.linalg.solve_discrete_are(A, B, Q, R)
+    R[-1, -1] = 10000  # np.eye(nu)  # Input cost matrix
+    # Compute the feedback gain matrix K
+    mj.mjd_transitionFD(m, d, epsilon, centered, A, B, C, D)
+    P = la.solve_discrete_are(A, B, Q, R)
     K = la.pinv(R + B.T @ P @ B) @ B.T @ P @ A
 #    print(f"K: {K}")
 
@@ -108,15 +110,15 @@ def main():
         slicer = 3 * (type - 2)  # type is 2 for slide and 3 for hinge
         screw_bb[b, slicer:slicer + 3] = ax / la.norm(ax)
 #    print(f"len(screw_bb)): {len(screw_bb)}")
-#    print(f"screw_bb: {screw_bb}")
+#    print(f"screw_bb:\n{screw_bb}")
 
     # Ingredients for twist-wrench inverse dynamics
     # Set simulation time and timeste
     duration = 5  # Simulation time [s]
     timestep = mj.MjOption().timestep  # 0.002 [s] (500 [Hz]) by default
-    print(f"Timestep (freq.): {timestep} [s] ({1/timestep} [Hz])")
+#    print(f"Timestep (freq.): {timestep} [s] ({1/timestep} [Hz])")
     n_steps = int(duration / timestep)
-    print(f"# of steps: {n_steps}")
+#    print(f"# of steps: {n_steps}")
     # Determin start and end displacements of the target trajectory
     start_q = np.array([0, 0, 0, 0, 0, 0])
     goal_q = np.array([0.2, 0.4, 0.6, 0.2 * pi, 0.3 * pi, 0.4 * pi])
@@ -130,7 +132,6 @@ def main():
     twist_00 = np.zeros(6)
     print(f"twist_00: {twist_00}")
     dtwist_00 = -gacc_x
-    print(f"dtwist_00: {dtwist_00}")
     print(f"dtwist_00: {dtwist_00}")
 
     # Data storage
@@ -156,6 +157,11 @@ def main():
             traj[-1], SE3_home_ba, sinert_b, screw_bb, twist_00, dtwist_00)
         tgt_ctrl = store(wrench_q[:nu], tgt_ctrl)
 
+        # Compute the feedback gain matrix K
+#        mj.mjd_transitionFD(m, d, epsilon, centered, A, B, C, D)
+#        P = la.solve_discrete_are(A, B, Q, R)
+#        K = la.pinv(R + B.T @ P @ B) @ B.T @ P @ A
+
         # Retrieve the current state in q
         qpos = store(d.qpos, qpos)
         qvel = store(d.qvel, qvel)
@@ -179,6 +185,7 @@ def main():
 
         # Store frames following the fps
         if frame_count <= time[-1] * fps:
+#            print(f"res_state:\n{res_state}")
             renderer.update_scene(d)
             img = renderer.render()[:, :, [2, 1, 0]]
             out.write(img)
@@ -194,28 +201,29 @@ def main():
         sensordata, [1 * nu, 2 * nu], axis=1)
 
     # Set line attributes
-    clip = len(time)
-    time = time[:clip]
+    t_clip = len(time)
+    time = time[:t_clip]
     # Plot the actual and target trajctories
-    q_fig, q_axes = plt.subplots(2, 1, sharex="col", tight_layout=True)
-    q_fig.suptitle("qpos")
-    q_axes[1].set(xlabel="time [s]")
-    vis.ax_plot_lines_w_tgt(
-        q_axes[0], time, qpos[:, :nu], traj[:, 0, :nu], "q0-2 [m]")
+    d_clip = min(3, nu)
+    qpos_fig, qpos_axes = plt.subplots(2, 1, sharex="col", tight_layout=True)
+    qpos_fig.suptitle("qpos")
+    qpos_axes[1].set(xlabel="time [s]")
+    ax_plot_lines_w_tgt(
+        qpos_axes[0], time, qpos[:, :d_clip], traj[:, 0, :d_clip], "q0-2 [m]")
     if 3 < nu:
-        vis.ax_plot_lines_w_tgt(
-            q_axes[1], time, qpos[:, 3:], traj[:, 0, 3:], "q3-5 [rad]")
+        ax_plot_lines_w_tgt(
+            qpos_axes[1], time, qpos[:, 3:], traj[:, 0, 3:nu], "q3-5 [rad]")
 
     # Plot forces
     ctrl_fig, ctrl_axes = plt.subplots(3, 1, sharex="col", tight_layout=True)
-    ctrl_fig.suptitle("ctrl")
+    ctrl_fig.suptitle("act_qfrc VS tgt_ctrl")
     ctrl_axes[0].set(ylabel="q0-1 [N]")
     ctrl_axes[1].set(ylabel="q2 [N]")
     ctrl_axes[2].set(xlabel="time [s]")
-    vis.axes_plot_frc(
-        ctrl_axes[:2], time, act_qfrc[:, :nu], tgt_ctrl[:, :nu])
+    axes_plot_frc(
+        ctrl_axes[:2], time, act_qfrc[:, :d_clip], tgt_ctrl[:, :d_clip])
     if 3 < nu:
-        vis.ax_plot_lines_w_tgt(
+        ax_plot_lines_w_tgt(
             ctrl_axes[2], time, act_qfrc[:, 3:], tgt_ctrl[:, 3:], "q3-5 [N·m]")
 
     plt.show()
