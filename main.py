@@ -5,7 +5,7 @@ import mujoco as mj
 import planners as pln
 import matplotlib as mpl
 import transformations as tf
-from visualization import axes_plot_frc, ax_plot_lines_w_tgt
+from visualization import ax_plot_lines, axes_plot_frc, ax_plot_lines_w_tgt
 from matplotlib import pyplot as plt
 from utilities import store
 from dynamics import compose_sinert_i, inverse
@@ -137,6 +137,9 @@ def main():
     gacc_x[:3] = mj.MjOption().gravity
     twist_00 = np.zeros(6)
     print(f"twist_00: {twist_00}")
+    # Set acc opposite to the acc due to gravity but with the equal magnitude
+    # in the translational part of the derivative of twist of {x} to cancel
+    # out the forces or torques applied to joints due to gravity
     dtwist_00 = -gacc_x
     print(f"dtwist_00: {dtwist_00}")
 
@@ -191,7 +194,6 @@ def main():
 
         # Store frames following the fps
         if frame_count <= time[-1] * fps:
-#            print(f"res_state:\n{res_state}")
             renderer.update_scene(d)
             img = renderer.render()[:, :, [2, 1, 0]]
             out.write(img)
@@ -203,8 +205,10 @@ def main():
     # Terminate the VideoWriter
     out.release()
 
-    act_qpos, act_qvel, act_qfrc = np.split(
-        sensordata, [1 * nu, 2 * nu], axis=1)
+    sens_qpos, sens_qvel, sens_qfrc, sens_ft = np.split(
+        sensordata, [1 * nu, 2 * nu, 3 * nu], axis=1)
+
+    print(f"sens_ft.shape: {sens_ft.shape}")
 
     # Set line attributes
     t_clip = len(time)
@@ -227,10 +231,17 @@ def main():
     ctrl_axes[1].set(ylabel="q2 [N]")
     ctrl_axes[2].set(xlabel="time [s]")
     axes_plot_frc(
-        ctrl_axes[:2], time, act_qfrc[:, :d_clip], tgt_ctrl[:, :d_clip])
+        ctrl_axes[:2], time, sens_qfrc[:, :d_clip], tgt_ctrl[:, :d_clip])
     if 3 < nu:
         ax_plot_lines_w_tgt(
-            ctrl_axes[2], time, act_qfrc[:, 3:], tgt_ctrl[:, 3:], "q3-5 [N·m]")
+            ctrl_axes[2], time, sens_qfrc[:, 3:], tgt_ctrl[:, 3:], "q3-5 [N·m]")
+
+    # Plot ft mesurements
+    ft_fig, ft_axes = plt.subplots(3, 1, sharex="col", tight_layout=True)
+    ft_fig.suptitle("ft")
+    ax_plot_lines(ft_axes[0], time, sens_ft[:, :2], "frc along x/y of {{s}} [N]")
+    ax_plot_lines(ft_axes[1], time, sens_ft[:, 2], "frc along z of {{s}} [N]", c="#0041FF")
+    ax_plot_lines(ft_axes[2], time, sens_ft[:, 3:], "trq around x/y/z of {{s}} [N·m]")
 
     plt.show()
 

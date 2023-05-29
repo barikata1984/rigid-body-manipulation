@@ -1,30 +1,16 @@
 <mujoco>
     <worldbody>
         <light name="top" pos="0 0 3"/>
-        <body name="link_1">
+        <body name="object">
+            <site name="ft_sen"/>
             <joint name="tx" type="slide" axis="1 0 0"/>
-            <inertial pos="0 0 0" mass="0.006" diaginertia="0.00005 0.000065 0.000025"/>
-            <body name="link_2">
-                <joint name="ty" type="slide" axis="0 1 0"/>
-                <inertial pos="0 0 0" mass="0.006" diaginertia="0.00005 0.000065 0.000025"/>
-                <body name="link_3">
-                    <joint name="tz" type="slide" axis="0 0 1"/>
-                    <inertial pos="0 0 0" mass="0.006" diaginertia="0.00005 0.000065 0.000025"/>
-                    <body name="link_4">
-                        <joint name="rx" type="hinge" axis="1 0 0"/>
-                        <inertial pos="0 0 0" mass="0.006" diaginertia="0.00005 0.000065 0.000025"/>
-                        <body name="link_5">
-                            <joint name="ry" type="hinge" axis="0 1 0"/>
-                            <inertial pos="0 0 0" mass="0.006" diaginertia="0.00005 0.000065 0.000025"/>
-                            <body name="object">
-                                <joint name="rz" type="hinge" axis="0 0 1"/>
-                                <site name="ft_sen"/>
-                                <geom name="red_box" type="box" size=".05 .1 .15" rgba="1 0 0 1"/>
-                            </body>
-                        </body>
-                    </body>
-                </body>
-            </body>
+            <joint name="ty" type="slide" axis="0 1 0"/>
+            <joint name="tz" type="slide" axis="0 0 1"/>
+            <joint name="rx" type="hinge" axis="1 0 0"/>
+            <joint name="ry" type="hinge" axis="0 1 0"/>
+            <joint name="rz" type="hinge" axis="0 0 1"/>
+            <site name="ft_sen"/>
+            <geom name="red_box" type="box" size=".05 .1 .15" rgba="1 0 0 1"/>
         </body>
     </worldbody>
 
