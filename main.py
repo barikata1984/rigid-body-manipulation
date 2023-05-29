@@ -62,7 +62,11 @@ def main():
     Q = np.eye(2 * nv)  # State cost matrix
 #    Q[3, 3] = 1e-3*2
     R = np.eye(nu)  # Input cost matrix
-    R[-1, -1] = 10000  # np.eye(nu)  # Input cost matrix
+    init_rot_weight = 1e+6
+    for i in range(3, nu):
+        R[i, i] *= init_rot_weight
+#    print(f"R: {R}")
+
     # Compute the feedback gain matrix K
     mj.mjd_transitionFD(m, d, epsilon, centered, A, B, C, D)
     P = la.solve_discrete_are(A, B, Q, R)
@@ -78,8 +82,10 @@ def main():
     #    _i    |  _i    | Described in {principal body}
     #    _q    |  _q    | Described in the joint space
     #    _xi   |  _xi   | Of {principal} rel. to {world}
-    #    _ba   |   -    | Of{body} rel. to {parent body}
-    #    _cb   |   -    | Of {child body}  rel. to {body}
+    #    _ab   |   -    | Of {body} rel. to {parent body}
+    #    _ba   |   -    | Of {parent body} rel. to {body}
+    #    _cb   |   -    | Of {body}  rel. to {child body}
+    #    _bc   |   -    | Of {child body}  rel. to {body}
     #
     # Compose the principal spatial inertia matrix for each link including the
     # worldbody
