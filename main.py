@@ -131,6 +131,7 @@ def main():
     print(f"twist_00: {twist_00}")
     dtwist_00 = -gacc_x
     print(f"dtwist_00: {dtwist_00}")
+    print(f"dtwist_00: {dtwist_00}")
 
     # Data storage
     traj = np.empty((0, 3, 6))
