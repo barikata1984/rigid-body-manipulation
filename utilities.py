@@ -19,6 +19,6 @@ def classify_dict_kargs(dict_kargs):
 
 def store(
         data: np.ndarray,
-        log_array: np.ndarray) -> np.ndarray:
+        destination: np.ndarray) -> np.ndarray:
 
-    return np.append(log_array, np.expand_dims(data, axis=0), axis=0)
+    return np.append(destination, data[np.newaxis, :], axis=0)

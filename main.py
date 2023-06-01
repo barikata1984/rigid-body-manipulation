@@ -8,8 +8,9 @@ import transformations as tf
 from visualization import ax_plot_lines, axes_plot_frc, ax_plot_lines_w_tgt
 from matplotlib import pyplot as plt
 from utilities import store
+from liegroups import SE3
 from dynamics import compose_sinert_i, inverse
-from scipy import linalg as la
+from scipy import linalg
 from math import pi, radians as rad, degrees as deg
 
 
@@ -63,14 +64,14 @@ def main():
 #    Q[3, 3] = 1e-3*2
     R = np.eye(nu)  # Input cost matrix
     init_rot_weight = 1e+6
-    for i in range(3, nu):
+    for i in range(nu - 3, nu):
         R[i, i] *= init_rot_weight
 #    print(f"R: {R}")
 
     # Compute the feedback gain matrix K
     mj.mjd_transitionFD(m, d, epsilon, centered, A, B, C, D)
-    P = la.solve_discrete_are(A, B, Q, R)
-    K = la.pinv(R + B.T @ P @ B) @ B.T @ P @ A
+    P = linalg.solve_discrete_are(A, B, Q, R)
+    K = linalg.pinv(R + B.T @ P @ B) @ B.T @ P @ A
 #    print(f"K: {K}")
 
     # Description of suffixes used from the section below:
@@ -86,6 +87,7 @@ def main():
     #    _ba   |   -    | Of {parent body} rel. to {body}
     #    _cb   |   -    | Of {body}  rel. to {child body}
     #    _bc   |   -    | Of {child body}  rel. to {body}
+    #    _m    |   -    | Described in the frame a joint corresponds to
     #
     # Compose the principal spatial inertia matrix for each link including the
     # worldbody
@@ -94,27 +96,29 @@ def main():
     # Convert sinert_i to sinert_b rel2 the body frame
     sinert_b = np.empty((0, 6, 6))
     for p, q, si_i in zip(m.body_ipos, m.body_iquat, sinert_i):
-        Ad_SE3_ib = tf.tquat2SE3(p, q) .inv().adjoint()
+        Ad_SE3_ib = tf.tquat2SE3(p, q).inv().adjoint()
         converted = Ad_SE3_ib.T @ si_i @ Ad_SE3_ib
         sinert_b = np.append(sinert_b, converted[np.newaxis, :], axis=0)
-#    print(f"(sinert_(i, b).shape: ({sinert_i.shape}, {sinert_b.shape})")
-#    print(f"sinert_b.shape:\n{sinert_b}")
 
     # Configure SE3 of child frame rel2 parent frame (M_{i, i - 1} in MR)
-    SE3_home_ba = [  # ba = 00, 10, 21, ..., 65
+    lg3_home_ba = [  # ba = 00, 10, 21, ..., 65
         tf.tquat2SE3(p, q).inv() for p, q in zip(m.body_pos, m.body_quat)]
     # Configure SE3 of each body frame rel2 worldbody (M_{i} = M_{0, i} in MR)
-    SE3_home_xb = [SE3_home_ba[0].inv()]  # xb = 00, 01, ..., 06
-    for SE3_h_ba in SE3_home_ba[1:]:
-        SE3_home_xb.append(SE3_home_xb[-1].dot(SE3_h_ba.inv()))
-#    print(f"len(link_SE3_home_(ba, xb)): ({len(link_SE3_home_ba)}, {len(link_SE3_home_xb)})")
-#    print(f"link_SE3_home_ba:\n{link_SE3_home_ba}")
+    lg3_home_xb = [lg3_home_ba[0].inv()]  # xb = 00, 01, ..., 06
+    for lg3_h_ba in lg3_home_ba[1:]:
+        lg3_home_xb.append(lg3_home_xb[-1].dot(lg3_h_ba.inv()))
 
-    # Obtain unit screw axes rel2 each link = body (A_{i} in MR)
-    screw_bb = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
+    lg3_home_bj = [SE3.identity()]
+    for id, p in zip(m.jnt_bodyid, m.jnt_pos):
+        lg3_home_bj.append(tf.tquat2SE3(p, m.body_quat[id]))
+
+#    SE3_home_xj = [xb.dot(bj) for xb, bj in zip(SE3_home_xb, SE3_home_bj)]
+
+    # Obtain unit screw rel2 each link = body (A_{i} in MR)
+    uscrew_bb = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
     for b, (type, ax) in enumerate(zip(m.jnt_type, m.jnt_axis), 0):
         slicer = 3 * (type - 2)  # type is 2 for slide and 3 for hinge
-        screw_bb[b, slicer:slicer + 3] = ax / la.norm(ax)
+        uscrew_bb[b, slicer:slicer + 3] = ax / linalg.norm(ax)
 #    print(f"len(screw_bb)): {len(screw_bb)}")
 #    print(f"screw_bb:\n{screw_bb}")
 
@@ -136,7 +140,7 @@ def main():
     gacc_x = np.zeros(6)
     gacc_x[:3] = mj.MjOption().gravity
     twist_00 = np.zeros(6)
-    print(f"twist_00: {twist_00}")
+    print(f"twist_00:  {twist_00}")
     # Set acc opposite to the acc due to gravity but with the equal magnitude
     # in the translational part of the derivative of twist of {x} to cancel
     # out the forces or torques applied to joints due to gravity
@@ -147,11 +151,10 @@ def main():
     traj = np.empty((0, 3, 6))
     # Cartesian coordinates of the object
     obj_pos_x = np.empty((0, 3))
-    # Joint postions, velocities, and accelerations included in the model
-    # expressed in the joint space
+    # Joint postions/velocities/accelerations expressed in the joint space
     qpos, qvel, qacc = np.empty((3, 0, nu))
     # Residual of qpos computed with mj_differentiatePos()
-    res_qpos = np.empty(nu)  # residual os joint positions
+    res_qpos = np.empty(nu)  # residual of joint positions
     # For control signals
     tgt_ctrl, res_ctrl, ctrl = np.empty((3, 0, nu))
     # Miscoellanious
@@ -163,26 +166,22 @@ def main():
         tgt_traj = plan_traj(i)
         traj = store(tgt_traj, traj)
         wrench_q = inverse(
-            traj[-1], SE3_home_ba, sinert_b, screw_bb, twist_00, dtwist_00)
+            traj[-1], lg3_home_ba, sinert_b, uscrew_bb, twist_00, dtwist_00)
         tgt_ctrl = store(wrench_q[:nu], tgt_ctrl)
 
-        # Compute the feedback gain matrix K
-#        mj.mjd_transitionFD(m, d, epsilon, centered, A, B, C, D)
-#        P = la.solve_discrete_are(A, B, Q, R)
-#        K = la.pinv(R + B.T @ P @ B) @ B.T @ P @ A
-
-        # Retrieve the current state in q
+        # Retrieve joint variables
         qpos = store(d.qpos, qpos)
         qvel = store(d.qvel, qvel)
         qacc = store(d.qacc, qacc)
+        # Residual of state
         mj.mj_differentiatePos(  # Use this func to differenciate quat properly
             m,  # MjModel
             res_qpos,  # dqpos_data_buffer
             nu,  # idx of a joint up to which res_qpos are calculated
             qpos[-1],  # current qpos
             traj[-1, 0, :nu])  # target qpos or next qpos to calkculate dqvel
-        res_qvel = traj[-1, 1, :nu] - qvel[-1]
-        res_state = np.concatenate((res_qpos, res_qvel))
+        res_state = np.concatenate((res_qpos, traj[-1, 1, :nu] - qvel[-1]))
+        # Compute and set control, or actuator inputs
         res_ctrl = store(-K @ res_state, res_ctrl)  # Note the minus before K
         ctrl = store(tgt_ctrl[-1, :nu] + res_ctrl[-1], ctrl)
         d.ctrl = ctrl[-1]
@@ -207,8 +206,6 @@ def main():
 
     sens_qpos, sens_qvel, sens_qfrc, sens_ft = np.split(
         sensordata, [1 * nu, 2 * nu, 3 * nu], axis=1)
-
-    print(f"sens_ft.shape: {sens_ft.shape}")
 
     # Set line attributes
     t_clip = len(time)

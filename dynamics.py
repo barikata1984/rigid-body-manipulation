@@ -1,8 +1,6 @@
-import scipy
 import numpy as np
-import mujoco as mj
-from liegroups import SO3, SE3
-from numpy import linalg as la
+from utilities import store
+from liegroups import SE3
 
 
 def compose_sinert_i(mass, principal_inertia):
@@ -11,56 +9,54 @@ def compose_sinert_i(mass, principal_inertia):
         [np.zeros((3, 3)), np.diag(principal_inertia)]])
 
 
-def inverse(traj,
-            SE3_home_ba,
-            sinert_b,
-            screw_bb,
-            twist_00,
-            dtwist_00,
-            wrench_cc=np.zeros(6),
-            SE3_tip_eefxr=SE3.identity()):
+def inverse(
+        traj: np.ndarray,
+        lg3_home,
+        sinert: np.ndarray,
+        uscrew: np.ndarray,
+        twist_0: np.ndarray,
+        dtwist_0: np.ndarray,
+        wrench_tip: np.ndarray = np.zeros(6),
+        lg3_tip_ee=SE3.identity()):
+
+    # Prepare lie group, twist, and dtwist storage arrays
+    lg3 = []  # T_{i, i - 1} in Modern Robotics
+    twist = np.atleast_2d(twist_0)
+    dtwist = np.atleast_2d(dtwist_0)
+
     # Forward iterations
-    SE3_ba = []  # T_{ba} (ba = 10, 21, ..., 65), T_{i, i - 1} in MR
-    twist_bb = np.atleast_2d(twist_00)  # First row set here is twist_00
-    dtwist_bb = np.atleast_2d(dtwist_00)
-    for idx, (SE3_h_ba, s_bb) in enumerate(zip(SE3_home_ba[1:], screw_bb)):
-        # Index transitions:
-        # ba = (1, 0), ..., (6, 5)
-        # bb = (1, 1), ..., (6, 6)
-        # idx = 0, 1, ..., 5, which corresponds to b = 1, 2, ..., 6
-        SE3_ba.append(SE3.exp(-s_bb * traj[0, idx]).dot(SE3_h_ba))
-        Ad_SE3_ba = SE3_ba[-1].adjoint()
-        # =*=*=*=*=*=*=
-        t_aa = twist_bb[-1]
-        t_bb_1 = Ad_SE3_ba @ t_aa
-        t_bb_2 = s_bb * traj[1, idx]
-        t_bb = t_bb_1 + t_bb_2
-        twist_bb = np.append(twist_bb, t_bb[np.newaxis, :], axis=0)
-        # =*=*=*=*=*=*=
-        dt_aa = dtwist_bb[-1]
-        dt_bb_1 = Ad_SE3_ba @ dt_aa
-        dt_bb_2 = SE3.curlywedge(t_bb) @ s_bb * traj[1, idx]
-        dt_bb_3 = s_bb * traj[2, idx]
-        dt_bb = dt_bb_1 + dt_bb_2 + dt_bb_3
-        dtwist_bb = np.append(dtwist_bb, dt_bb[np.newaxis, :], axis=0)
+    for i, (lg3_h, us) in enumerate(zip(lg3_home[1:], uscrew)):
+        lg3.append(SE3.exp(-us * traj[0, i]).dot(lg3_h))
+        Ad_lg3 = lg3[-1].adjoint()
+        # Compute twist
+        prior_tw = twist[-1]
+        tw_1 = Ad_lg3 @ prior_tw
+        tw_2 = us * traj[1, i]
+        tw = tw_1 + tw_2
+        # Compute the derivatife of twist
+        prior_dtw = dtwist[-1]
+        dtw_1 = Ad_lg3 @ prior_dtw
+        dtw_2 = us * traj[2, i]
+        dtw_3 = SE3.curlywedge(tw) @ us * traj[1, i]
+        dtw = dtw_1 + dtw_2 + dtw_3
+        # Add the twist and its derivative to their storage arrays
+        twist = store(tw, twist)
+        dtwist = store(dtw, dtwist)
 
     # Backward iterations
-    wrench_bb = np.atleast_2d(wrench_cc)
-    SE3_cb = SE3_ba + [SE3_tip_eefxr]
-    reversed_data = [
-        reversed(d) for d in (SE3_cb, sinert_b, twist_bb, dtwist_bb, screw_bb)]
-    for SE3_cb, si_b, t_bb, dt_bb, s_bb in zip(*reversed_data):
-        # Index transitions:
-        # cb = 76, 65, 54, 43, 32, 21
-        # bb = 66, 55, 44, 33, 22, 11
-        w_cc = wrench_bb[-1]
-        w_bb_1 = SE3_cb.adjoint().T @ w_cc
-        w_bb_2 = si_b @ dt_bb
-        w_bb_3 = - SE3.curlywedge(t_bb).T @ si_b @ t_bb
-        w_bb = w_bb_1 + w_bb_2 + w_bb_3
-        wrench_bb = np.append(wrench_bb, w_bb[np.newaxis, :], axis=0)
+    wrench = np.atleast_2d(wrench_tip)
+    lg3.append(lg3_tip_ee)
+    # Let m the # of joint/actuator axes, the backward iteration should be
+    # performed from index m to 1. So, the range is set like below.
+    for i in range(len(uscrew), 0, -1):
+        prior_w = wrench[-1]
+        w_1 = lg3[i].adjoint().T @ prior_w
+        w_2 = sinert[i] @ dtwist[i]
+        w_3 = -SE3.curlywedge(twist[i]).T @ sinert[i] @ twist[i]
+        w = w_1 + w_2 + w_3
+        wrench = store(w, wrench)
 
-    wrench_bb = wrench_bb[::-1]
-    ctrl_mat = wrench_bb[:-1] * screw_bb
+    wrench = wrench[::-1]
+    ctrl_mat = wrench[:-1] * uscrew
 
     return np.sum(ctrl_mat, axis=0)
