@@ -2,7 +2,6 @@
     <worldbody>
         <light name="top" pos="0 0 3"/>
         <body name="object">
-            <site name="ft_sen"/>
             <joint name="tx" type="slide" axis="1 0 0"/>
             <joint name="ty" type="slide" axis="0 1 0"/>
             <joint name="tz" type="slide" axis="0 0 1"/>

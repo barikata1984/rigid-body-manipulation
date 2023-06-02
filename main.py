@@ -30,7 +30,16 @@ def main():
     # Setup rendering conditoins and instantiate a VideoWriter
     codec_4chr = "mp4v"
     fourcc = cv2.VideoWriter_fourcc(*codec_4chr)
+    # Setup simulation time and relevant variables
+    duration = 5  # Simulation time [s]
+    print(f"Simulation time: {duration} [s]")
+    timestep = mj.MjOption().timestep  # 0.002 [s] (500 [Hz]) by default
+    print(f"Timestep (freq.): {timestep} [s] ({1/timestep} [Hz])")
+    n_steps = int(duration / timestep)
+    print(f"Number of steps: {n_steps}")
     fps = 60  # Rendering frequency [Hz]
+    print(f"Rendering freq.: {fps} [Hz]")
+    # Set a VideoWriter
     height = 600
     width = 960
     out = cv2.VideoWriter("output.mp4", fourcc, fps, (width, height))
@@ -96,9 +105,9 @@ def main():
     # Convert sinert_i to sinert_b rel2 the body frame
     sinert_b = np.empty((0, 6, 6))
     for p, q, si_i in zip(m.body_ipos, m.body_iquat, sinert_i):
-        Ad_SE3_ib = tf.tquat2SE3(p, q).inv().adjoint()
-        converted = Ad_SE3_ib.T @ si_i @ Ad_SE3_ib
-        sinert_b = np.append(sinert_b, converted[np.newaxis, :], axis=0)
+        Ad_lg3_ib = tf.tquat2SE3(p, q).inv().adjoint()
+        converted = Ad_lg3_ib.T @ si_i @ Ad_lg3_ib
+        sinert_b = store(converted, sinert_b)
 
     # Configure SE3 of child frame rel2 parent frame (M_{i, i - 1} in MR)
     lg3_home_ba = [  # ba = 00, 10, 21, ..., 65
@@ -108,11 +117,11 @@ def main():
     for lg3_h_ba in lg3_home_ba[1:]:
         lg3_home_xb.append(lg3_home_xb[-1].dot(lg3_h_ba.inv()))
 
-    lg3_home_bj = [SE3.identity()]
-    for id, p in zip(m.jnt_bodyid, m.jnt_pos):
-        lg3_home_bj.append(tf.tquat2SE3(p, m.body_quat[id]))
-
-#    SE3_home_xj = [xb.dot(bj) for xb, bj in zip(SE3_home_xb, SE3_home_bj)]
+#    lg3_home_bj = [SE3.identity()]
+#    for id, p in zip(m.jnt_bodyid, m.jnt_pos):
+#        lg3_home_bj.append(tf.tquat2SE3(p, m.body_quat[id]))
+#
+#    lg3_home_xj = [xb.dot(bj) for xb, bj in zip(lg3_home_xb, lg3_home_bj)]
 
     # Obtain unit screw rel2 each link = body (A_{i} in MR)
     uscrew_bb = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
@@ -122,16 +131,10 @@ def main():
 #    print(f"len(screw_bb)): {len(screw_bb)}")
 #    print(f"screw_bb:\n{screw_bb}")
 
-    # Ingredients for twist-wrench inverse dynamics
-    # Set simulation time and timeste
-    duration = 5  # Simulation time [s]
-    timestep = mj.MjOption().timestep  # 0.002 [s] (500 [Hz]) by default
-#    print(f"Timestep (freq.): {timestep} [s] ({1/timestep} [Hz])")
-    n_steps = int(duration / timestep)
-#    print(f"# of steps: {n_steps}")
     # Determin start and end displacements of the target trajectory
-    start_q = np.array([0, 0, 0, 0, 0, 0])
+    start_q = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
     goal_q = np.array([0.2, 0.4, 0.6, 0.2 * pi, 0.3 * pi, 0.4 * pi])
+    print(f"qpos: {start_q} -> {goal_q}")
     # Generate a trajectory planner
     plan_traj = pln.generate_5th_spline_traj_planner(
         start_q, goal_q, timestep, n_steps)
@@ -141,23 +144,23 @@ def main():
     gacc_x[:3] = mj.MjOption().gravity
     twist_00 = np.zeros(6)
     print(f"twist_00:  {twist_00}")
-    # Set acc opposite to the acc due to gravity but with the equal magnitude
-    # in the translational part of the derivative of twist of {x} to cancel
-    # out the forces or torques applied to joints due to gravity
+    # Set the minus gravity as the translational part of dtwist of {x} to
+    # cancel out the forces or torques applied to joints due to gravity.
     dtwist_00 = -gacc_x
     print(f"dtwist_00: {dtwist_00}")
 
-    # Data storage
+    # =*=*=*= Data storage =*=*=*=
+    # trajectroy
     traj = np.empty((0, 3, 6))
     # Cartesian coordinates of the object
     obj_pos_x = np.empty((0, 3))
-    # Joint postions/velocities/accelerations expressed in the joint space
+    # Joint variables
     qpos, qvel, qacc = np.empty((3, 0, nu))
-    # Residual of qpos computed with mj_differentiatePos()
-    res_qpos = np.empty(nu)  # residual of joint positions
-    # For control signals
+    # Residual of qpos
+    res_qpos = np.empty(nu)
+    # Control signals
     tgt_ctrl, res_ctrl, ctrl = np.empty((3, 0, nu))
-    # Miscoellanious
+    # Others
     sensordata = np.empty((0, nsensordata))
     frame_count = 0
     time = []
@@ -229,16 +232,16 @@ def main():
     ctrl_axes[2].set(xlabel="time [s]")
     axes_plot_frc(
         ctrl_axes[:2], time, sens_qfrc[:, :d_clip], tgt_ctrl[:, :d_clip])
-    if 3 < nu:
-        ax_plot_lines_w_tgt(
-            ctrl_axes[2], time, sens_qfrc[:, 3:], tgt_ctrl[:, 3:], "q3-5 [N·m]")
+    ax_plot_lines_w_tgt(
+        ctrl_axes[2], time, sens_qfrc[:, 3:], tgt_ctrl[:, 3:], "q3-5 [N·m]")
 
     # Plot ft mesurements
-    ft_fig, ft_axes = plt.subplots(3, 1, sharex="col", tight_layout=True)
+    ft_fig, ft_axes = plt.subplots(2, 1, sharex="col", tight_layout=True)
     ft_fig.suptitle("ft")
-    ax_plot_lines(ft_axes[0], time, sens_ft[:, :2], "frc along x/y of {{s}} [N]")
-    ax_plot_lines(ft_axes[1], time, sens_ft[:, 2], "frc along z of {{s}} [N]", c="#0041FF")
-    ax_plot_lines(ft_axes[2], time, sens_ft[:, 3:], "trq around x/y/z of {{s}} [N·m]")
+    ax_plot_lines(
+        ft_axes[0], time, sens_ft[:, :3], "frc along x/y/z of {s} [N]")
+    ax_plot_lines(
+        ft_axes[1], time, sens_ft[:, 3:], "trq around x/y/z of {s} [N·m]")
 
     plt.show()
 
