@@ -1,0 +1,8 @@
+###### Requirements without Version Specifiers ######`
+scipy
+mujoco
+transforms3d
+opencv-python
+git+https://github.com/utiasSTARS/liegroups.git
+
+###### Requirements with Version Specifiers ######`
