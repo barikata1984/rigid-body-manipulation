@@ -1,66 +1,77 @@
-<mujoco>
-    <worldbody>
-        <light name="top" pos="0 0 3"/>
-        <body name="link_1">
-            <joint name="tx" type="slide" axis="1 0 0"/>
-            <inertial pos="0 0 0" mass="0.006" diaginertia="0.00005 0.000065 0.000025"/>
-            <body name="link_2">
-                <joint name="ty" type="slide" axis="0 1 0"/>
-                <inertial pos="0 0 0" mass="0.006" diaginertia="0.00005 0.000065 0.000025"/>
-                <body name="link_3">
-                    <joint name="tz" type="slide" axis="0 0 1"/>
-                    <inertial pos="0 0 0" mass="0.006" diaginertia="0.00005 0.000065 0.000025"/>
-                    <body name="link_4">
-                        <joint name="rx" type="hinge" axis="1 0 0"/>
-                        <inertial pos="0 0 0" mass="0.006" diaginertia="0.00005 0.000065 0.000025"/>
-                        <body name="link_5">
-                            <joint name="ry" type="hinge" axis="0 1 0"/>
-                            <inertial pos="0 0 0" mass="0.006" diaginertia="0.00005 0.000065 0.000025"/>
-                            <body name="object">
-                                <joint name="rz" type="hinge" axis="0 0 1"/>
-                                <site name="ft_sen"/>
-                                <geom name="red_box" type="box" size=".05 .1 .15" rgba="1 0 0 1"/>
-                            </body>
-                        </body>
-                    </body>
-                </body>
+<mujoco>  
+  <visual>
+    <global offwidth="960" offheight="600"/>
+  </visual>
+
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" width="512" height="512" rgb1=".1 .2 .3" rgb2=".2 .3 .4"/>
+    <material name="grid" texture="grid" texrepeat="1 1" texuniform="true" reflectance=".2"/>
+  </asset>
+
+  <worldbody>
+    <geom name="floor" size="0 0 .05" type="plane" material="grid" condim="3"/>   
+    <light name="top" pos="0 0 3"/>
+    <body name="link_1" pos="0 0 .01">
+      <joint name="tx" type="slide" axis="1 0 0"/>
+      <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
+      <body name="link_2">
+        <joint name="ty" type="slide" axis="0 1 0"/>
+        <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
+        <body name="link_3">
+          <joint name="tz" type="slide" axis="0 0 1"/>
+          <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
+          <body name="link_4">
+            <joint name="rx" type="hinge" axis="1 0 0"/>
+            <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
+            <body name="link_5">
+              <joint name="ry" type="hinge" axis="0 1 0"/>
+              <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
+              <body name="object">
+                <joint name="rz" type="hinge" axis="0 0 1"/>
+                <site name="ft_sen"/>
+                <geom name="red_box" type="box" size=".05 .1 .15" rgba="1 0 0 1"/>
+                <camera name="tracking" mode="track" pos="0 0 1"/>
+              </body>
             </body>
+          </body>
         </body>
-    </worldbody>
+      </body>
+    </body>
+  </worldbody>
 
-    <actuator>
-        <motor name="mtr_tx" joint="tx"/>
-        <motor name="mtr_ty" joint="ty"/>
-        <motor name="mtr_tz" joint="tz"/>
-        <motor name="mtr_rx" joint="rx"/>
-        <motor name="mtr_ry" joint="ry"/>
-        <motor name="mtr_rz" joint="rz"/>
-    </actuator>
+  <actuator>
+    <motor name="mtr_tx" joint="tx"/>
+    <motor name="mtr_ty" joint="ty"/>
+    <motor name="mtr_tz" joint="tz"/>
+    <motor name="mtr_rx" joint="rx"/>
+    <motor name="mtr_ry" joint="ry"/>
+    <motor name="mtr_rz" joint="rz"/>
+  </actuator>
 
-    <sensor>
-        <jointpos name="tx" joint="tx"/>
-        <jointpos name="ty" joint="ty"/>
-        <jointpos name="tz" joint="tz"/>
-        <jointpos name="rx" joint="rx"/>
-        <jointpos name="ry" joint="ry"/>
-        <jointpos name="rz" joint="rz"/>
-        <jointvel name="dtx" joint="tx"/>
-        <jointvel name="dty" joint="ty"/>
-        <jointvel name="dtz" joint="tz"/>
-        <jointvel name="drx" joint="rx"/>
-        <jointvel name="dry" joint="ry"/>
-        <jointvel name="drz" joint="rz"/>
-        <actuatorfrc name="frc_tx" actuator="mtr_tx"/>
-        <actuatorfrc name="frc_ty" actuator="mtr_ty"/>
-        <actuatorfrc name="frc_tz" actuator="mtr_tz"/>
-        <actuatorfrc name="frc_rx" actuator="mtr_rx"/>
-        <actuatorfrc name="frc_ry" actuator="mtr_ry"/>
-        <actuatorfrc name="frc_rz" actuator="mtr_rz"/>
-        <force name="frc" site="ft_sen"/>
-        <torque name="trq" site="ft_sen"/>
-    </sensor>
+  <sensor>
+    <jointpos name="tx" joint="tx"/>
+    <jointpos name="ty" joint="ty"/>
+    <jointpos name="tz" joint="tz"/>
+    <jointpos name="rx" joint="rx"/>
+    <jointpos name="ry" joint="ry"/>
+    <jointpos name="rz" joint="rz"/>
+    <jointvel name="dtx" joint="tx"/>
+    <jointvel name="dty" joint="ty"/>
+    <jointvel name="dtz" joint="tz"/>
+    <jointvel name="drx" joint="rx"/>
+    <jointvel name="dry" joint="ry"/>
+    <jointvel name="drz" joint="rz"/>
+    <actuatorfrc name="frc_tx" actuator="mtr_tx"/>
+    <actuatorfrc name="frc_ty" actuator="mtr_ty"/>
+    <actuatorfrc name="frc_tz" actuator="mtr_tz"/>
+    <actuatorfrc name="frc_rx" actuator="mtr_rx"/>
+    <actuatorfrc name="frc_ry" actuator="mtr_ry"/>
+    <actuatorfrc name="frc_rz" actuator="mtr_rz"/>
+    <force name="frc" site="ft_sen"/>
+    <torque name="trq" site="ft_sen"/>
+  </sensor>
 
-    <visual>
-        <global offwidth="960" offheight="600"/>
-    </visual>
+  <keyframe>
+    <key name="init_pose" qpos="1 1 1 0 0 0"/>
+  </keyframe>
 </mujoco>

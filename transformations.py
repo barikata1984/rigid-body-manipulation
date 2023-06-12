@@ -1,5 +1,6 @@
 import numpy as np
 from transforms3d import affines
+from utilities import check_and_expand 
 from liegroups import SO3, SE3
 
 
@@ -20,9 +21,10 @@ def trzs2SE3(
     Returns:
         _type_: homogeneous transformation
     """
+
     return SE3.from_matrix(affines.compose(t, r.reshape((3, 3)), z, s))
 
-
+#@np.vectorize
 def tquat2SE3(
         t: np.ndarray,
         quat: np.ndarray):
@@ -38,3 +40,29 @@ def tquat2SE3(
     """
 
     return SE3(SO3.from_quaternion(quat), t)
+
+
+def _pq2SE3(
+        pos,
+        quat):
+    return SE3(SO3.from_quaternion(quat), pos)
+
+
+def posquat2SE3(
+        pos: np.ndarray,
+        quat: np.ndarray):
+    """Compose a SE3 object from a translation vector and a quaternion using
+    the liegroups module.
+
+    Args:
+        t (np.ndarray): 3D translation vector.
+        quat (np.ndarray): unit quaternion
+
+    Returns:
+        _type_: SE3 object
+    """
+    flg = pos.ndim == quat.ndim == 1
+     
+    return _pq2SE3(pos, quat) if flg else [_pq2SE3(p, q) for p, q in zip(pos, quat)]
+
+
