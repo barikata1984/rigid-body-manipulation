@@ -9,6 +9,15 @@ def compose_sinert_i(mass, principal_inertia):
         [np.zeros((3, 3)), np.diag(principal_inertia)]])
 
 
+def transfer_sinert(sinert, hxform):
+    assert len(sinert) == len(hxform), "The numbers of spatial inertia tensors and SE3 instances."
+    
+    hxform_adjoint = [hxf.inv().adjoint() for hxf in hxform]
+    transfered = [adj.T @ si @ adj for adj, si in zip(hxform_adjoint, sinert)]
+     
+    return np.array(transfered)
+
+
 def inverse(
         traj: np.ndarray,
         se3_home,

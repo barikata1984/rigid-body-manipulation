@@ -1,7 +1,6 @@
 import numpy as np
 from transforms3d import affines
-from utilities import check_and_expand 
-from liegroups import SO3, SE3
+from liegroups import SO3, SE3  # may be replaced with robotics toolbox for python
 
 
 def trzs2SE3(
@@ -43,14 +42,8 @@ def tquat2SE3(
 
 
 def _pq2SE3(
-        pos,
-        quat):
-    return SE3(SO3.from_quaternion(quat), pos)
-
-
-def posquat2SE3(
-        pos: np.ndarray,
-        quat: np.ndarray):
+        p: np.ndarray,
+        q: np.ndarray) -> SE3:
     """Compose a SE3 object from a translation vector and a quaternion using
     the liegroups module.
 
@@ -59,9 +52,25 @@ def posquat2SE3(
         quat (np.ndarray): unit quaternion
 
     Returns:
+        SE3: instance of liegroups.SE3
+    """
+    return SE3(SO3.from_quaternion(q), p)
+
+
+def posquat2SE3(
+        pos: np.ndarray,
+        quat: np.ndarray):
+    """Compose a SE3 object from a translation vector and a quaternion using
+    the liegroups module following the shapes of input pos and quat.
+
+    Args:
+        t (np.ndarray): 3D translation vector.
+        quat (np.ndarray): unit quaternion
+
+    Returns:
         _type_: SE3 object
     """
-    flg = pos.ndim == quat.ndim == 1
+    flg = 1 == pos.ndim == quat.ndim
      
     return _pq2SE3(pos, quat) if flg else [_pq2SE3(p, q) for p, q in zip(pos, quat)]
 

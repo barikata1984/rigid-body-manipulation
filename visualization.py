@@ -1,5 +1,6 @@
 import numpy as np
 from matplotlib import pyplot as plt
+from math import tan, atan2, pi, radians as rad, degrees as deg
 # Import original modules
 from utilities import classify_dict_kargs
 

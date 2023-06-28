@@ -4,15 +4,14 @@ import json
 import numpy as np
 import mujoco as mj
 import planners as pln
+import dynamics as dyn
 import matplotlib as mpl
+import visualization as vis
 import transformations as tf
-from transformations import trzs2SE3
-from visualization import ax_plot_lines, axes_plot_frc, ax_plot_lines_w_tgt
-from transforms3d import affines
+# from visualization import ax_plot_lines, axes_plot_frc, ax_plot_lines_w_tgt
 from matplotlib import pyplot as plt
+from configure import load_configs, plan_trajectory
 from utilities import store
-from liegroups import SE3  # may be replaced with robotics toolbox for python
-from dynamics import compose_sinert_i, inverse
 from scipy import linalg
 from math import tan, atan2, pi, radians as rad, degrees as deg
 
@@ -24,71 +23,32 @@ np.set_printoptions(precision=3, suppress=True)
 
 
 def main():
-    xml_file = "obj_w_links.xml"
-    xml_path = os.path.join("./xml_models", xml_file)
-    print(f"Loaded xml file: {xml_file}")
-    m = mj.MjModel.from_xml_path(xml_path)
-    d = mj.MjData(m)
+    m, d, t, c = load_configs("obj_w_links.xml")
 
-    print("Simulation time setup ===================")
-    duration = 5  # Simulation time [s]
-    print(f"    Simulation time: {duration} [s]")
-    timestep = mj.MjOption().timestep  # 0.002 [s] (500 [Hz]) by default
-    print(f"    Timestep (freq.): {timestep} [s] ({1/timestep} [Hz])")
-    n_steps = int(duration / timestep)
-    print(f"    Number of steps: {n_steps}")
-    fps = 60  # Rendering frequency [Hz]
-    print(f"    Rendering freq.: {fps} [Hz]")
-    
-    print("Visualization setup =====================")
-    codec_4chr = "mp4v"
-    fourcc = cv2.VideoWriter_fourcc(*codec_4chr)
-    ## Instantizte a VideoWriter
-    height = 600
-    width = 960
-    output_file = "output.mp4" 
-    out = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
-    print(f"    Output file: {output_file}")
-    renderer = mj.Renderer(m, height, width)
-    ## Load the tracking camera defined in the xml file
-    cam_id = mj.mj_name2id(m, mj.mjtObj.mjOBJ_CAMERA, "tracking")
-    print(f"    Num of cameras: {m.ncam}")
-    print(f"    Tracking camera id: {cam_id}")
-    cam_fovy = rad(m.cam_fovy[cam_id])  # [rad]
-    focus = height / tan(cam_fovy / 2)  # [pixel]
-    cam_fovx = 2 * atan2(width, focus)  # [rad]
-    print(f"    HFoV of the camera: {deg(cam_fovx)} [deg]")
-    print(f"    VFoV of the camera: {deg(cam_fovy)} [deg]")
+    out = cv2.VideoWriter(c.output_file_name, c.fourcc, t.fps, (c.width, c.height))
+    renderer = mj.Renderer(m, c.height, c.width)
+
+    dqpos = np.array([0.2, 0.4, 0.6, 0.2 * pi, 0.3 * pi, 0.4 * pi])
+    plan_traj = plan_trajectory(m, d, t, "init_pose", dqpos)
 
     # Enable joint visualization option
     # scene_option = mj.MjvOption()
     # scene_option.flags[mj.mjtVisFlag.mjVIS_JOINT] = True
     # renderer.update_scene(data, scene_option=scene_option)
 
-    # Prepare variables to srore dynamics data
-    print("Number of ===============================")
-    nv = m.nv
-    print(f"    coorindates in joint space (nv): {nv:>2}")
-    nu = m.nu
-    print(f"    degrees of freedom (nu):         {nu:>2}")
-    na = m.na
-    print(f"    actuator activations (na):       {na:>2}")
-    nsensordata = m.nsensordata
-    print(f"    sensor outputs (nsensordata):    {nsensordata:>2}")
-
     # Numerically compute A and B with a finite differentiation
     epsilon = 1e-6  # Differential displacement
     centered = True  # Use the centred differentiation; False for the forward
     # Initilize state-space and cost matrices
-    A = np.zeros((2 * nv + na, 2 * nv + na))  # State matrix
-    B = np.zeros((2 * nv + na, nu))  # Input matrix
+    A = np.zeros((2 * m.nv + m.na, 2 * m.nv + m.na))  # State matrix
+    B = np.zeros((2 * m.nv + m.na, m.nu))  # Input matrix
     C = None  # Ignore C in this code
     D = None  # Ignore D as well
-    Q = np.eye(2 * nv)  # State cost matrix
+    Q = np.eye(2 * m.nv)  # State cost matrix
 #    Q[3, 3] = 1e-3*2
-    R = np.eye(nu)  # Input cost matrix
+    R = np.eye(m.nu)  # Input cost matrix
     init_rot_weight = 1e+6
-    for i in range(nu - 3, nu):
+    for i in range(m.nu - 3, m.nu):
         R[i, i] *= init_rot_weight
 #    print(f"R: {R}")
 
@@ -104,37 +64,27 @@ def main():
     # ---------+--------+------------
     #    _x    |  _x    | Described in {cartesian} or {world}
     #    _b    |  _b    | Descried in {body)
-    #    _i    |  _i    | Described in {principal body}
+    #    _i    |  _i    | Described in {principal} of each body
     #    _q    |  _q    | Described in the joint space
     #    _xi   |  _xi   | Of {principal} rel. to {world}
-    #    _ab   |   -    | Of {body} rel. to {parent body}
-    #    _ba   |   -    | Of {parent body} rel. to {body}
-    #    _cb   |   -    | Of {body}  rel. to {child body}
-    #    _bc   |   -    | Of {child body}  rel. to {body}
+    #    _ab   |   -    | Of {body} rel. to {parent}
+    #    _ba   |   -    | Of {parent} rel. to {body}
     #    _m    |   -    | Described in the frame a joint corresponds to
     #
     # Compose the principal spatial inertia matrix for each link including the
     # worldbody
     sinert_i = np.array([
-        compose_sinert_i(m, i) for m, i in zip(m.body_mass, m.body_inertia)])
+        dyn.compose_sinert_i(m, i) for m, i in zip(m.body_mass, m.body_inertia)])
     # Convert sinert_i to sinert_b rel2 the body frame
-    sinert_b = np.empty((0, 6, 6))
-    for p, q, si_i in zip(m.body_ipos, m.body_iquat, sinert_i):
-        Ad_se3_ib = tf.posquat2SE3(p, q).inv().adjoint()
-        converted = Ad_se3_ib.T @ si_i @ Ad_se3_ib
-        sinert_b = store(converted, sinert_b)
+    hxform_ib = tf.posquat2SE3(m.body_ipos, m.body_iquat)
+    sinert_b = dyn.transfer_sinert(sinert_i, hxform_ib)
 
     # Configure SE3 of child frame rel2 parent frame (M_{i, i - 1} in MR)
-    se3_home_ba_0 = [  # ba = 00, 10, 21, ..., 65
-        tf.tquat2SE3(p, q).inv() for p, q in zip(m.body_pos, m.body_quat)]
-#    print(f"{se3_home_ba_0=}")
-    tf.posquat2SE3(m.body_pos[0], m.body_quat[0])
-    se3_home_ba = tf.posquat2SE3(m.body_pos, m.body_quat)
-    print(f"{se3_home_ba=}")
+    hxform_home_ba = tf.posquat2SE3(m.body_pos, m.body_quat)
     # Configure SE3 of each body frame rel2 worldbody (M_{i} = M_{0, i} in MR)
-    se3_home_xb = [se3_home_ba[0].inv()]  # xb = 00, 01, ..., 06
-    for se3_h_ba in se3_home_ba[1:]:
-        se3_home_xb.append(se3_home_xb[-1].dot(se3_h_ba.inv()))
+    hxform_home_xb = [hxform_home_ba[0].inv()]  # xb = 00, 01, ..., 06
+    for hxf_h_ba in hxform_home_ba[1:]:
+        hxform_home_xb.append(hxform_home_xb[-1].dot(hxf_h_ba.inv()))
 
     # Obtain unit screw rel2 each link = body (A_{i} in MR)
     uscrew_bb = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
@@ -142,47 +92,31 @@ def main():
         slicer = 3 * (type - 2)  # type is 2 for slide and 3 for hinge
         uscrew_bb[b, slicer:slicer + 3] = ax / linalg.norm(ax)
 
-    print("Trajectory setup ========================")
-    ## Load the initial keyframe
-    init_key_id = mj.mj_name2id(m, mj.mjtObj.mjOBJ_KEY, "init_pose")
-    mj.mj_resetDataKeyframe(m, d, init_key_id)
-    ## Derive start and goal qpos 
-    dqpos = np.array([0.2, 0.4, 0.6, 0.2 * pi, 0.3 * pi, 0.4 * pi])
-    start_qpos = d.qpos.copy()
-    goal_qpos = start_qpos + dqpos
-    print(f"    qpos: {start_qpos}")
-    print(f"           ↓")
-    print(f"          {goal_qpos}")
-    # Generate a trajectory planner
-    plan_traj = pln.traj_5th_spline(start_qpos, goal_qpos, timestep, n_steps)
-
-    print("Worldbody (d)twist for inv. dyn. ========")
+    print("Worldbody (d)twist for inv. dyn. ==========")
     ## Set a twist vector for the worldbody
     twist_00 = np.zeros(6)
-    print(f"    twist_00:  {twist_00}")
     ## Set a twist vector for the worldbody
-    ### Note: the negative of the gravity vector is set below to cancel out the
-    ### forces or torques applied to joints due to gravity.
     gacc_x = np.zeros(6)
     gacc_x[:3] = mj.MjOption().gravity
-    dtwist_00 = -gacc_x
+    dtwist_00 = -gacc_x  # set below to cancel out joint forces and torques due to gravity
+    print(f"    twist_00:  {twist_00}")
     print(f"    dtwist_00: {dtwist_00}")
 
-    # =*=*=*= Data storage =*=*=*=
+    # =*=*=*=*=*=*=*=*= Data storage =*=*=*=*=*=*=*=*=
     # trajectroy
     traj = np.empty((0, 3, 6))
     # Cartesian coordinates of the object
     obj_pos_x = np.empty((0, 3))
     # Joint variables
-    qpos, qvel, qacc = np.empty((3, 0, nu))
+    qpos, qvel, qacc = np.empty((3, 0, m.nu))
     # Residual of qpos
-    res_qpos = np.empty(nu)
+    res_qpos = np.empty(m.nu)
     # Control signals
-    tgt_ctrl, res_ctrl, ctrl = np.empty((3, 0, nu))
+    tgt_ctrl, res_ctrl, ctrl = np.empty((3, 0, m.nu))
     # Dictionary to be converted to .json for training 
-    model_input = {"camera_angle_x": cam_fovx, "frames": list()}
+    model_input = {"camera_angle_x": c.cam_fovx, "frames": list()}
     # Others
-    sensordata = np.empty((0, nsensordata))
+    sensordata = np.empty((0, m.nsensordata))
     frame_count = 0
     time = []
     cam_xtf = []
@@ -191,12 +125,12 @@ def main():
     if not os.path.isdir(obs_dir):
         os.makedirs(obs_dir)
 
-    for i in range(n_steps):
+    for i in range(t.n_steps):
         tgt_traj = plan_traj(i)
         traj = store(tgt_traj, traj)
-        wrench_q = inverse(
-            traj[-1], se3_home_ba, sinert_b, uscrew_bb, twist_00, dtwist_00)
-        tgt_ctrl = store(wrench_q[:nu], tgt_ctrl)
+        wrench_q = dyn.inverse(
+            traj[-1], hxform_home_ba, sinert_b, uscrew_bb, twist_00, dtwist_00)
+        tgt_ctrl = store(wrench_q[:m.nu], tgt_ctrl)
 
         # Retrieve joint variables
         qpos = store(d.qpos, qpos)
@@ -206,13 +140,13 @@ def main():
         mj.mj_differentiatePos(  # Use this func to differenciate quat properly
             m,  # MjModel
             res_qpos,  # data buffer for the residual of qpos 
-            nu,  # idx of a joint up to which res_qpos are calculated
+            m.nu,  # idx of a joint up to which res_qpos are calculated
             qpos[-1],  # current qpos
-            traj[-1, 0, :nu])  # target qpos or next qpos to calkculate dqvel
-        res_state = np.concatenate((res_qpos, traj[-1, 1, :nu] - qvel[-1]))
+            traj[-1, 0, :m.nu])  # target qpos or next qpos to calkculate dqvel
+        res_state = np.concatenate((res_qpos, traj[-1, 1, :m.nu] - qvel[-1]))
         # Compute and set control, or actuator inputs
         res_ctrl = store(-K @ res_state, res_ctrl)  # Note the minus before K
-        ctrl = store(tgt_ctrl[-1, :nu] + res_ctrl[-1], ctrl)
+        ctrl = store(tgt_ctrl[-1, :m.nu] + res_ctrl[-1], ctrl)
         d.ctrl = ctrl[-1]
 
         # Evolute the simulation
@@ -224,19 +158,19 @@ def main():
         time.append(d.time)
 
         # Store frames following the fps
-        if frame_count <= time[-1] * fps:
-            # Save a video and observations
-            renderer.update_scene(d, cam_id)
+        if frame_count <= time[-1] * t.fps:
+            # Save a video and sensor measurments
+            renderer.update_scene(d, c.cam_id)
             img = renderer.render()[:, :, [2, 1, 0]]
             file_path = os.path.join(obs_dir, f"{frame_count:04}")
             cv2.imwrite(os.path.join(file_path, ".png"), img)
             out.write(img)
             # Prepare ingredients for .json file
-            cam_xtf = trzs2SE3(d.cam_xpos[cam_id], d.cam_xmat[cam_id])
+            cam_xtf = tf.trzs2SE3(d.cam_xpos[c.cam_id], d.cam_xmat[c.cam_id])
             frame = {
                 "file_path": file_path, 
                 "transform_matrix": cam_xtf.as_matrix().tolist(), 
-                "ft": sensordata[-1, 3 * nu:].tolist()}
+                "ft": sensordata[-1, 3 * m.nu:].tolist()}
 
             model_input["frames"].append(frame)
 
@@ -246,23 +180,23 @@ def main():
     out.release()
 
     sens_qpos, sens_qvel, sens_qfrc, sens_ft = np.split(
-        sensordata, [1 * nu, 2 * nu, 3 * nu], axis=1)
+        sensordata, [1 * m.nu, 2 * m.nu, 3 * m.nu], axis=1)
 
     with open("./data/model_input.json", "w") as f:
         json.dump(model_input, f, indent=2)
 
-    # Set line attributes
+    # =*=*=*=*=*= Plot trajectory & wrench *=*=*=*=*=*
     t_clip = len(time)
     time = time[:t_clip]
     # Plot the actual and target trajctories
-    d_clip = min(3, nu)
+    d_clip = min(3, m.nu)
     qpos_fig, qpos_axes = plt.subplots(2, 1, sharex="col", tight_layout=True)
     qpos_fig.suptitle("qpos")
     qpos_axes[1].set(xlabel="time [s]")
-    ax_plot_lines_w_tgt(
+    vis.ax_plot_lines_w_tgt(
         qpos_axes[0], time, qpos[:, :d_clip], traj[:, 0, :d_clip], "q0-2 [m]")
-    ax_plot_lines_w_tgt(
-        qpos_axes[1], time, qpos[:, 3:], traj[:, 0, 3:nu], "q3-5 [rad]")
+    vis.ax_plot_lines_w_tgt(
+        qpos_axes[1], time, qpos[:, 3:], traj[:, 0, 3:m.nu], "q3-5 [rad]")
 
     # Plot forces
     ctrl_fig, ctrl_axes = plt.subplots(3, 1, sharex="col", tight_layout=True)
@@ -270,17 +204,17 @@ def main():
     ctrl_axes[0].set(ylabel="q0-1 [N]")
     ctrl_axes[1].set(ylabel="q2 [N]")
     ctrl_axes[2].set(xlabel="time [s]")
-    axes_plot_frc(
+    vis.axes_plot_frc(
         ctrl_axes[:2], time, sens_qfrc[:, :d_clip], tgt_ctrl[:, :d_clip])
-    ax_plot_lines_w_tgt(
+    vis.ax_plot_lines_w_tgt(
         ctrl_axes[2], time, sens_qfrc[:, 3:], tgt_ctrl[:, 3:], "q3-5 [N·m]")
 
     # Plot ft mesurements
     ft_fig, ft_axes = plt.subplots(2, 1, sharex="col", tight_layout=True)
     ft_fig.suptitle("ft")
-    ax_plot_lines(
+    vis.ax_plot_lines(
         ft_axes[0], time, sens_ft[:, :3], "x/y/z-frc of {s} [N]")
-    ax_plot_lines(
+    vis.ax_plot_lines(
         ft_axes[1], time, sens_ft[:, 3:], "x/y/z-trq of {s} [N·m]")
 
     plt.show()
