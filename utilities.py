@@ -22,3 +22,10 @@ def store(
         destination: np.ndarray) -> np.ndarray:
 
     return np.append(destination, data[np.newaxis, :], axis=0)
+
+
+def check_and_expand(
+        arr: np.ndarray,
+        dim: int) -> np.ndarray:
+
+    return np.expand_dims(arr, axis=0) if arr.ndim < dim else arr 

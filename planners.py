@@ -2,7 +2,7 @@ import numpy as np
 from numpy import linalg as la
 
 
-def generate_5th_spline_traj_planner(
+def traj_5th_spline(
         start: np.ndarray,
         goal: np.ndarray,
         timestep: int,
