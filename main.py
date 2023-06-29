@@ -178,7 +178,7 @@ def main():
     # Terminate the VideoWriter
     out.release()
 
-    sens_qpos, sens_qvel, sens_qfrc, sens_ft = np.split(
+    _, _, sens_qfrc, sens_ft = np.split(
         sensordata, [1 * m.nu, 2 * m.nu, 3 * m.nu], axis=1)
 
     with open("./data/model_input.json", "w") as f:
