@@ -3,7 +3,6 @@ import cv2
 import json
 import numpy as np
 import mujoco as mj
-import planners as pln
 import dynamics as dyn
 import matplotlib as mpl
 import visualization as vis
@@ -76,15 +75,15 @@ def main():
     sinert_i = np.array([
         dyn.compose_sinert_i(m, i) for m, i in zip(m.body_mass, m.body_inertia)])
     # Convert sinert_i to sinert_b rel2 the body frame
-    hxform_ib = tf.posquat2SE3(m.body_ipos, m.body_iquat)
-    sinert_b = dyn.transfer_sinert(sinert_i, hxform_ib)
+    pose_ib = tf.posquat2SE3(m.body_ipos, m.body_iquat)
+    sinert_b = dyn.transfer_sinert(sinert_i, pose_ib)
 
     # Configure SE3 of child frame rel2 parent frame (M_{i, i - 1} in MR)
-    hxform_home_ba = tf.posquat2SE3(m.body_pos, m.body_quat)
+    pose_home_ba = tf.posquat2SE3(m.body_pos, m.body_quat)
     # Configure SE3 of each body frame rel2 worldbody (M_{i} = M_{0, i} in MR)
-    hxform_home_xb = [hxform_home_ba[0].inv()]  # xb = 00, 01, ..., 06
-    for hxf_h_ba in hxform_home_ba[1:]:
-        hxform_home_xb.append(hxform_home_xb[-1].dot(hxf_h_ba.inv()))
+    pose_home_xb = [pose_home_ba[0].inv()]  # xb = 00, 01, ..., 06
+    for p_h_ba in pose_home_ba[1:]:
+        pose_home_xb.append(pose_home_xb[-1].dot(p_h_ba.inv()))
 
     # Obtain unit screw rel2 each link = body (A_{i} in MR)
     uscrew_bb = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
@@ -129,7 +128,7 @@ def main():
         tgt_traj = plan_traj(i)
         traj = store(tgt_traj, traj)
         wrench_q = dyn.inverse(
-            traj[-1], hxform_home_ba, sinert_b, uscrew_bb, twist_00, dtwist_00)
+            traj[-1], pose_home_ba, sinert_b, uscrew_bb, twist_00, dtwist_00)
         tgt_ctrl = store(wrench_q[:m.nu], tgt_ctrl)
 
         # Retrieve joint variables
