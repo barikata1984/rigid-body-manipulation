@@ -1,0 +1,36 @@
+[xml]
+  system_file = "obj_w_links.xml"
+  rel_root_path = "./xml_models"
+
+[simu_time]
+  duration = 5
+  fps = 60
+  timestep = -1
+
+[track_cam]
+  cam_name = "tracking" 
+  height = 800
+  width = 800
+  codec = "mp4v"
+  output_file = "output.mp4"
+
+[trajectory]
+  planner = "spline_5"
+  keyframe = "init_pose"
+  dqpos = [
+    0.2, 
+    0.4, 
+    0.6, 
+    6.28318530718,  # 2.0 x π
+    0.94247779607,  # 0.3 x π
+    4.71238898039,  # 1.5 x π
+  ]
+
+[lqr]
+  epsilon = 0.000001  # Differential displacement
+  centered = true  # Use the centred differentiation; false for the forward one
+  input_diag_weight = 1_000_000
+
+[wisp_input]
+  input_file = "transforms.json"
+

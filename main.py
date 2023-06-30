@@ -9,10 +9,11 @@ import visualization as vis
 import transformations as tf
 # from visualization import ax_plot_lines, axes_plot_frc, ax_plot_lines_w_tgt
 from matplotlib import pyplot as plt
-from configure import load_configs, plan_trajectory
+from configure import load_configs, generate_trajectory_planner
 from utilities import store
+from datetime import datetime
 from scipy import linalg
-from math import tan, atan2, pi, radians as rad, degrees as deg
+from math import pi
 
 
 # Remove redundant space at the head and tail of the horizontal axis's scale
@@ -27,8 +28,8 @@ def main():
     out = cv2.VideoWriter(c.output_file_name, c.fourcc, t.fps, (c.width, c.height))
     renderer = mj.Renderer(m, c.height, c.width)
 
-    dqpos = np.array([0.2, 0.4, 0.6, 0.2 * pi, 0.3 * pi, 0.4 * pi])
-    plan_traj = plan_trajectory(m, d, t, "init_pose", dqpos)
+    dqpos = np.array([0.2, 0.4, 0.6, 2. * pi, 0.3 * pi, 2. * pi])
+    plan_traj = generate_trajectory_planner(m, d, t, "init_pose", dqpos)
 
     # Enable joint visualization option
     # scene_option = mj.MjvOption()
@@ -72,11 +73,11 @@ def main():
     #
     # Compose the principal spatial inertia matrix for each link including the
     # worldbody
-    sinert_i = np.array([
+    body_spati_i = np.array([
         dyn.compose_sinert_i(m, i) for m, i in zip(m.body_mass, m.body_inertia)])
     # Convert sinert_i to sinert_b rel2 the body frame
-    pose_ib = tf.posquat2SE3(m.body_ipos, m.body_iquat)
-    sinert_b = dyn.transfer_sinert(sinert_i, pose_ib)
+    body_spati_pose_bi = tf.posquat2SE3(m.body_ipos, m.body_iquat)
+    body_spati_b = dyn.transfer_sinert(body_spati_pose_bi, body_spati_i)
 
     # Configure SE3 of child frame rel2 parent frame (M_{i, i - 1} in MR)
     pose_home_ba = tf.posquat2SE3(m.body_pos, m.body_quat)
@@ -91,17 +92,14 @@ def main():
         slicer = 3 * (type - 2)  # type is 2 for slide and 3 for hinge
         uscrew_bb[b, slicer:slicer + 3] = ax / linalg.norm(ax)
 
-    print("Worldbody (d)twist for inv. dyn. ==========")
     ## Set a twist vector for the worldbody
     twist_00 = np.zeros(6)
     ## Set a twist vector for the worldbody
     gacc_x = np.zeros(6)
     gacc_x[:3] = mj.MjOption().gravity
     dtwist_00 = -gacc_x  # set below to cancel out joint forces and torques due to gravity
-    print(f"    twist_00:  {twist_00}")
-    print(f"    dtwist_00: {dtwist_00}")
 
-    # =*=*=*=*=*=*=*=*= Data storage =*=*=*=*=*=*=*=*=
+    # =*=*=*=*=*=*=*=*=*= Data storage =*=*=*=*=*=*=*=*=*=
     # trajectroy
     traj = np.empty((0, 3, 6))
     # Cartesian coordinates of the object
@@ -112,23 +110,28 @@ def main():
     res_qpos = np.empty(m.nu)
     # Control signals
     tgt_ctrl, res_ctrl, ctrl = np.empty((3, 0, m.nu))
-    # Dictionary to be converted to .json for training 
-    model_input = {"camera_angle_x": c.cam_fovx, "frames": list()}
     # Others
     sensordata = np.empty((0, m.nsensordata))
-    frame_count = 0
     time = []
-    cam_xtf = []
+    frame_count = 0
+    
+    # Dictionary to be converted to transforms.json for training 
+    transforms = dict(
+        date_time=datetime.now().strftime("%d/%m/%Y_%H:%M:%S"), 
+        camera_angle_x=c.cam_fovx, 
+        frames=list(),
+    )
 
-    obs_dir = "./data/images"
+    dataset_hierarchy = ["data", "images"]
+    obs_dir = os.path.join(*dataset_hierarchy)
     if not os.path.isdir(obs_dir):
         os.makedirs(obs_dir)
 
-    for i in range(t.n_steps):
-        tgt_traj = plan_traj(i)
+    for step in range(t.n_steps):
+        tgt_traj = plan_traj(step)
         traj = store(tgt_traj, traj)
         wrench_q = dyn.inverse(
-            traj[-1], pose_home_ba, sinert_b, uscrew_bb, twist_00, dtwist_00)
+            traj[-1], pose_home_ba, body_spati_b, uscrew_bb, twist_00, dtwist_00)
         tgt_ctrl = store(wrench_q[:m.nu], tgt_ctrl)
 
         # Retrieve joint variables
@@ -160,18 +163,26 @@ def main():
         if frame_count <= time[-1] * t.fps:
             # Save a video and sensor measurments
             renderer.update_scene(d, c.cam_id)
-            img = renderer.render()[:, :, [2, 1, 0]]
-            file_path = os.path.join(obs_dir, f"{frame_count:04}")
-            cv2.imwrite(os.path.join(file_path, ".png"), img)
-            out.write(img)
+            bgr = renderer.render()[:, :, [2, 1, 0]]
+            # Make an alpha mask to remove the black background 
+            alpha = np.where(np.all(bgr == 0, axis=-1), 0, 255)[..., np.newaxis]
+#            print(f"{img.shape=}") 
+            cv2.imwrite(
+                os.path.join(*dataset_hierarchy, f"{frame_count:04}") + ".png",  # image_path 
+                np.append(bgr, alpha, axis=2))  # image (bgr + alpha) 
+            # Write a video frame
+            out.write(bgr)
             # Prepare ingredients for .json file
-            cam_xtf = tf.trzs2SE3(d.cam_xpos[c.cam_id], d.cam_xmat[c.cam_id])
+            obj_pose_x = tf.trzs2SE3(obj_pos_x[-1], d.xmat[-1])
+            cam_pose_x = tf.trzs2SE3(d.cam_xpos[c.cam_id], d.cam_xmat[c.cam_id])
+            cam_pose_obj = obj_pose_x.inv().dot(cam_pose_x)
+#            print(f"{cam_pose_obj.trans=}") 
             frame = {
-                "file_path": file_path, 
-                "transform_matrix": cam_xtf.as_matrix().tolist(), 
+                "file_path": os.path.join(dataset_hierarchy[1], f"{frame_count:04}"),
+                "transform_matrix": cam_pose_obj.as_matrix().tolist(), 
                 "ft": sensordata[-1, 3 * m.nu:].tolist()}
 
-            model_input["frames"].append(frame)
+            transforms["frames"].append(frame)
 
             frame_count += 1
 
@@ -181,10 +192,10 @@ def main():
     _, _, sens_qfrc, sens_ft = np.split(
         sensordata, [1 * m.nu, 2 * m.nu, 3 * m.nu], axis=1)
 
-    with open("./data/model_input.json", "w") as f:
-        json.dump(model_input, f, indent=2)
+    with open("./data/transforms.json", "w") as f:
+        json.dump(transforms, f, indent=2)
 
-    # =*=*=*=*=*= Plot trajectory & wrench *=*=*=*=*=*
+    # =*=*=*=*=*=*= Plot trajectory & wrench *=*=*=*=*=*=*
     t_clip = len(time)
     time = time[:t_clip]
     # Plot the actual and target trajctories

@@ -9,11 +9,11 @@ def compose_sinert_i(mass, principal_inertia):
         [np.zeros((3, 3)), np.diag(principal_inertia)]])
 
 
-def transfer_sinert(sinert, pose):
-    assert len(sinert) == len(pose), "The numbers of spatial inertia tensors and SE3 instances."
+def transfer_sinert(pose, spati):
+    assert len(pose) == len(spati), "The numbers of spatial inertia tensors and SE3 instances do not match."
     
     pose_adjoint = [p.inv().adjoint() for p in pose]
-    transfered = [adj.T @ si @ adj for adj, si in zip(pose_adjoint, sinert)]
+    transfered = [adj.T @ si @ adj for adj, si in zip(pose_adjoint, spati)]
      
     return np.array(transfered)
 
@@ -21,7 +21,7 @@ def transfer_sinert(sinert, pose):
 def inverse(
         traj: np.ndarray,
         pose_home,
-        sinert: np.ndarray,
+        body_spati: np.ndarray,
         uscrew: np.ndarray,
         twist_0: np.ndarray,
         dtwist_0: np.ndarray,
@@ -60,8 +60,8 @@ def inverse(
     for i in range(len(uscrew), 0, -1):
         prior_w = wrench[-1]
         w_1 = pose[i].adjoint().T @ prior_w
-        w_2 = sinert[i] @ dtwist[i]
-        w_3 = -SE3.curlywedge(twist[i]).T @ sinert[i] @ twist[i]
+        w_2 = body_spati[i] @ dtwist[i]
+        w_3 = -SE3.curlywedge(twist[i]).T @ body_spati[i] @ twist[i]
         w = w_1 + w_2 + w_3
         wrench = store(w, wrench)
 

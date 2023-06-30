@@ -1,6 +1,6 @@
 <mujoco>  
   <visual>
-    <global offwidth="960" offheight="600"/>
+    <global offwidth="1980" offheight="1080"/>
   </visual>
 
   <asset>
@@ -9,7 +9,7 @@
   </asset>
 
   <worldbody>
-    <geom name="floor" size="0 0 .05" type="plane" material="grid" condim="3"/>   
+    <!--    <geom name="floor" size="0 0 .05" type="plane" material="grid" condim="3"/>  --> 
     <light name="top" pos="0 0 3"/>
     <body name="link_1" pos="0 0 .01">
       <joint name="tx" type="slide" axis="1 0 0"/>
