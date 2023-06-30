@@ -1,8 +1,6 @@
-lieg_test.py
 *.mp4
 MUJOCO_LOG.TXT
-main2.py
-model_input.json
+data/
 
 # Below was provided by GitHub as a standard template for Python project
 # Byte-compiled / optimized / DLL files
