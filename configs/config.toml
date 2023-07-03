@@ -8,7 +8,7 @@
   timestep = -1
 
 [track_cam]
-  cam_name = "tracking" 
+  name = "tracking" 
   height = 800
   width = 800
   codec = "mp4v"
@@ -16,7 +16,7 @@
 
 [trajectory]
   planner = "spline_5"
-  keyframe = "init_pose"
+  init_frame = "init_pose"
   dqpos = [
     0.2, 
     0.4, 
@@ -29,7 +29,7 @@
 [lqr]
   epsilon = 0.000001  # Differential displacement
   centered = true  # Use the centred differentiation; false for the forward one
-  input_diag_weight = 1_000_000
+  input_weights = [1, 1, 1, 1_000_000, 1_000_000, 1_000_000]
 
 [wisp_input]
   input_file = "transforms.json"

@@ -13,7 +13,6 @@ from configure import load_configs, generate_trajectory_planner
 from utilities import store
 from datetime import datetime
 from scipy import linalg
-from math import pi
 
 
 # Remove redundant space at the head and tail of the horizontal axis's scale
@@ -23,40 +22,13 @@ np.set_printoptions(precision=3, suppress=True)
 
 
 def main():
-    m, d, t, c = load_configs("obj_w_links.xml")
+    config_file = "./configs/config.toml"
+    m, d, t, c, ss, plan = load_configs(config_file)
 
-    out = cv2.VideoWriter(c.output_file_name, c.fourcc, t.fps, (c.width, c.height))
+    K = dyn.compute_gain_matrix(m, d, ss)
+
+    out = cv2.VideoWriter(c.output_file, c.fourcc, t.fps, (c.width, c.height))
     renderer = mj.Renderer(m, c.height, c.width)
-
-    dqpos = np.array([0.2, 0.4, 0.6, 2. * pi, 0.3 * pi, 2. * pi])
-    plan_traj = generate_trajectory_planner(m, d, t, "init_pose", dqpos)
-
-    # Enable joint visualization option
-    # scene_option = mj.MjvOption()
-    # scene_option.flags[mj.mjtVisFlag.mjVIS_JOINT] = True
-    # renderer.update_scene(data, scene_option=scene_option)
-
-    # Numerically compute A and B with a finite differentiation
-    epsilon = 1e-6  # Differential displacement
-    centered = True  # Use the centred differentiation; False for the forward
-    # Initilize state-space and cost matrices
-    A = np.zeros((2 * m.nv + m.na, 2 * m.nv + m.na))  # State matrix
-    B = np.zeros((2 * m.nv + m.na, m.nu))  # Input matrix
-    C = None  # Ignore C in this code
-    D = None  # Ignore D as well
-    Q = np.eye(2 * m.nv)  # State cost matrix
-#    Q[3, 3] = 1e-3*2
-    R = np.eye(m.nu)  # Input cost matrix
-    init_rot_weight = 1e+6
-    for i in range(m.nu - 3, m.nu):
-        R[i, i] *= init_rot_weight
-#    print(f"R: {R}")
-
-    # Compute the feedback gain matrix K
-    mj.mjd_transitionFD(m, d, epsilon, centered, A, B, C, D)
-    P = linalg.solve_discrete_are(A, B, Q, R)
-    K = linalg.pinv(R + B.T @ P @ B) @ B.T @ P @ A
-#    print(f"K: {K}")
 
     # Description of suffixes used from the section below:
     #   This   |        |
@@ -92,12 +64,10 @@ def main():
         slicer = 3 * (type - 2)  # type is 2 for slide and 3 for hinge
         uscrew_bb[b, slicer:slicer + 3] = ax / linalg.norm(ax)
 
-    ## Set a twist vector for the worldbody
+    # Set (d)twist vectors for the worldbody
     twist_00 = np.zeros(6)
-    ## Set a twist vector for the worldbody
-    gacc_x = np.zeros(6)
-    gacc_x[:3] = mj.MjOption().gravity
-    dtwist_00 = -gacc_x  # set below to cancel out joint forces and torques due to gravity
+    dtwist_00 = np.zeros(6)
+    dtwist_00[:3] = -mj.MjOption().gravity  # set below to compensate gravity
 
     # =*=*=*=*=*=*=*=*=*= Data storage =*=*=*=*=*=*=*=*=*=
     # trajectroy
@@ -114,11 +84,11 @@ def main():
     sensordata = np.empty((0, m.nsensordata))
     time = []
     frame_count = 0
-    
-    # Dictionary to be converted to transforms.json for training 
+
+    # Dictionary to be converted to transforms.json for training
     transforms = dict(
-        date_time=datetime.now().strftime("%d/%m/%Y_%H:%M:%S"), 
-        camera_angle_x=c.cam_fovx, 
+        date_time=datetime.now().strftime("%d/%m/%Y_%H:%M:%S"),
+        camera_angle_x=c.cam_fovx,
         frames=list(),
     )
 
@@ -128,7 +98,7 @@ def main():
         os.makedirs(obs_dir)
 
     for step in range(t.n_steps):
-        tgt_traj = plan_traj(step)
+        tgt_traj = plan(step)
         traj = store(tgt_traj, traj)
         wrench_q = dyn.inverse(
             traj[-1], pose_home_ba, body_spati_b, uscrew_bb, twist_00, dtwist_00)
@@ -141,7 +111,7 @@ def main():
         # Residual of state
         mj.mj_differentiatePos(  # Use this func to differenciate quat properly
             m,  # MjModel
-            res_qpos,  # data buffer for the residual of qpos 
+            res_qpos,  # data buffer for the residual of qpos
             m.nu,  # idx of a joint up to which res_qpos are calculated
             qpos[-1],  # current qpos
             traj[-1, 0, :m.nu])  # target qpos or next qpos to calkculate dqvel
@@ -164,22 +134,23 @@ def main():
             # Save a video and sensor measurments
             renderer.update_scene(d, c.cam_id)
             bgr = renderer.render()[:, :, [2, 1, 0]]
-            # Make an alpha mask to remove the black background 
+            # Make an alpha mask to remove the black background
             alpha = np.where(np.all(bgr == 0, axis=-1), 0, 255)[..., np.newaxis]
-#            print(f"{img.shape=}") 
+#            print(f"{img.shape=}")
+            file_name = f"{frame_count:04}"
             cv2.imwrite(
-                os.path.join(*dataset_hierarchy, f"{frame_count:04}") + ".png",  # image_path 
-                np.append(bgr, alpha, axis=2))  # image (bgr + alpha) 
+                os.path.join(*dataset_hierarchy, file_name) + ".png",
+                np.append(bgr, alpha, axis=2))  # image (bgr + alpha)
             # Write a video frame
             out.write(bgr)
             # Prepare ingredients for .json file
             obj_pose_x = tf.trzs2SE3(obj_pos_x[-1], d.xmat[-1])
             cam_pose_x = tf.trzs2SE3(d.cam_xpos[c.cam_id], d.cam_xmat[c.cam_id])
             cam_pose_obj = obj_pose_x.inv().dot(cam_pose_x)
-#            print(f"{cam_pose_obj.trans=}") 
+#            print(f"{cam_pose_obj.trans=}")
             frame = {
-                "file_path": os.path.join(dataset_hierarchy[1], f"{frame_count:04}"),
-                "transform_matrix": cam_pose_obj.as_matrix().tolist(), 
+                "file_path": os.path.join(dataset_hierarchy[1], file_name),
+                "transform_matrix": cam_pose_obj.as_matrix().tolist(),
                 "ft": sensordata[-1, 3 * m.nu:].tolist()}
 
             transforms["frames"].append(frame)
