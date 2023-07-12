@@ -41,7 +41,7 @@ def compute_gain_matrix(m, d, ss: StateSpace):
     return K
 
 
-def compose_sinert_i(mass, principal_inertia):
+def compose_spati_i(mass, principal_inertia):
     return np.block([
         [mass * np.eye(3), np.zeros((3, 3))],
         [np.zeros((3, 3)), np.diag(principal_inertia)]])

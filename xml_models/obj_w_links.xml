@@ -67,6 +67,8 @@
     <actuatorfrc name="frc_rx" actuator="mtr_rx"/>
     <actuatorfrc name="frc_ry" actuator="mtr_ry"/>
     <actuatorfrc name="frc_rz" actuator="mtr_rz"/>
+    <framelinacc name="obj_linacc" objtype="body" objname="object"/>
+    <frameangacc name="obj_angacc" objtype="body" objname="object"/>
     <force name="frc" site="ft_sen"/>
     <torque name="trq" site="ft_sen"/>
   </sensor>

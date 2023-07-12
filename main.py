@@ -7,9 +7,8 @@ import dynamics as dyn
 import matplotlib as mpl
 import visualization as vis
 import transformations as tf
-# from visualization import ax_plot_lines, axes_plot_frc, ax_plot_lines_w_tgt
 from matplotlib import pyplot as plt
-from configure import load_configs, generate_trajectory_planner
+from configure import load_configs
 from utilities import store
 from datetime import datetime
 from scipy import linalg
@@ -23,12 +22,14 @@ np.set_printoptions(precision=3, suppress=True)
 
 def main():
     config_file = "./configs/config.toml"
-    m, d, t, c, ss, plan = load_configs(config_file)
+    m, d, t, cam, ss, plan = load_configs(config_file)
 
     K = dyn.compute_gain_matrix(m, d, ss)
 
-    out = cv2.VideoWriter(c.output_file, c.fourcc, t.fps, (c.width, c.height))
-    renderer = mj.Renderer(m, c.height, c.width)
+    out = cv2.VideoWriter(
+        cam.output_file, cam.fourcc, t.fps, (cam.width, cam.height))
+    renderer = mj.Renderer(
+        m, cam.height, cam.width)
 
     # Description of suffixes used from the section below:
     #   This   |        |
@@ -46,7 +47,7 @@ def main():
     # Compose the principal spatial inertia matrix for each link including the
     # worldbody
     body_spati_i = np.array([
-        dyn.compose_sinert_i(m, i) for m, i in zip(m.body_mass, m.body_inertia)])
+        dyn.compose_spati_i(m, i) for m, i in zip(m.body_mass, m.body_inertia)])
     # Convert sinert_i to sinert_b rel2 the body frame
     body_spati_pose_bi = tf.posquat2SE3(m.body_ipos, m.body_iquat)
     body_spati_b = dyn.transfer_sinert(body_spati_pose_bi, body_spati_i)
@@ -70,8 +71,7 @@ def main():
     dtwist_00[:3] = -mj.MjOption().gravity  # set below to compensate gravity
 
     # =*=*=*=*=*=*=*=*=*= Data storage =*=*=*=*=*=*=*=*=*=
-    # trajectroy
-    traj = np.empty((0, 3, 6))
+    traj = []
     # Cartesian coordinates of the object
     obj_pos_x = np.empty((0, 3))
     # Joint variables
@@ -79,16 +79,20 @@ def main():
     # Residual of qpos
     res_qpos = np.empty(m.nu)
     # Control signals
-    tgt_ctrl, res_ctrl, ctrl = np.empty((3, 0, m.nu))
+    ctrl = []
+    tgt_ctrl = []
+    res_ctrl = []
     # Others
     sensordata = np.empty((0, m.nsensordata))
     time = []
     frame_count = 0
+    sen_id = mj.mj_name2id(m, mj.mjtObj.mjOBJ_SITE, "ft_sen")
+    obj_id = mj.mj_name2id(m, mj.mjtObj.mjOBJ_BODY, "object")
 
     # Dictionary to be converted to transforms.json for training
     transforms = dict(
         date_time=datetime.now().strftime("%d/%m/%Y_%H:%M:%S"),
-        camera_angle_x=c.cam_fovx,
+        camera_angle_x=cam.fovx,
         frames=list(),
     )
 
@@ -98,11 +102,10 @@ def main():
         os.makedirs(obs_dir)
 
     for step in range(t.n_steps):
-        tgt_traj = plan(step)
-        traj = store(tgt_traj, traj)
-        wrench_q = dyn.inverse(
-            traj[-1], pose_home_ba, body_spati_b, uscrew_bb, twist_00, dtwist_00)
-        tgt_ctrl = store(wrench_q[:m.nu], tgt_ctrl)
+        traj.append(plan(step))
+        tgt_ctrl.append(dyn.inverse(
+            traj[-1], pose_home_ba, body_spati_b, uscrew_bb, twist_00,
+            dtwist_00))
 
         # Retrieve joint variables
         qpos = store(d.qpos, qpos)
@@ -114,11 +117,11 @@ def main():
             res_qpos,  # data buffer for the residual of qpos
             m.nu,  # idx of a joint up to which res_qpos are calculated
             qpos[-1],  # current qpos
-            traj[-1, 0, :m.nu])  # target qpos or next qpos to calkculate dqvel
-        res_state = np.concatenate((res_qpos, traj[-1, 1, :m.nu] - qvel[-1]))
+            traj[-1][0, :m.nu])  # target qpos or next qpos to calkculate dqvel
+        res_state = np.concatenate((res_qpos, traj[-1][1, :m.nu] - qvel[-1]))
         # Compute and set control, or actuator inputs
-        res_ctrl = store(-K @ res_state, res_ctrl)  # Note the minus before K
-        ctrl = store(tgt_ctrl[-1, :m.nu] + res_ctrl[-1], ctrl)
+        res_ctrl.append(-K @ res_state)
+        ctrl.append(tgt_ctrl[-1][:m.nu] + res_ctrl[-1])
         d.ctrl = ctrl[-1]
 
         # Evolute the simulation
@@ -132,11 +135,11 @@ def main():
         # Store frames following the fps
         if frame_count <= time[-1] * t.fps:
             # Save a video and sensor measurments
-            renderer.update_scene(d, c.cam_id)
+            renderer.update_scene(d, cam.id)
             bgr = renderer.render()[:, :, [2, 1, 0]]
             # Make an alpha mask to remove the black background
-            alpha = np.where(np.all(bgr == 0, axis=-1), 0, 255)[..., np.newaxis]
-#            print(f"{img.shape=}")
+            alpha = np.where(
+                np.all(bgr == 0, axis=-1), 0, 255)[..., np.newaxis]
             file_name = f"{frame_count:04}"
             cv2.imwrite(
                 os.path.join(*dataset_hierarchy, file_name) + ".png",
@@ -144,14 +147,22 @@ def main():
             # Write a video frame
             out.write(bgr)
             # Prepare ingredients for .json file
-            obj_pose_x = tf.trzs2SE3(obj_pos_x[-1], d.xmat[-1])
-            cam_pose_x = tf.trzs2SE3(d.cam_xpos[c.cam_id], d.cam_xmat[c.cam_id])
+            obj_pose_x = tf.trzs2SE3(obj_pos_x[-1], d.xmat[obj_id])
+            # Pose of the camera rel. to the object
+            cam_pose_x = tf.trzs2SE3(d.cam_xpos[cam.id], d.cam_xmat[cam.id])
             cam_pose_obj = obj_pose_x.inv().dot(cam_pose_x)
-#            print(f"{cam_pose_obj.trans=}")
-            frame = {
-                "file_path": os.path.join(dataset_hierarchy[1], file_name),
-                "transform_matrix": cam_pose_obj.as_matrix().tolist(),
-                "ft": sensordata[-1, 3 * m.nu:].tolist()}
+            # Pose of the ft sensor rel. to the object
+            sen_pose_x = tf.trzs2SE3(d.site_xpos[sen_id], d.site_xmat[sen_id])
+            sen_pose_obj = obj_pose_x.inv().dot(sen_pose_x)
+
+            obj_acc_x = sensordata[-1, 4 * m.nu:]
+            obj_acc_sen = sen_pose_x.inv().adjoint() @ obj_acc_x
+            frame = dict(
+                file_path=os.path.join(dataset_hierarchy[1], file_name),
+                cam_pose_obj=cam_pose_obj.as_matrix().tolist(),
+                obj_pose_sen=sen_pose_obj.inv().as_matrix().tolist(),
+                obj_acc_sen=obj_acc_sen.tolist(),
+                ft=sensordata[-1, 3 * m.nu:].tolist())
 
             transforms["frames"].append(frame)
 
@@ -160,12 +171,18 @@ def main():
     # Terminate the VideoWriter
     out.release()
 
-    _, _, sens_qfrc, sens_ft = np.split(
-        sensordata, [1 * m.nu, 2 * m.nu, 3 * m.nu], axis=1)
+    _, _, sens_qfrc, sens_ft, obj_acc = np.split(
+        sensordata, [1 * m.nu, 2 * m.nu, 3 * m.nu, 4 * m.nu], axis=1)
 
-    with open("./data/transforms.json", "w") as f:
+    with open("./data/nemd_multiview.json", "w") as f:
         json.dump(transforms, f, indent=2)
 
+    # =*=*=*=*=*=*=*=*= Convert data record list into ndarray =*=*=*=*=*=*=*=*=
+    traj = np.asarray(traj)
+    # Control signals
+    ctrl = np.asarray(ctrl)
+    tgt_ctrl = np.asarray(tgt_ctrl)
+    res_ctrl = np.asarray(res_ctrl)
     # =*=*=*=*=*=*= Plot trajectory & wrench *=*=*=*=*=*=*
     t_clip = len(time)
     time = time[:t_clip]
@@ -197,6 +214,12 @@ def main():
         ft_axes[0], time, sens_ft[:, :3], "x/y/z-frc of {s} [N]")
     vis.ax_plot_lines(
         ft_axes[1], time, sens_ft[:, 3:], "x/y/z-trq of {s} [N·m]")
+
+    obj_acc_fig, obj_acc_axes = plt.subplots(2, 1, tight_layout=True)
+    vis.ax_plot_lines(
+        obj_acc_axes[0], time, obj_acc[:, :3], ylabel="obj_linacc_x")
+    vis.ax_plot_lines(
+        obj_acc_axes[1], time, obj_acc[:, 3:], ylabel="obj_angacc_x")
 
     plt.show()
 

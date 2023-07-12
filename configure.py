@@ -17,10 +17,8 @@ class TimeConfig:
     timestep: float = None
 
     def __post_init__(self):
-        print(f"    Simulation time [s]:   {self.duration}")
-        
         if None is self.timestep or self.timestep < 0:
-            self.timestep = mj.MjOption().timestep  # 0.002 [s] (500 [Hz]) by default
+            self.timestep = mj.MjOption().timestep  # 0.002 [s] by default
 
         self.n_steps = int(self.duration / self.timestep)
 
@@ -34,24 +32,24 @@ class TimeConfig:
 
 @dataclass
 class CameraConfig:
-    cam_id: int
-    cam_fovy: float
+    id: int
+    fovy: float
     height: int
     width: int
     codec_4chr: str
     output_file: str
 
     def __post_init__(self):
-        self.focus = self.height / tan(self.cam_fovy / 2)  # [px]
-        self.cam_fovx = 2 * atan2(self.width, self.focus)  # [rad]
+        self.focus = self.height / tan(self.fovy / 2)
+        self.fovx = 2 * atan2(self.width, self.focus)
         self.fourcc = cv2.VideoWriter_fourcc(*self.codec_4chr)
 
-        print("Tracking camera setup =========================")
-        print(f"    Tracking camera id:         {self.cam_id}")
-        print(f"    Image size (w x h [px]):    {self.width} x {self.height}")
-        print(f"    Focus [px]:                 {self.focus}")
-        print(f"    FoV (h, v [deg]):           {deg(self.cam_fovx)}, {deg(self.cam_fovy)}")
-        print(f"    Output file:                {self.output_file}")
+        print(f"Tracking camera setup =========================\n"
+              f"    Tracking camera id:         {self.id}\n"
+              f"    Image size (w x h [px]):    {self.width} x {self.height}\n"
+              f"    Focus [px]:                 {self.focus}\n"
+              f"    FoV (h, v [deg]):           {deg(self.fovx)}, {deg(self.fovy)}\n"
+              f"    Output file:                {self.output_file}")
 
 
 def generate_trajectory_planner(
@@ -93,16 +91,18 @@ def load_configs(config_file):
     # Generate mjData struct which stores simulation state
     d = mj.MjData(m)
     # Setup simulation time configuration
-    timestep = mj.MjOption().timestep if config.simu_time.timestep < 0 else config.simu_time.timestep
+    timestep = config.simu_time.timestep
+    if timestep < 0:
+        timestep = mj.MjOption().timestep
     t = TimeConfig(
         duration=config.simu_time.duration,
         fps=config.simu_time.fps,
         timestep=timestep)
     # Setup tracking camera configuration
     cam_id = mj.mj_name2id(m, mj.mjtObj.mjOBJ_CAMERA, config.track_cam.name)
-    c = CameraConfig(
-        cam_id=cam_id,
-        cam_fovy=rad(m.cam_fovy[cam_id]),  # [rad]
+    cam = CameraConfig(
+        id=cam_id,
+        fovy=rad(m.cam_fovy[cam_id]),  # [rad]
         height=config.track_cam.height,
         width=config.track_cam.width,
         codec_4chr=config.track_cam.codec,
@@ -117,4 +117,5 @@ def load_configs(config_file):
         init_frame=config.trajectory.init_frame,
         dqpos=config.trajectory.dqpos)
 
-    return m, d, t, c, ss, plan
+    return m, d, t, cam, ss, plan
+
