@@ -160,7 +160,7 @@ def main():
             obj_acc_x = sensordata[-1][4 * m.nu:] - gacc_x
             obj_acc_sen = sen_pose_x.inv().adjoint() @ obj_acc_x
             # Sensor measurement
-            ft = sensordata[-1][4 * m.nu:].tolist()
+            ft = sensordata[-1][4 * m.nu:]
 
             # Log NeMD ingredients ============================================
             frame = dict(
@@ -168,7 +168,7 @@ def main():
                 cam_pose_obj=cam_pose_obj.as_matrix().tolist(),
                 obj_pose_sen=sen_pose_obj.inv().as_matrix().tolist(),
                 obj_acc_sen=obj_acc_sen.tolist(),
-                ft=ft
+                ft=ft.tolist()
                 )
 
             transforms["frames"].append(frame)
