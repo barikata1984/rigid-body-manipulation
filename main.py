@@ -67,8 +67,9 @@ def main():
 
     # Set (d)twist vectors for the worldbody
     twist_00 = np.zeros(6)
-    dtwist_00 = np.zeros(6)
-    dtwist_00[:3] = -mj.MjOption().gravity  # set below to compensate gravity
+    gacc_x = np.zeros(6)
+    gacc_x[:3] = -mj.MjOption().gravity
+    dtwist_00 = gacc_x.copy()
 
     # =*=*=*=*=*=*=*=*=*= Data storage =*=*=*=*=*=*=*=*=*=
     traj = []
@@ -155,14 +156,14 @@ def main():
             sen_pose_x = tf.trzs2SE3(d.site_xpos[sen_id], d.site_xmat[sen_id])
             sen_pose_obj = obj_pose_x.inv().dot(sen_pose_x)
 
-            obj_acc_x = sensordata[-1, 4 * m.nu:]
+            obj_acc_x = sensordata[-1, 4 * m.nu:] - gacc_x
             obj_acc_sen = sen_pose_x.inv().adjoint() @ obj_acc_x
             frame = dict(
                 file_path=os.path.join(dataset_hierarchy[1], file_name),
                 cam_pose_obj=cam_pose_obj.as_matrix().tolist(),
                 obj_pose_sen=sen_pose_obj.inv().as_matrix().tolist(),
                 obj_acc_sen=obj_acc_sen.tolist(),
-                ft=sensordata[-1, 3 * m.nu:].tolist())
+                ft=sensordata[-1, 4 * m.nu:].tolist())
 
             transforms["frames"].append(frame)
 
