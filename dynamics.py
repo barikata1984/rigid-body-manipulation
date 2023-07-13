@@ -48,7 +48,8 @@ def compose_spati_i(mass, principal_inertia):
 
 
 def transfer_sinert(pose, spati):
-    assert len(pose) == len(spati), "The numbers of spatial inertia tensors and SE3 instances do not match."
+    alert = "The numbers of spatial inertia tensors and SE3 instances do not match."
+    assert len(pose) == len(spati), alert
 
     pose_adjoint = [p.inv().adjoint() for p in pose]
     transfered = [adj.T @ si @ adj for adj, si in zip(pose_adjoint, spati)]
