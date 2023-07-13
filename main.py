@@ -12,6 +12,7 @@ from configure import load_configs
 from utilities import store
 from datetime import datetime
 from scipy import linalg
+from tqdm import tqdm
 
 
 # Remove redundant space at the head and tail of the horizontal axis's scale
@@ -49,8 +50,8 @@ def main():
     body_spati_i = np.array([
         dyn.compose_spati_i(m, i) for m, i in zip(m.body_mass, m.body_inertia)])
     # Convert sinert_i to sinert_b rel2 the body frame
-    body_spati_pose_bi = tf.posquat2SE3(m.body_ipos, m.body_iquat)
-    body_spati_b = dyn.transfer_sinert(body_spati_pose_bi, body_spati_i)
+    body_spati_pose_b = tf.posquat2SE3(m.body_ipos, m.body_iquat)
+    body_spati_b = dyn.transfer_sinert(body_spati_pose_b, body_spati_i)
 
     # Configure SE3 of child frame rel2 parent frame (M_{i, i - 1} in MR)
     pose_home_ba = tf.posquat2SE3(m.body_pos, m.body_quat)
@@ -102,23 +103,26 @@ def main():
     if not os.path.isdir(obs_dir):
         os.makedirs(obs_dir)
 
-    for step in range(t.n_steps):
+    for step in tqdm(range(t.n_steps)):
         traj.append(plan(step))
-        tgt_ctrl.append(dyn.inverse(
-            traj[-1], pose_home_ba, body_spati_b, uscrew_bb, twist_00,
-            dtwist_00))
+        tgt_ctrl.append(
+            dyn.inverse(
+                traj[-1], pose_home_ba, body_spati_b, uscrew_bb, twist_00,
+                dtwist_00
+                )
+            )
 
         # Retrieve joint variables
         qpos = store(d.qpos, qpos)
         qvel = store(d.qvel, qvel)
         qacc = store(d.qacc, qacc)
         # Residual of state
-        mj.mj_differentiatePos(  # Use this func to differenciate quat properly
+        mj.mj_differentiatePos(  # use this func to differenciate quat properly
             m,  # MjModel
-            res_qpos,  # data buffer for the residual of qpos
+            res_qpos,  # residual qpos data buffer
             m.nu,  # idx of a joint up to which res_qpos are calculated
             qpos[-1],  # current qpos
-            traj[-1][0, :m.nu])  # target qpos or next qpos to calkculate dqvel
+            traj[-1][0, :m.nu])  # target qpos or next qpos to calculate dqvel
         res_state = np.concatenate((res_qpos, traj[-1][1, :m.nu] - qvel[-1]))
         # Compute and set control, or actuator inputs
         res_ctrl.append(-K @ res_state)
@@ -135,7 +139,7 @@ def main():
 
         # Store frames following the fps
         if frame_count <= time[-1] * t.fps:
-            # Save a video and sensor measurments
+            # Write a video ===================================================
             renderer.update_scene(d, cam.id)
             bgr = renderer.render()[:, :, [2, 1, 0]]
             # Make an alpha mask to remove the black background
@@ -147,17 +151,21 @@ def main():
                 np.append(bgr, alpha, axis=2))  # image (bgr + alpha)
             # Write a video frame
             out.write(bgr)
+
+            # Do some SE(3) math ==============================================
             # Prepare ingredients for .json file
             obj_pose_x = tf.trzs2SE3(obj_pos_x[-1], d.xmat[obj_id])
-            # Pose of the camera rel. to the object
+            # Camerea pose rel. to the object
             cam_pose_x = tf.trzs2SE3(d.cam_xpos[cam.id], d.cam_xmat[cam.id])
             cam_pose_obj = obj_pose_x.inv().dot(cam_pose_x)
-            # Pose of the ft sensor rel. to the object
+            # FT sensor pose rel. to the object
             sen_pose_x = tf.trzs2SE3(d.site_xpos[sen_id], d.site_xmat[sen_id])
             sen_pose_obj = obj_pose_x.inv().dot(sen_pose_x)
-
+            # Object acceleration rel. to FT sensor
             obj_acc_x = sensordata[-1, 4 * m.nu:] - gacc_x
             obj_acc_sen = sen_pose_x.inv().adjoint() @ obj_acc_x
+
+            # Log NeMD ingredients ============================================
             frame = dict(
                 file_path=os.path.join(dataset_hierarchy[1], file_name),
                 cam_pose_obj=cam_pose_obj.as_matrix().tolist(),
@@ -167,6 +175,7 @@ def main():
 
             transforms["frames"].append(frame)
 
+            # Terminate sampling process incrementing "frame_count" ===========
             frame_count += 1
 
     # Terminate the VideoWriter
@@ -185,15 +194,12 @@ def main():
     tgt_ctrl = np.asarray(tgt_ctrl)
     res_ctrl = np.asarray(res_ctrl)
     # =*=*=*=*=*=*= Plot trajectory & wrench *=*=*=*=*=*=*
-    t_clip = len(time)
-    time = time[:t_clip]
     # Plot the actual and target trajctories
-    d_clip = min(3, m.nu)
     qpos_fig, qpos_axes = plt.subplots(2, 1, sharex="col", tight_layout=True)
     qpos_fig.suptitle("qpos")
     qpos_axes[1].set(xlabel="time [s]")
     vis.ax_plot_lines_w_tgt(
-        qpos_axes[0], time, qpos[:, :d_clip], traj[:, 0, :d_clip], "q0-2 [m]")
+        qpos_axes[0], time, qpos[:, :3], traj[:, 0, :3], "q0-2 [m]")
     vis.ax_plot_lines_w_tgt(
         qpos_axes[1], time, qpos[:, 3:], traj[:, 0, 3:m.nu], "q3-5 [rad]")
 
@@ -204,7 +210,7 @@ def main():
     ctrl_axes[1].set(ylabel="q2 [N]")
     ctrl_axes[2].set(xlabel="time [s]")
     vis.axes_plot_frc(
-        ctrl_axes[:2], time, sens_qfrc[:, :d_clip], tgt_ctrl[:, :d_clip])
+        ctrl_axes[:2], time, sens_qfrc[:, :3], tgt_ctrl[:, :3])
     vis.ax_plot_lines_w_tgt(
         ctrl_axes[2], time, sens_qfrc[:, 3:], tgt_ctrl[:, 3:], "q3-5 [N·m]")
 
@@ -223,6 +229,30 @@ def main():
         obj_acc_axes[1], time, obj_acc[:, 3:], ylabel="obj_angacc_x")
 
     plt.show()
+
+
+
+    time
+    qpos
+    traj
+    sens_qfrc
+    tgt_ctrl
+    sens_ft
+    obj_acc
+
+
+
+    obj_pose_x
+
+    cam_pose_x
+    cam_pose_obj
+
+    sen_pose_x
+    sen_pose_obj
+
+    obj_acc_x
+    obj_acc_sen
+
 
 
 if __name__ == "__main__":
