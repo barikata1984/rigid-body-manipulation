@@ -1,6 +1,7 @@
 *.mp4
 MUJOCO_LOG.TXT
 data/
+file_stashed/
 
 # Below was provided by GitHub as a standard template for Python project
 # Byte-compiled / optimized / DLL files

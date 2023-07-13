@@ -44,7 +44,7 @@ def main():
     #    _ba   |   -    | Of {parent} rel. to {body}
     #    _m    |   -    | Described in the frame a joint corresponds to
     #
-    # Compose the principal spatial inertia matrix for each link including the
+    # Compose the principal spatial inertia matrix for each body including the
     # worldbody
     body_spati_i = np.array([
         dyn.compose_spati_i(m, i) for m, i in zip(m.body_mass, m.body_inertia)])
@@ -99,6 +99,7 @@ def main():
     sensordata = []
     time = []
     frame_count = 0
+    obj_linacc_sen = []
 
     # =========================================================================
     # Main loop
@@ -156,18 +157,22 @@ def main():
             # FT sensor pose rel. to the object
             sen_pose_x = tf.trzs2SE3(d.site_xpos[sen_id], d.site_xmat[sen_id])
             sen_pose_obj = obj_pose_x.inv().dot(sen_pose_x)
-            # Object acceleration rel. to the sensor
-            obj_acc_x = sensordata[-1][4 * m.nu:] - gacc_x
-            obj_acc_sen = sen_pose_x.inv().adjoint() @ obj_acc_x
+            # Object linear acceleration rel. to the sensor
+            # NOTE: Ignore obj_angacc_x for coordinate transformation and do
+            # SO(3) math. .adjoint() carries unnecesary effect of angacc on
+            # linacc which is taken into account in torque calculation of NeMD.
+            obj_acc_x = sensordata[-1][4 * m.nu:]
+            _obj_linacc_sen = sen_pose_x.inv().rot.as_matrix() @ obj_acc_x[:3]
+            obj_linacc_sen.append(_obj_linacc_sen[:3].tolist())
             # Sensor measurement
-            ft = sensordata[-1][4 * m.nu:]
+            ft = sensordata[-1][3 * m.nu: 4 * m.nu]
 
             # Log NeMD ingredients ============================================
             frame = dict(
                 file_path=os.path.join(dataset_hierarchy[1], file_name),
                 cam_pose_obj=cam_pose_obj.as_matrix().tolist(),
                 obj_pose_sen=sen_pose_obj.inv().as_matrix().tolist(),
-                obj_acc_sen=obj_acc_sen.tolist(),
+                obj_linacc_sen=obj_linacc_sen[-1],
                 ft=ft.tolist()
                 )
 
@@ -179,7 +184,7 @@ def main():
     # VideoWriter released
     out.release()
 
-    _, _, sens_qfrc, sens_ft, obj_acc_x = np.split(
+    qpos_meas, qvel_meas, qfrc_meas, ft_meas_sen, obj_acc_x = np.split(
         sensordata, [1 * m.nu, 2 * m.nu, 3 * m.nu, 4 * m.nu], axis=1)
 
     with open("./data/nemd_multiview.json", "w") as f:
@@ -201,32 +206,30 @@ def main():
         vis.ax_plot_lines_w_tgt(
             qpos_axes[i], time, qpos[:, slcr], traj[:, 0, slcr], yls[i])
 
-    # Joint forces and torques
-    ctrl_fig, ctrl_axes = plt.subplots(3, 1, sharex="col", tight_layout=True)
-    ctrl_fig.suptitle("act_qfrc VS tgt_ctrl")
-    ctrl_axes[0].set(ylabel="q0-1 [N]")
-    ctrl_axes[1].set(ylabel="q2 [N]")
-    ctrl_axes[2].set(xlabel="time [s]")
-    vis.axes_plot_frc(
-        ctrl_axes[:2], time, sens_qfrc[:, 0:3], tgt_ctrl[:, 0:3])
-    vis.ax_plot_lines_w_tgt(
-        ctrl_axes[2], time, sens_qfrc[:, 3:6], tgt_ctrl[:, 3:6], "q3-5 [N·m]")
+    # Object linear acceleration and ft sensor measurements rel. to {sensor}
+    acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)
+    acc_ft_fig.suptitle("linacc vs ft")
+    acc_ft_axes[0].set(xlabel="# of frames")
+    acc_ft_axes[2].set(xlabel="time [s]")
+    vis.ax_plot_lines(
+        acc_ft_axes[0], range(len(obj_linacc_sen)), obj_linacc_sen,
+        "obj_linacc_sen [m/s/s]"
+        )
+    vis.ax_plot_lines(
+        acc_ft_axes[1], time, ft_meas_sen[:, 0:3], "frc_sen [N]")
+    vis.ax_plot_lines(
+        acc_ft_axes[2], time, ft_meas_sen[:, 3:6], "trq_sen [N·m]")
 
-    # FT sensor mesurements
-    ft_fig, ft_axes = plt.subplots(2, 1, sharex="col", tight_layout=True)
-    ft_fig.suptitle("ft")
-    yls = ["x/y/z-frc of {s} [N]", "x/y/z-trq of {s} [N·m]"]
-    for i in range(len(ft_axes)):
-        slcr = slice(i * 3, (i + 1) * 3)
-        vis.ax_plot_lines(ft_axes[i], time, sens_ft[:, slcr], yls[i])
-    
-    # Object acceleration rel. to {world}
-    obj_acc_x_fig, obj_acc_x_axes = plt.subplots(2, 1, tight_layout=True)
-    obj_acc_x_fig.suptitle("obj_acc_x")
-    yls = ["obj_linacc_x", "obj_angacc_x"]
-    for i in range(len(obj_acc_x_axes)):
-        slcr = slice(i * 3, (i + 1) * 3)
-        vis.ax_plot_lines(obj_acc_x_axes[i], time, obj_acc_x[:, slcr], yls[i])
+    # Joint forces and torques
+#     ctrl_fig, ctrl_axes = plt.subplots(3, 1, sharex="col", tight_layout=True)
+#     ctrl_fig.suptitle("act_qfrc VS tgt_ctrl")
+#     ctrl_axes[0].set(ylabel="q0-1 [N]")
+#     ctrl_axes[1].set(ylabel="q2 [N]")
+#     ctrl_axes[2].set(xlabel="time [s]")
+#     vis.axes_plot_frc(
+#         ctrl_axes[:2], time, sens_qfrc[:, 0:3], tgt_ctrl[:, 0:3])
+#     vis.ax_plot_lines_w_tgt(
+#         ctrl_axes[2], time, sens_qfrc[:, 3:6], tgt_ctrl[:, 3:6], "q3-5 [N·m]")
 
     plt.show()
 
