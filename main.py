@@ -3,12 +3,12 @@ import cv2
 import json
 import numpy as np
 import mujoco as mj
-import dynamics as dyn
 import matplotlib as mpl
 import visualization as vis
 import transformations as tf
 from matplotlib import pyplot as plt
 from configure import load_configs
+from dynamics import compute_gain_matrix, compose_spati_i, transfer_sinert, inverse
 from datetime import datetime
 from scipy import linalg
 from tqdm import tqdm
@@ -24,7 +24,7 @@ def main():
     config_file = "./configs/config.toml"
     m, d, t, cam, ss, plan = load_configs(config_file)
 
-    K = dyn.compute_gain_matrix(m, d, ss)
+    K = compute_gain_matrix(m, d, ss)
 
     out = cv2.VideoWriter(
         cam.output_file, cam.fourcc, t.fps, (cam.width, cam.height))
@@ -47,10 +47,10 @@ def main():
     # Compose the principal spatial inertia matrix for each body including the
     # worldbody
     body_spati_i = np.array([
-        dyn.compose_spati_i(m, i) for m, i in zip(m.body_mass, m.body_inertia)])
+        compose_spati_i(m, i) for m, i in zip(m.body_mass, m.body_inertia)])
     # Convert sinert_i to sinert_b rel2 the body frame
     body_spati_pose_b = tf.posquat2SE3(m.body_ipos, m.body_iquat)
-    body_spati_b = dyn.transfer_sinert(body_spati_pose_b, body_spati_i)
+    body_spati_b = transfer_sinert(body_spati_pose_b, body_spati_i)
 
     # Configure SE3 of child frame rel2 parent frame (M_{i, i - 1} in MR)
     pose_home_ba = tf.posquat2SE3(m.body_pos, m.body_quat)
@@ -107,7 +107,7 @@ def main():
     for step in tqdm(range(t.n_steps)):
         traj.append(plan(step))
         tgt_ctrl.append(
-            dyn.inverse(
+            inverse(
                 traj[-1], pose_home_ba, body_spati_b, uscrew_bb, twist_00,
                 dtwist_00
                 )
@@ -216,9 +216,9 @@ def main():
         "obj_linacc_sen [m/s/s]"
         )
     vis.ax_plot_lines(
-        acc_ft_axes[1], time, ft_meas_sen[:, 0:3], "frc_sen [N]")
+        acc_ft_axes[1], time, ft_meas_sen[:, :3], "frc_sen [N]")
     vis.ax_plot_lines(
-        acc_ft_axes[2], time, ft_meas_sen[:, 3:6], "trq_sen [N·m]")
+        acc_ft_axes[2], time, ft_meas_sen[:, 3:], "trq_sen [N·m]")
 
     # Joint forces and torques
 #     ctrl_fig, ctrl_axes = plt.subplots(3, 1, sharex="col", tight_layout=True)
@@ -227,13 +227,12 @@ def main():
 #     ctrl_axes[1].set(ylabel="q2 [N]")
 #     ctrl_axes[2].set(xlabel="time [s]")
 #     vis.axes_plot_frc(
-#         ctrl_axes[:2], time, sens_qfrc[:, 0:3], tgt_ctrl[:, 0:3])
+#         ctrl_axes[:2], time, sens_qfrc[:, :3], tgt_ctrl[:, :3])
 #     vis.ax_plot_lines_w_tgt(
-#         ctrl_axes[2], time, sens_qfrc[:, 3:6], tgt_ctrl[:, 3:6], "q3-5 [N·m]")
+#         ctrl_axes[2], time, sens_qfrc[:, 3:], tgt_ctrl[:, 3:], "q3-5 [N·m]")
 
     plt.show()
 
 
 if __name__ == "__main__":
     main()
-
