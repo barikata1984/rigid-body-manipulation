@@ -9,6 +9,7 @@ import visualization as vis
 import transformations as tf
 from matplotlib import pyplot as plt
 from configure import load_configs
+from liegroups import SO3
 from datetime import datetime
 from scipy import linalg
 from tqdm import tqdm
@@ -46,11 +47,22 @@ def main():
     #
     # Compose the principal spatial inertia matrix for each body including the
     # worldbody
+
     body_spati_i = np.array([
         dyn.compose_spati_i(m, i) for m, i in zip(m.body_mass, m.body_inertia)])
     # Convert sinert_i to sinert_b rel2 the body frame
     body_spati_pose_b = tf.posquat2SE3(m.body_ipos, m.body_iquat)
     body_spati_b = dyn.transfer_sinert(body_spati_pose_b, body_spati_i)
+
+    mom_i = np.array([
+        *body_spati_b[-1, 3:, 3:].diagonal(),
+        *body_spati_b[-1, 3, 4:],
+        body_spati_b[-1, 4, 5]])
+
+    print("Target object's inertial parameters wr2 its body frame ======\n"
+         f"    Mass:               {m.body_mass[-1]}\n"
+         f"    First moments:      {SO3.vee(body_spati_b[-1, 3:, :3])}\n"
+         f"    Moments of inertia: {mom_i}\n")
 
     # Configure SE3 of child frame rel2 parent frame (M_{i, i - 1} in MR)
     pose_home_ba = tf.posquat2SE3(m.body_pos, m.body_quat)
@@ -62,14 +74,17 @@ def main():
     # Obtain unit screw rel2 each link = body (A_{i} in MR)
     uscrew_bb = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
     for b, (type, ax) in enumerate(zip(m.jnt_type, m.jnt_axis), 0):
-        slicer = 3 * (type - 2)  # type is 2 for slide and 3 for hinge
+        slicer = 3 * (type - 2)  # type: 2 for slide, 3 for hinge
         uscrew_bb[b, slicer:slicer + 3] = ax / linalg.norm(ax)
 
-    # Set (d)twist vectors for the worldbody to be used for inverse dynamics
+    # Set up dynamics related variables =======================================
+    # (d)twist vectors for the worldbody to be used for inverse dynamics
     twist_00 = np.zeros(6)
     gacc_x = np.zeros(6)
     gacc_x[:3] = -mj.MjOption().gravity
     dtwist_00 = gacc_x.copy()
+    # gain matrix for linear quadratic regulator
+    K = dyn.compute_gain_matrix(m, d, ss)
 
     # Prepare for data logging ================================================
     # IDs for convenience
@@ -84,17 +99,27 @@ def main():
     # Control signals
     ctrl = []
     tgt_ctrl = []
+    # Scale sampled coordinates ∈ (-1, 1) in wisp to the dimensions of an axis-
+    # aligned bounding box of the object.
+    # NOTE: setting the longest edge of the bounding box is recommended because
+    # choosing a cuboid rather than a cube may affect the prediction result of
+    # NeMD, the auther haven't checked it yet tho
+#    aabb_scale = 0.5
     # Dictionary to be converted to a .json file for training
     transforms = dict(
         date_time=datetime.now().strftime("%d/%m/%Y_%H:%M:%S"),
         camera_angle_x=cam.fovx,
+#        aabb_scale=aabb_scale,
         frames=list(),
     )
+
     # Make a directory in which the .json file is saved
-    dataset_hierarchy = ["data", "images"]
+    dataset_dir = "data/uniform"
+#    dataset_dir = "data/composite"
+    dataset_hierarchy = [dataset_dir, "images"]
     obs_dir = os.path.join(*dataset_hierarchy)
     if not os.path.isdir(obs_dir):
-        os.makedirs(obs_dir)
+        os.makedirs(obs_dir, exist_ok=True)
     # Others
     sensordata = []
     time = []
@@ -104,7 +129,9 @@ def main():
     # =========================================================================
     # Main loop
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    for step in tqdm(range(t.n_steps)):
+    for step in tqdm(
+            range(t.n_steps),
+            desc="Progress of simulation"):
         traj.append(plan(step))
         tgt_ctrl.append(
             dyn.inverse(
@@ -134,6 +161,8 @@ def main():
         sensordata.append(d.sensordata.copy())
         time.append(d.time)
 
+        aabb_scale = 0.3
+
         # Store frames following the fps
         if frame_count <= time[-1] * t.fps:
             # Write a video ===================================================
@@ -159,8 +188,9 @@ def main():
             sen_pose_obj = obj_pose_x.inv().dot(sen_pose_x)
             # Object linear acceleration rel. to the sensor
             # NOTE: Ignore obj_angacc_x for coordinate transformation and do
-            # SO(3) math. .adjoint() carries unnecesary effect of angacc on
+            # SO(3) math. liegroups.SE3.adjoint() carries effect of angacc on
             # linacc which is taken into account in torque calculation of NeMD.
+            # No need to compute it on simulation.
             obj_acc_x = sensordata[-1][4 * m.nu:]
             _obj_linacc_sen = sen_pose_x.inv().rot.as_matrix() @ obj_acc_x[:3]
             obj_linacc_sen.append(_obj_linacc_sen[:3].tolist())
@@ -173,7 +203,8 @@ def main():
                 cam_pose_obj=cam_pose_obj.as_matrix().tolist(),
                 obj_pose_sen=sen_pose_obj.inv().as_matrix().tolist(),
                 obj_linacc_sen=obj_linacc_sen[-1],
-                ft=ft.tolist()
+                aabb_scale=[aabb_scale],
+                ft=ft.tolist(),
                 )
 
             transforms["frames"].append(frame)
@@ -187,7 +218,7 @@ def main():
     qpos_meas, qvel_meas, qfrc_meas, ft_meas_sen, obj_acc_x = np.split(
         sensordata, [1 * m.nu, 2 * m.nu, 3 * m.nu, 4 * m.nu], axis=1)
 
-    with open("./data/nemd_multiview.json", "w") as f:
+    with open(f"./{dataset_dir}/nemd_multiview.json", "w") as f:
         json.dump(transforms, f, indent=2)
 
     # Convert lists of logged data into ndarrays ==============================
@@ -196,6 +227,7 @@ def main():
     tgt_ctrl = np.asarray(tgt_ctrl)
 
     # Visualize data ==========================================================
+    # Object linear acceleration and ft sensor measurements rel. to {sensor}
     # Actual and target joint positions
     qpos_fig, qpos_axes = plt.subplots(2, 1, sharex="col", tight_layout=True)
     qpos_fig.suptitle("qpos")

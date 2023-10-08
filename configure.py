@@ -22,12 +22,12 @@ class TimeConfig:
 
         self.n_steps = int(self.duration / self.timestep)
 
-        print("Simulation time setup =========================")
-        print(f"    Number of steps:       {self.n_steps}")
-        print(f"    Simulation time [s]:   {self.duration}")
-        print(f"    Timestep [s]:          {self.timestep}")
-        print(f"    Simulation freq. [Hz]: {1 / self.timestep}")
-        print(f"    Rendering freq. [Hz]:  {self.fps}")
+        print("Simulation time setup =======================================\n"
+             f"    Number of steps:            {self.n_steps}\n"
+             f"    Simulation time [s]:        {self.duration}\n"
+             f"    Timestep [s]:               {self.timestep}\n"
+             f"    Simulation freq. [Hz]:      {1 / self.timestep}\n"
+             f"    Rendering freq. [Hz]:       {self.fps}")
 
 
 @dataclass
@@ -44,12 +44,12 @@ class CameraConfig:
         self.fovx = 2 * atan2(self.width, self.focus)
         self.fourcc = cv2.VideoWriter_fourcc(*self.codec_4chr)
 
-        print(f"Tracking camera setup =========================\n"
-              f"    Tracking camera id:         {self.id}\n"
-              f"    Image size (w x h [px]):    {self.width} x {self.height}\n"
-              f"    Focus [px]:                 {self.focus}\n"
-              f"    FoV (h, v [deg]):           {deg(self.fovx)}, {deg(self.fovy)}\n"
-              f"    Output file:                {self.output_file}")
+        print("Tracking camera setup =======================================\n"
+             f"    Tracking camera id:         {self.id}\n"
+             f"    Image size (w x h [px]):    {self.width} x {self.height}\n"
+             f"    Focus [px]:                 {self.focus}\n"
+             f"    FoV (h, v [deg]):           {deg(self.fovx)}, {deg(self.fovy)}\n"
+             f"    Output file:                {self.output_file}")
 
 
 def generate_trajectory_planner(
@@ -66,10 +66,10 @@ def generate_trajectory_planner(
     start_qpos = d.qpos.copy()
     goal_qpos = start_qpos + dqpos
 
-    print("Trajectory setup ==============================")
-    print(f"    qpos: {d.qpos}")
-    print("            ↓")
-    print(f"          {d.qpos + dqpos}")
+    print("Simulation time setup =======================================\n"
+         f"    qpos: {d.qpos}\n"
+          "            ↓\n"
+         f"          {d.qpos + dqpos}")
 
     return pln.traj_5th_spline(start_qpos, goal_qpos, t.timestep, t.n_steps)
 
@@ -77,16 +77,16 @@ def generate_trajectory_planner(
 def load_configs(config_file):
     config = AttrDict(toml.load(config_file))
 
-    print("Configure manipulator and object ==============")
+    print("Configure manipulator and object ============================")
     xml_file = config.xml.system_file
     print(f"    Loaded xml file: {xml_file}")
     xml_path = os.path.join("./xml_models", xml_file)
     m = mj.MjModel.from_xml_path(xml_path)
-    print("Number of =====================================")
-    print(f"    coorindates in joint space (nv):    {m.nv:>2}")
-    print(f"    degrees of freedom (nu):            {m.nu:>2}")
-    print(f"    actuator activations (na):          {m.na:>2}")
-    print(f"    sensor outputs (nsensordata):       {m.nsensordata:>2}")
+    print("Number of ===================================================\n"
+         f"    coorindates in joint space (nv):    {m.nv:>2}\n"
+         f"    degrees of freedom (nu):            {m.nu:>2}\n"
+         f"    actuator activations (na):          {m.na:>2}\n"
+         f"    sensor outputs (nsensordata):       {m.nsensordata:>2}")
 
     # Generate mjData struct which stores simulation state
     d = mj.MjData(m)
