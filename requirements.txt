@@ -1,15 +1,12 @@
 ###### Requirements without Version Specifiers ######`
+attrdict
 scipy
 mujoco
 matplotlib
 transforms3d
 opencv-python
 git+https://github.com/utiasSTARS/liegroups.git
-# for Python formatting  
-git+https://github.com/psf/black
-
-# for Python linting
-flake8 
-
+toml
+tqdm
 
 ###### Requirements with Version Specifiers ######
