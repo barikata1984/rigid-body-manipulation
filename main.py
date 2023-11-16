@@ -73,8 +73,8 @@ def main():
 
     # Obtain unit screw rel2 each link = body (A_{i} in MR)
     uscrew_bb = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
-    for b, (type, ax) in enumerate(zip(m.jnt_type, m.jnt_axis), 0):
-        slicer = 3 * (type - 2)  # type: 2 for slide, 3 for hinge
+    for b, (jnt_type, ax) in enumerate(zip(m.jnt_type, m.jnt_axis), 0):
+        slicer = 3 * (jnt_type - 2)  # jnt_type: 2 for slide, 3 for hinge
         uscrew_bb[b, slicer:slicer + 3] = ax / linalg.norm(ax)
 
     # Set up dynamics related variables =======================================
@@ -197,6 +197,8 @@ def main():
             # Sensor measurement
             ft = sensordata[-1][3 * m.nu: 4 * m.nu]
 
+#            <frameangacc name="obj_angacc" objtype="body" objname="object"/>
+
             # Log NeMD ingredients ============================================
             frame = dict(
                 file_path=os.path.join(dataset_hierarchy[1], file_name),
@@ -218,7 +220,7 @@ def main():
     qpos_meas, qvel_meas, qfrc_meas, ft_meas_sen, obj_acc_x = np.split(
         sensordata, [1 * m.nu, 2 * m.nu, 3 * m.nu, 4 * m.nu], axis=1)
 
-    with open(f"./{dataset_dir}/nemd_multiview.json", "w") as f:
+    with open(f"./{dataset_dir}/transform.json", "w") as f:
         json.dump(transforms, f, indent=2)
 
     # Convert lists of logged data into ndarrays ==============================
