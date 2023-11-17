@@ -71,6 +71,8 @@
     <actuatorfrc name="frc_rz" actuator="mtr_rz"/>
     <force name="frc" site="ft_sen"/>
     <torque name="trq" site="ft_sen"/>
+    <framelinvel name="obj_linvel" objtype="body" objname="object"/>
+    <frameangvel name="obj_angvel" objtype="body" objname="object"/>
     <framelinacc name="obj_linacc" objtype="body" objname="object"/>
     <frameangacc name="obj_angacc" objtype="body" objname="object"/>
   </sensor>

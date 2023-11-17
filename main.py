@@ -124,7 +124,10 @@ def main():
     sensordata = []
     time = []
     frame_count = 0
+    obj_linvel_sen = []
+    obj_angvel_sen = []
     obj_linacc_sen = []
+    obj_angacc_sen = []
 
     # =========================================================================
     # Main loop
@@ -191,9 +194,20 @@ def main():
             # SO(3) math. liegroups.SE3.adjoint() carries effect of angacc on
             # linacc which is taken into account in torque calculation of NeMD.
             # No need to compute it on simulation.
-            obj_acc_x = sensordata[-1][4 * m.nu:]
+            
+            # Log velocities
+            obj_vel_x = sensordata[-1][4*m.nu:5*m.nu]
+            _obj_linvel_sen = sen_pose_x.inv().rot.as_matrix() @ obj_vel_x[:3]
+            _obj_angvel_sen = sen_pose_x.inv().rot.as_matrix() @ obj_vel_x[3:]
+            obj_linvel_sen.append(_obj_linvel_sen.tolist())
+            obj_angvel_sen.append(_obj_angvel_sen.tolist())
+
+            # Log accelerations
+            obj_acc_x = sensordata[-1][5*m.nu:6*m.nu]
             _obj_linacc_sen = sen_pose_x.inv().rot.as_matrix() @ obj_acc_x[:3]
+            _obj_angacc_sen = sen_pose_x.inv().rot.as_matrix() @ obj_acc_x[3:]
             obj_linacc_sen.append(_obj_linacc_sen[:3].tolist())
+            obj_angacc_sen.append(_obj_angacc_sen[:3].tolist())
             # Sensor measurement
             ft = sensordata[-1][3 * m.nu: 4 * m.nu]
 
@@ -204,7 +218,10 @@ def main():
                 file_path=os.path.join(dataset_hierarchy[1], file_name),
                 cam_pose_obj=cam_pose_obj.as_matrix().tolist(),
                 obj_pose_sen=sen_pose_obj.inv().as_matrix().tolist(),
+                obj_linvel_sen=obj_linvel_sen[-1],
+                obj_angvel_sen=obj_angvel_sen[-1],
                 obj_linacc_sen=obj_linacc_sen[-1],
+                obj_angacc_sen=obj_angacc_sen[-1],
                 aabb_scale=[aabb_scale],
                 ft=ft.tolist(),
                 )
@@ -217,8 +234,8 @@ def main():
     # VideoWriter released
     out.release()
 
-    qpos_meas, qvel_meas, qfrc_meas, ft_meas_sen, obj_acc_x = np.split(
-        sensordata, [1 * m.nu, 2 * m.nu, 3 * m.nu, 4 * m.nu], axis=1)
+    qpos_meas, qvel_meas, qfrc_meas, ft_meas_sen, obj_vel_x, obj_acc_x = np.split(
+        sensordata, [1*m.nu, 2*m.nu, 3*m.nu, 4*m.nu, 5*m.nu], axis=1)
 
     with open(f"./{dataset_dir}/transform.json", "w") as f:
         json.dump(transforms, f, indent=2)
