@@ -124,15 +124,13 @@ def main():
     sensordata = []
     time = []
     frame_count = 0
-    obj_vel_sen = []
     obj_linvel_sen = []
     obj_angvel_sen = []
-    obj_acc_sen = []
     obj_linacc_sen = []
     obj_angacc_sen = []
     ft_meas_sen = []
 
-# =========================================================================
+    # =========================================================================
     # Main loop
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     for step in tqdm(
@@ -197,16 +195,16 @@ def main():
             
             # Log velocities
             obj_vel_x = sensordata[-1][4*m.nu:5*m.nu]
-            obj_linvel_sen.append(sen_pose_x.inv().rot.dot(obj_vel_x[:3]))
-            obj_angvel_sen.append(sen_pose_x.inv().rot.dot(obj_vel_x[3:]))
+            obj_linvel_sen.append(sen_pose_x.inv().rot.dot(obj_vel_x[:3]).tolist())
+            obj_angvel_sen.append(sen_pose_x.inv().rot.dot(obj_vel_x[3:]).tolist())
 
             # Log accelerations
             obj_acc_x = sensordata[-1][5*m.nu:6*m.nu]
-            obj_linacc_sen.append(sen_pose_x.inv().rot.dot(obj_acc_x[:3]))
-            obj_angacc_sen.append(sen_pose_x.inv().rot.dot(obj_acc_x[3:]))
+            obj_linacc_sen.append(sen_pose_x.inv().rot.dot(obj_acc_x[:3]).tolist())
+            obj_angacc_sen.append(sen_pose_x.inv().rot.dot(obj_acc_x[3:]).tolist())
 
             # Sensor measurement
-            ft_meas_sen.append(sensordata[-1][3 * m.nu: 4 * m.nu])
+            ft_meas_sen.append(sensordata[-1][3 * m.nu: 4 * m.nu].tolist())
 
             # Log NeMD ingredients ============================================
             frame = dict(
