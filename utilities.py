@@ -1,5 +1,4 @@
-import numpy as np
-from collections.abc import Sequence
+from collections.abc import Iterable
 
 
 def classify_dict_kargs(dict_kargs):
@@ -9,17 +8,10 @@ def classify_dict_kargs(dict_kargs):
     for k, v in dict_kargs.items():
         if isinstance(v, str):
             others[k] = v
-        elif isinstance(v, (Sequence, np.ndarray)):
+        elif isinstance(v, Iterable):
             arr_like[k] = v
         else:
             others[k] = v
 
     return arr_like, others
-
-
-def store(
-        data: np.ndarray,
-        destination: np.ndarray) -> np.ndarray:
-
-    return np.append(destination, data[np.newaxis, :], axis=0)
 

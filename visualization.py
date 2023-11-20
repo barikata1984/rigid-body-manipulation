@@ -25,6 +25,7 @@ def ax_plot_lines(ax, x, ys, ylabel, c=cb_rgb, alpha=0.5, **kargs):
     # the others
     arr_like, others = classify_dict_kargs(defaults)
 
+    ys = np.asarray(ys)
     ys = np.atleast_2d(ys) if 1 == len(ys.shape) else ys.T
     len_x = len(x)
     len_y = ys.shape[1]
@@ -34,8 +35,9 @@ def ax_plot_lines(ax, x, ys, ylabel, c=cb_rgb, alpha=0.5, **kargs):
         ax.plot(
             x[:clip],
             y[:clip],
+            **others,
             **{k: v[i % len(v)] for k, v in arr_like.items()},
-            **others)
+            )
 
     _, labels = plt.gca().get_legend_handles_labels()
 

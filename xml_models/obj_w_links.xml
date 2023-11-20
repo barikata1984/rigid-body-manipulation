@@ -9,7 +9,7 @@
   </asset>
 
   <worldbody>
-    <!--    <geom name="floor" size="0 0 .05" type="plane" material="grid" condim="3"/>  --> 
+    <!geom name="floor" size="0 0 .05" type="plane" material="grid" condim="3"/>
     <light name="top" pos="0 0 3"/>
     <body name="link_1" pos="0 0 .01">
       <joint name="tx" type="slide" axis="1 0 0"/>
@@ -29,7 +29,9 @@
               <body name="object">
                 <joint name="rz" type="hinge" axis="0 0 1"/>
                 <site name="ft_sen"/>
-                <geom name="red_box" type="box" size=".05 .1 .15" rgba="1 0 0 1"/>
+                <geom name="red_plastic_cuboid" type="box" density="1060" size=".1 .2 .3" rgba="1 0 0 1"/>
+                <!geom name="red_plastic_cudoid" type="box" density="1060" size=".1 .2 .15" pos="0 0 .15" rgba="0 1 0 1"/>
+                <!geom name="beige_marble_cuboid" type="box" density="2690" size=".1 .2 .15" pos="0 0 -.15" rgba="0 0 1 1"/>
                 <camera name="tracking" mode="track" pos="0 0 1"/>
               </body>
             </body>
@@ -67,10 +69,12 @@
     <actuatorfrc name="frc_rx" actuator="mtr_rx"/>
     <actuatorfrc name="frc_ry" actuator="mtr_ry"/>
     <actuatorfrc name="frc_rz" actuator="mtr_rz"/>
-    <framelinacc name="obj_linacc" objtype="body" objname="object"/>
-    <frameangacc name="obj_angacc" objtype="body" objname="object"/>
     <force name="frc" site="ft_sen"/>
     <torque name="trq" site="ft_sen"/>
+    <framelinvel name="obj_linvel" objtype="body" objname="object"/>
+    <frameangvel name="obj_angvel" objtype="body" objname="object"/>
+    <framelinacc name="obj_linacc" objtype="body" objname="object"/>
+    <frameangacc name="obj_angacc" objtype="body" objname="object"/>
   </sensor>
 
   <keyframe>
