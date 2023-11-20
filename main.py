@@ -124,12 +124,15 @@ def main():
     sensordata = []
     time = []
     frame_count = 0
+    obj_vel_sen = []
     obj_linvel_sen = []
     obj_angvel_sen = []
+    obj_acc_sen = []
     obj_linacc_sen = []
     obj_angacc_sen = []
+    ft_meas_sen = []
 
-    # =========================================================================
+# =========================================================================
     # Main loop
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     for step in tqdm(
@@ -190,40 +193,32 @@ def main():
             sen_pose_x = tf.trzs2SE3(d.site_xpos[sen_id], d.site_xmat[sen_id])
             sen_pose_obj = obj_pose_x.inv().dot(sen_pose_x)
             # Object linear acceleration rel. to the sensor
-            # NOTE: Ignore obj_angacc_x for coordinate transformation and do
-            # SO(3) math. liegroups.SE3.adjoint() carries effect of angacc on
-            # linacc which is taken into account in torque calculation of NeMD.
-            # No need to compute it on simulation.
+            # NOTE: 
             
             # Log velocities
             obj_vel_x = sensordata[-1][4*m.nu:5*m.nu]
-            _obj_linvel_sen = sen_pose_x.inv().rot.as_matrix() @ obj_vel_x[:3]
-            _obj_angvel_sen = sen_pose_x.inv().rot.as_matrix() @ obj_vel_x[3:]
-            obj_linvel_sen.append(_obj_linvel_sen.tolist())
-            obj_angvel_sen.append(_obj_angvel_sen.tolist())
+            obj_linvel_sen.append(sen_pose_x.inv().rot.dot(obj_vel_x[:3]))
+            obj_angvel_sen.append(sen_pose_x.inv().rot.dot(obj_vel_x[3:]))
 
             # Log accelerations
             obj_acc_x = sensordata[-1][5*m.nu:6*m.nu]
-            _obj_linacc_sen = sen_pose_x.inv().rot.as_matrix() @ obj_acc_x[:3]
-            _obj_angacc_sen = sen_pose_x.inv().rot.as_matrix() @ obj_acc_x[3:]
-            obj_linacc_sen.append(_obj_linacc_sen[:3].tolist())
-            obj_angacc_sen.append(_obj_angacc_sen[:3].tolist())
-            # Sensor measurement
-            ft = sensordata[-1][3 * m.nu: 4 * m.nu]
+            obj_linacc_sen.append(sen_pose_x.inv().rot.dot(obj_acc_x[:3]))
+            obj_angacc_sen.append(sen_pose_x.inv().rot.dot(obj_acc_x[3:]))
 
-#            <frameangacc name="obj_angacc" objtype="body" objname="object"/>
+            # Sensor measurement
+            ft_meas_sen.append(sensordata[-1][3 * m.nu: 4 * m.nu])
 
             # Log NeMD ingredients ============================================
             frame = dict(
                 file_path=os.path.join(dataset_hierarchy[1], file_name),
                 cam_pose_obj=cam_pose_obj.as_matrix().tolist(),
                 obj_pose_sen=sen_pose_obj.inv().as_matrix().tolist(),
-                obj_linvel_sen=obj_linvel_sen[-1],
-                obj_angvel_sen=obj_angvel_sen[-1],
-                obj_linacc_sen=obj_linacc_sen[-1],
-                obj_angacc_sen=obj_angacc_sen[-1],
+                obj_linvel_sen=obj_linvel_sen[-1].tolist(),
+                obj_angvel_sen=obj_angvel_sen[-1].tolist(),
+                obj_linacc_sen=obj_linacc_sen[-1].tolist(),
+                obj_angacc_sen=obj_angacc_sen[-1].tolist(),
                 aabb_scale=[aabb_scale],
-                ft=ft.tolist(),
+                ft=ft_meas_sen[-1].tolist(),
                 )
 
             transforms["frames"].append(frame)
@@ -234,8 +229,8 @@ def main():
     # VideoWriter released
     out.release()
 
-    qpos_meas, qvel_meas, qfrc_meas, ft_meas_sen, obj_vel_x, obj_acc_x = np.split(
-        sensordata, [1*m.nu, 2*m.nu, 3*m.nu, 4*m.nu, 5*m.nu], axis=1)
+#    qpos_meas, qvel_meas, qfrc_meas, ft_meas_sen, obj_vel_x, obj_acc_x = np.split(
+#        sensordata, [1*m.nu, 2*m.nu, 3*m.nu, 4*m.nu, 5*m.nu], axis=1)
 
     with open(f"./{dataset_dir}/transform.json", "w") as f:
         json.dump(transforms, f, indent=2)
@@ -258,6 +253,7 @@ def main():
             qpos_axes[i], time, qpos[:, slcr], traj[:, 0, slcr], yls[i])
 
     # Object linear acceleration and ft sensor measurements rel. to {sensor}
+    ft_meas_sen = np.array(ft_meas_sen)
     acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)
     acc_ft_fig.suptitle("linacc vs ft")
     acc_ft_axes[0].set(xlabel="# of frames")

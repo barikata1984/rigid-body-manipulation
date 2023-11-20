@@ -1,4 +1,5 @@
-$ python main.py 
+===================== COMPOSITE OBJECT ======================
+
 Configure manipulator and object ============================
     Loaded xml file: obj_w_links.xml
 Number of ===================================================
@@ -27,4 +28,6 @@ Target object's inertial parameters wr2 its {b} =============
     Pos. of CoM:        [ 0.     0.    -0.065]
     First moments:      [ 0.     0.    -5.868]
     Moments of inertia: [3.9 3.  1.5 0.  0.  0. ]
+
+===================== COMPOSITE OBJECT ======================
 
