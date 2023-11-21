@@ -128,6 +128,8 @@ def main():
     obj_angvel_sen = []
     obj_linacc_sen = []
     obj_angacc_sen = []
+    obj_twist_sen = []
+    obj_accel_sen = []
     ft_meas_sen = []
 
     # =========================================================================
@@ -169,7 +171,7 @@ def main():
 
         # Store frames following the fps
         if frame_count <= time[-1] * t.fps:
-            # Write a video ===================================================
+            # Writing a single frame of a dataset =============================
             renderer.update_scene(d, cam.id)
             bgr = renderer.render()[:, :, [2, 1, 0]]
             # Make an alpha mask to remove the black background
@@ -182,7 +184,7 @@ def main():
             # Write a video frame
             out.write(bgr)
 
-            # Do some SE(3) math ==============================================
+            # SE(3) computation
             # Camera pose rel. to the object
             obj_pose_x = tf.trzs2SE3(d.xpos[obj_id], d.xmat[obj_id])
             cam_pose_x = tf.trzs2SE3(d.cam_xpos[cam.id], d.cam_xmat[cam.id])
@@ -190,20 +192,20 @@ def main():
             # FT sensor pose rel. to the object
             sen_pose_x = tf.trzs2SE3(d.site_xpos[sen_id], d.site_xmat[sen_id])
             sen_pose_obj = obj_pose_x.inv().dot(sen_pose_x)
-            # Object linear acceleration rel. to the sensor
-            # NOTE: 
-            
-            # Log velocities
+            x_rot_sen = sen_pose_x.inv().rot  # SO3Matrix object
+
+            # Log velocity components relative to the sensor frame
             obj_vel_x = sensordata[-1][4*m.nu:5*m.nu]
-            obj_linvel_sen.append(sen_pose_x.inv().rot.dot(obj_vel_x[:3]).tolist())
-            obj_angvel_sen.append(sen_pose_x.inv().rot.dot(obj_vel_x[3:]).tolist())
-
-            # Log accelerations
+            obj_linvel_sen.append(x_rot_sen.dot(obj_vel_x[:3]).tolist())
+            obj_angvel_sen.append(x_rot_sen.dot(obj_vel_x[3:]).tolist())
+            obj_twist_sen.append([obj_linvel_sen[-1], obj_angvel_sen[-1]])
+            # Log acceleration components relative to the sensor frame
             obj_acc_x = sensordata[-1][5*m.nu:6*m.nu]
-            obj_linacc_sen.append(sen_pose_x.inv().rot.dot(obj_acc_x[:3]).tolist())
-            obj_angacc_sen.append(sen_pose_x.inv().rot.dot(obj_acc_x[3:]).tolist())
+            obj_linacc_sen.append(x_rot_sen.dot(obj_acc_x[:3]).tolist())
+            obj_angacc_sen.append(x_rot_sen.dot(obj_acc_x[3:]).tolist())
+            obj_accel_sen.append([obj_linacc_sen[-1], obj_angacc_sen[-1]])
 
-            # Sensor measurement
+            # Log force and torque mesurements 
             ft_meas_sen.append(sensordata[-1][3 * m.nu: 4 * m.nu].tolist())
 
             # Log NeMD ingredients ============================================
@@ -211,15 +213,22 @@ def main():
                 file_path=os.path.join(dataset_hierarchy[1], file_name),
                 cam_pose_obj=cam_pose_obj.as_matrix().tolist(),
                 obj_pose_sen=sen_pose_obj.inv().as_matrix().tolist(),
-                obj_linvel_sen=obj_linvel_sen[-1].tolist(),
-                obj_angvel_sen=obj_angvel_sen[-1].tolist(),
-                obj_linacc_sen=obj_linacc_sen[-1].tolist(),
-                obj_angacc_sen=obj_angacc_sen[-1].tolist(),
+                obj_linvel_sen=obj_linvel_sen[-1],
+                obj_angvel_sen=obj_angvel_sen[-1],
+                obj_linacc_sen=obj_linacc_sen[-1],
+                obj_angacc_sen=obj_angacc_sen[-1],
+                obj_twist_sen=obj_twist_sen[-1],
+                obj_accel_sen=obj_accel_sen[-1],
                 aabb_scale=[aabb_scale],
-                ft=ft_meas_sen[-1].tolist(),
+                ft=ft_meas_sen[-1],
                 )
 
             transforms["frames"].append(frame)
+
+            
+
+            wv = np.cross(obj_angvel_sen[-1], obj_linvel_sen[-1])
+            print(f"{(obj_linacc_sen[-1] - wv)=}")
 
             # Sampling for NeMD terminated while "frame_count" incremented
             frame_count += 1

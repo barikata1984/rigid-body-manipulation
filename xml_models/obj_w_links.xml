@@ -73,8 +73,8 @@
     <torque name="trq" site="ft_sen"/>
     <framelinvel name="obj_linvel" objtype="body" objname="object"/>
     <frameangvel name="obj_angvel" objtype="body" objname="object"/>
-    <framelinacc name="obj_linacc" objtype="body" objname="object"/>
-    <frameangacc name="obj_angacc" objtype="body" objname="object"/>
+    <framelinacc name="obj_linacc" objtype="body" objname="object"/>  <! this sensor actually returns total linear acceleration />
+  <frameangacc name="obj_angacc" objtype="body" objname="object"/>  <! curious what does this sensor return but believe \dot{\omega} is returned for now />
   </sensor>
 
   <keyframe>
