@@ -11,19 +11,19 @@
   <worldbody>
     <!geom name="floor" size="0 0 .05" type="plane" material="grid" condim="3"/>
     <light name="top" pos="0 0 3"/>
-    <body name="link_1" pos="0 0 .01">
+    <body name="link1" pos="0 0 .01">
       <joint name="tx" type="slide" axis="1 0 0"/>
       <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
-      <body name="link_2">
+      <body name="link2">
         <joint name="ty" type="slide" axis="0 1 0"/>
         <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
-        <body name="link_3">
+        <body name="link3">
           <joint name="tz" type="slide" axis="0 0 1"/>
           <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
-          <body name="link_4">
+          <body name="link4">
             <joint name="rx" type="hinge" axis="1 0 0"/>
             <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
-            <body name="link_5">
+            <body name="link5">
               <joint name="ry" type="hinge" axis="0 1 0"/>
               <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
               <body name="object">
@@ -51,30 +51,31 @@
   </actuator>
 
   <sensor>
-    <jointpos name="tx" joint="tx"/>
+    <jointpos name="tx" joint="tx"/>  <! sensordata gruop idx: 0 />
     <jointpos name="ty" joint="ty"/>
     <jointpos name="tz" joint="tz"/>
     <jointpos name="rx" joint="rx"/>
     <jointpos name="ry" joint="ry"/>
     <jointpos name="rz" joint="rz"/>
-    <jointvel name="dtx" joint="tx"/>
+    <jointvel name="dtx" joint="tx"/>  <! sensordata group idx: 1 />
     <jointvel name="dty" joint="ty"/>
     <jointvel name="dtz" joint="tz"/>
     <jointvel name="drx" joint="rx"/>
     <jointvel name="dry" joint="ry"/>
     <jointvel name="drz" joint="rz"/>
-    <actuatorfrc name="frc_tx" actuator="mtr_tx"/>
+    <actuatorfrc name="frc_tx" actuator="mtr_tx"/>  <! sensordata group idx: 2 />
     <actuatorfrc name="frc_ty" actuator="mtr_ty"/>
     <actuatorfrc name="frc_tz" actuator="mtr_tz"/>
     <actuatorfrc name="frc_rx" actuator="mtr_rx"/>
     <actuatorfrc name="frc_ry" actuator="mtr_ry"/>
     <actuatorfrc name="frc_rz" actuator="mtr_rz"/>
-    <force name="frc" site="ft_sen"/>
+    <force name="frc" site="ft_sen"/>  <! sensordata group idx: 3 />
     <torque name="trq" site="ft_sen"/>
-    <framelinvel name="obj_linvel" objtype="body" objname="object"/>
+    <framelinvel name="obj_linvel" objtype="body" objname="object"/>  <! sensordata group idx: 4 />
     <frameangvel name="obj_angvel" objtype="body" objname="object"/>
-    <framelinacc name="obj_linacc" objtype="body" objname="object"/>  <! this sensor actually returns total linear acceleration />
-  <frameangacc name="obj_angacc" objtype="body" objname="object"/>  <! curious what does this sensor return but believe \dot{\omega} is returned for now />
+    <framelinacc name="obj_linacc" objtype="body" objname="object"/>  <! sensordata group idx: 5. this sensor actually returns total linear acceleration />
+    <frameangacc name="obj_angacc" objtype="body" objname="object"/>
+    <framelinvel name="sen_linvel" objtype="site" objname="ft_sen"/>  <! sensordata group idx: 6 />
   </sensor>
 
   <keyframe>

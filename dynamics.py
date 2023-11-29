@@ -66,42 +66,44 @@ def inverse(
         pose_tip_ee=SE3.identity()):
 
     # Prepare lie group, twist, and dtwist storage arrays
-    pose = []  # T_{i, i - 1} in Modern Robotics
-    twist = [twist_0]
-    dtwist = [dtwist_0]
+    poses = []  # T_{i, i - 1} in Modern Robotics
+    twists = [twist_0]
+    dtwists = [dtwist_0]
 
     # Forward iterations
     for i, (p_h, us) in enumerate(zip(pose_home[1:], uscrew)):
-        pose.append(SE3.exp(-us * traj[0, i]).dot(p_h))
-        Ad_se3 = pose[-1].adjoint()
+        poses.append(SE3.exp(-us * traj[0, i]).dot(p_h))
+        Ad_se3 = poses[-1].adjoint()
         # Compute twist
-        prior_tw = twist[-1]
+        prior_tw = twists[-1]
         tw = Ad_se3 @ prior_tw
         tw += us * traj[1, i]
         # Compute the derivatife of twist
-        prior_dtw = dtwist[-1]
+        prior_dtw = dtwists[-1]
         dtw = Ad_se3 @ prior_dtw
         dtw += us * traj[2, i]
         dtw += SE3.curlywedge(tw) @ us * traj[1, i]
         # Add the twist and its derivative to their storage arrays
-        twist.append(tw)
-        dtwist.append(dtw)
+        twists.append(tw)
+        dtwists.append(dtw)
 
     # Backward iterations
     wrench = [wrench_tip]
-    pose.append(pose_tip_ee)
+    poses.append(pose_tip_ee)
+
+#    print(f"{len(poses)=}")
 
     # Let m the # of joint/actuator axes, the backward iteration should be
     # performed from index m to 1. So, the range is set like below.
     for i in range(len(uscrew), 0, -1):
         prior_w = wrench[-1]
-        w = pose[i].adjoint().T @ prior_w
-        w += body_spati[i] @ dtwist[i]
-        w += -SE3.curlywedge(twist[i]).T @ body_spati[i] @ twist[i]
+        w = poses[i].adjoint().T @ prior_w
+        w += body_spati[i] @ dtwists[i]
+        w += -SE3.curlywedge(twists[i]).T @ body_spati[i] @ twists[i]
         wrench.append(w)
 
     wrench = wrench[::-1]
     ctrl_mat = wrench[:-1] * uscrew
 
-    return np.sum(ctrl_mat, axis=0)
+    return np.sum(ctrl_mat, axis=0), poses, twists, dtwists
 

@@ -9,7 +9,7 @@ import visualization as vis
 import transformations as tf
 from matplotlib import pyplot as plt
 from configure import load_configs
-from liegroups import SO3, SE3
+from liegroups import SO3
 from datetime import datetime
 from scipy import linalg
 from tqdm import tqdm
@@ -181,8 +181,7 @@ def main():
         obj_twist_sen = x_pose_sen.adjoint() @ obj_vel_x
 
         obj_acc_x = sensorread[5*m.nu:6*m.nu]
-        obj_linacc_x = obj_acc_x[:3]
-        obj_ttl_linacc_sen = x_rot_sen.dot(obj_linacc_x)
+        obj_ttl_linacc_sen = x_rot_sen.dot(obj_acc_x[:3])
         obj_linacc_sen = obj_ttl_linacc_sen - np.cross(obj_twist_sen[:3], obj_twist_sen[3:])
         obj_angacc_sen = x_rot_sen.dot(obj_acc_x[3:])
         obj_accel_sen = [obj_linacc_sen.tolist(), obj_angacc_sen.tolist()]
@@ -193,67 +192,70 @@ def main():
 
 
         # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 
-        # obj_linvel_x の復元 =================================================
-        def compute_linvel(pose, twist, coord_xfer_twist=False):
-            if coord_xfer_twist:  #  if twist is not coordinate transfered beforehand
-                twist = pose.adjoint() @ twist
-
-            htrans = np.array([*pose.trans, 1])  # convert into homogeneous coordinates
-            hlinvel = SE3.wedge(twist) @ htrans
-
-            return hlinvel[:3] 
+        def skew(vec):
+            return np.array([[0, -vec[2], vec[1]],
+                             [vec[2], 0, -vec[0]],
+                             [-vec[1], vec[0], 0]])
 
         _obj_twist_obj = twists[-1]
-        _obj_linvel_x = compute_linvel(obj_pose_x, _obj_twist_obj, coord_xfer_twist=True)
-                                            # framelinvel と絶対誤差 0.0016 くらい。mujoco も c++ で
-                                            # 書いたラグランジュの運動方程式で模擬してるわけで、
-                                            # それを真値あつかいしてる分の誤差も乗っていそう
+        _obj_twist_sen = obj_pose_sen.adjoint() @ _obj_twist_obj
+        _obj_twist_x = obj_pose_x.adjoint() @ _obj_twist_obj
+        _obj_v_x, _obj_w_x = np.split(_obj_twist_x, 2)
+        _obj_rot_x = obj_pose_x.rot.as_matrix()  # ^{s}R_b
+        _obj_trans_x = obj_pose_x.trans  # ^{s}p_b
 
-        # obj_linacc_x の復元 =================================================
-        def coordinate_transform_dtwist(pose, twist, dtwist, coord_xfer_twist=False):
-            if coord_xfer_twist:  #  if twist is not coordinate transfered beforehand
-                twist = pose.adjoint() @ twist
+        _obj_linvel_x = _obj_v_x + np.cross(_obj_w_x, _obj_trans_x)
+        obj_linvel_x, _ = np.split(obj_vel_x, 2)
 
-            return SE3.curlywedge(twist) @ twist + pose.adjoint() @ dtwist  
+        tol = 1e-03
+#        print(f"{np.isclose(obj_linvel_x, _obj_linvel_x, tol, tol)=}")
+        print(f"{abs(obj_linvel_x - _obj_linvel_x)=}")  # ぶっちゃけまぁまぁ誤差が出る ()。けどとりあえず linacc の検証に進みましょう
 
-        def compute_linacc(pose, twist, dtwist, coord_xfer_twist=False):
-            if coord_xfer_twist:  #  if twist is not coordinate transfered beforehand
-                twist = pose.adjoint() @ twist
-            
-            htrans = np.array([*pose.trans, 1])
-            linvel = compute_linvel(pose, twist)
-
-            return (SE3.wedge(dtwist) @ htrans)[:3] + np.cross(twist[3:], linvel)
 
         _obj_dtwist_obj = dtwists[-1]
-        _obj_dtwist_x = coordinate_transform_dtwist(
-            obj_pose_x, _obj_twist_obj, _obj_dtwist_obj, coord_xfer_twist=True)
-        _obj_linacc_x = compute_linacc(
-            obj_pose_x, _obj_twist_obj, _obj_dtwist_x, coord_xfer_twist=True)
+        _obj_dv_obj, _obj_dw_obj = np.split(_obj_dtwist_obj, 2)
+        _obj_linvel_x = _obj_dv_x \\ 
+            + np.cross(_obj_dw_x, _obj_trans_x) 
+            + np.cross(_obj_w_x, _obj_linvel_x)
 
-        # obj_linacc_sen の復元 ===============================================
-        _obj_twist_obj = twists[-1]
-        _obj_dtwist_sen = coordinate_transform_dtwist(
-            obj_pose_sen, _obj_twist_obj, _obj_dtwist_obj, coord_xfer_twist=True)
-        _obj_linacc_sen = compute_linacc(
-            obj_pose_sen, _obj_twist_obj, _obj_dtwist_sen, coord_xfer_twist=True)
+        # obtain the twist of object rel. to sensor and decompose it into v and w
+        _obj_v_sen, _obj_w_sen = np.split(_obj_twist_sen, 2)
+        _obj_rot_sen = obj_pose_sen.rot.as_matrix()  # ^{s}R_b
+        _obj_trans_sen = obj_pose_sen.trans  # ^{s}p_b
+#        # 下のが上手くいくと framelinvel で取ってきて x -> sen に座標変換したベクトルと一致するはず
+#        _obj_linvel_sen = _obj_v_sen + skew(_obj_w_sen) @ _obj_trans_sen # ^{s}\prime{p}_b
+#        # ^{s}p_b
+#
+#        __obj_linvel_sen = skew() @ _obj_trans_sen + _obj_linvel_x 
+#
+#
+#
+#
+#        _obj_dtwist_obj = dtwists[-1]
+#        obj_drot_sen = skew(_obj_w_sen) @ _obj_rot_sen  # ^{s}\prime{R}_b
+#        block11 = skew(_obj_linvel_sen) @ _obj_rot_sen + skew(_obj_trans_sen) @ obj_drot_sen
+#        block12 = obj_drot_sen
+#        block21 = np.zeros((3, 3))
+#        block22 = obj_drot_sen
+#
+#        obj_pose_sen_dadjoint = np.block([[block11, block12], 
+#                                          [block21, block22]])
+#
+#        _obj_dtwist_sen = obj_pose_sen_dadjoint @ _obj_dtwist_obj
+#        _obj_dv_sen, _obj_dw_sen = np.split(_obj_dtwist_sen, 2) 
+#        # 上のに引き続き、これが上手くいってほしい。framelinacc を座標変換したものと一致するはず
+#        _obj_ttl_linacc_sen = _obj_dv_sen + skew(_obj_dw_sen) @ _obj_v_sen
+##        print(f"{np.allclose(np.array(obj_twist_sen).flatten(), _obj_twist_sen)=}")
+##        print(f"sensed: {obj_twist_sen=}")
+##        print(f"tgt:    {_obj_twist_sen=}")
+#
+#        sen_vel_x = sensorread[6*m.nu:7*m.nu]
+#        print(f"{_obj_ttl_linacc_sen=}")
+#        print(f"{ obj_ttl_linacc_sen=}")
 
+        # ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 検証用コード追加ゾーン ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑
 
         if frame_count <= time[-1] * t.fps:
-#            tol = 1e-03
-#            print(f"{np.isclose(__obj_linacc_x, _obj_linacc_x)=}")
-#            print(f"{abs(__obj_linacc_x - _obj_linacc_x)=}")
-
-#            print("==========================================================")
-            print(f"{         ft_sen[0]=}")
-            print(f"{_obj_linacc_sen[0]=}")
-            total_mass = ft_sen[:3] / _obj_linacc_sen
-            print(f"{     total_mass[0]=}")  # x 軸の計算が甘いが median を取れば行けた
-                                             # 積み上げ誤差がまぁまぁあるけど一旦そこは無視
-                                             # x 軸のみ near-zero division とかになってそう
-
-            # ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 検証用コード追加ゾーン ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑
-
             # Writing a single frame of a dataset =============================
             renderer.update_scene(d, cam.id)
             bgr = renderer.render()[:, :, [2, 1, 0]]
@@ -280,7 +282,7 @@ def main():
                 file_path=os.path.join(dataset_hierarchy[1], file_name),
                 cam_pose_obj=cam_pose_obj.as_matrix().tolist(),
                 obj_pose_sen=obj_pose_sen.as_matrix().tolist(),
-                obj_twist_sen=obj_twist_sen.tolist(),
+                obj_twist_sen=obj_twist_sen,
                 obj_accel_sen=obj_accel_sen,
                 aabb_scale=[aabb_scale],
                 ft_sen=ft_sen,
