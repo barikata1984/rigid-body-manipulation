@@ -107,3 +107,30 @@ def inverse(
 
     return np.sum(ctrl_mat, axis=0), poses, twists, dtwists
 
+
+def compute_linvel(pose, twist, coord_xfer_twist=False):
+    if coord_xfer_twist:  #  if twist is not coordinate transfered beforehand
+        twist = pose.adjoint() @ twist
+
+    htrans = np.array([*pose.trans, 1])  # convert into homogeneous coordinates
+    hlinvel = SE3.wedge(twist) @ htrans
+
+    return hlinvel[:3] 
+
+
+def coordinate_transform_dtwist(pose, twist, dtwist, coord_xfer_twist=False):
+    if coord_xfer_twist:  #  if twist is not coordinate transfered beforehand
+        twist = pose.adjoint() @ twist
+
+    return SE3.curlywedge(twist) @ twist + pose.adjoint() @ dtwist  
+
+
+def compute_linacc(pose, twist, dtwist, coord_xfer_twist=False):
+    if coord_xfer_twist:  #  if twist is not coordinate transfered beforehand
+        twist = pose.adjoint() @ twist
+    
+    htrans = np.array([*pose.trans, 1])
+    linvel = compute_linvel(pose, twist)
+
+    return (SE3.wedge(dtwist) @ htrans)[:3] + np.cross(twist[3:], linvel)
+

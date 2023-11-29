@@ -133,9 +133,7 @@ def main():
     # =========================================================================
     # Main loop
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    for step in tqdm(
-            range(t.n_steps),
-            desc="Progress of simulation"):
+    for step in tqdm(range(t.n_steps), desc="Progress of simulation"):
         traj.append(plan(step))
 
         tgt_ctrl, parent_poses_child, twists, dtwists = dyn.inverse(
@@ -184,58 +182,31 @@ def main():
         obj_linacc_x = obj_acc_x[:3]
         obj_ttl_linacc_sen = x_rot_sen.dot(obj_linacc_x)
         obj_linacc_sen = obj_ttl_linacc_sen - np.cross(obj_twist_sen[:3], obj_twist_sen[3:])
+
         obj_angacc_sen = x_rot_sen.dot(obj_acc_x[3:])
         obj_accel_sen = [obj_linacc_sen.tolist(), obj_angacc_sen.tolist()]
 
         ft_sen = sensorread[3*m.nu:4*m.nu].tolist()  # Store frames following the fps
 
-#        print(ft_sen[:3]/obj_ttl_linacc_sen)  # CONFIRMED THAT THE TOTAL MASS 50.88 IS RETURNED
-
-
         # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 
-        # obj_linvel_x の復元 =================================================
-        def compute_linvel(pose, twist, coord_xfer_twist=False):
-            if coord_xfer_twist:  #  if twist is not coordinate transfered beforehand
-                twist = pose.adjoint() @ twist
-
-            htrans = np.array([*pose.trans, 1])  # convert into homogeneous coordinates
-            hlinvel = SE3.wedge(twist) @ htrans
-
-            return hlinvel[:3] 
-
+        # obj_linvel/acc_x の復元 =================================================
         _obj_twist_obj = twists[-1]
-        _obj_linvel_x = compute_linvel(obj_pose_x, _obj_twist_obj, coord_xfer_twist=True)
+        _obj_linvel_x = dyn.compute_linvel(obj_pose_x, _obj_twist_obj, coord_xfer_twist=True)
                                             # framelinvel と絶対誤差 0.0016 くらい。mujoco も c++ で
                                             # 書いたラグランジュの運動方程式で模擬してるわけで、
                                             # それを真値あつかいしてる分の誤差も乗っていそう
 
-        # obj_linacc_x の復元 =================================================
-        def coordinate_transform_dtwist(pose, twist, dtwist, coord_xfer_twist=False):
-            if coord_xfer_twist:  #  if twist is not coordinate transfered beforehand
-                twist = pose.adjoint() @ twist
-
-            return SE3.curlywedge(twist) @ twist + pose.adjoint() @ dtwist  
-
-        def compute_linacc(pose, twist, dtwist, coord_xfer_twist=False):
-            if coord_xfer_twist:  #  if twist is not coordinate transfered beforehand
-                twist = pose.adjoint() @ twist
-            
-            htrans = np.array([*pose.trans, 1])
-            linvel = compute_linvel(pose, twist)
-
-            return (SE3.wedge(dtwist) @ htrans)[:3] + np.cross(twist[3:], linvel)
-
         _obj_dtwist_obj = dtwists[-1]
-        _obj_dtwist_x = coordinate_transform_dtwist(
+        _obj_dtwist_x = dyn.coordinate_transform_dtwist(
             obj_pose_x, _obj_twist_obj, _obj_dtwist_obj, coord_xfer_twist=True)
-        _obj_linacc_x = compute_linacc(
+        _obj_linacc_x = dyn.compute_linacc(
             obj_pose_x, _obj_twist_obj, _obj_dtwist_x, coord_xfer_twist=True)
 
         # obj_linacc_sen の復元 ===============================================
         _obj_twist_obj = twists[-1]
-        _obj_dtwist_sen = coordinate_transform_dtwist(
+        _obj_dtwist_sen = dyn.coordinate_transform_dtwist(
             obj_pose_sen, _obj_twist_obj, _obj_dtwist_obj, coord_xfer_twist=True)
-        _obj_linacc_sen = compute_linacc(
+        _obj_linacc_sen = dyn.compute_linacc(
             obj_pose_sen, _obj_twist_obj, _obj_dtwist_sen, coord_xfer_twist=True)
 
 
@@ -282,6 +253,7 @@ def main():
                 obj_pose_sen=obj_pose_sen.as_matrix().tolist(),
                 obj_twist_sen=obj_twist_sen.tolist(),
                 obj_accel_sen=obj_accel_sen,
+#                obj_linacc_sen=obj_linacc_sen,
                 aabb_scale=[aabb_scale],
                 ft_sen=ft_sen,
                 )
@@ -316,6 +288,11 @@ def main():
         slcr = slice(i * 3, (i + 1) * 3)
         vis.ax_plot_lines_w_tgt(
             qpos_axes[i], time, qpos[:, slcr], traj[:, 0, slcr], yls[i])
+
+
+    print(f"{qpos.shape=}")
+    print(f"{traj.shape=}")
+
 
     # Object linear acceleration and ft sensor measurements rel. to {sensor}
     fts_sen = np.array(fts_sen)
