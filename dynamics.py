@@ -91,8 +91,6 @@ def inverse(
     wrench = [wrench_tip]
     poses.append(pose_tip_ee)
 
-#    print(f"{len(poses)=}")
-
     # Let m the # of joint/actuator axes, the backward iteration should be
     # performed from index m to 1. So, the range is set like below.
     for i in range(len(uscrew), 0, -1):
@@ -122,13 +120,14 @@ def coordinate_transform_dtwist(pose, twist, dtwist, coord_xfer_twist=False):
     if coord_xfer_twist:  #  if twist is not coordinate transfered beforehand
         twist = pose.adjoint() @ twist
 
-    return SE3.curlywedge(twist) @ twist + pose.adjoint() @ dtwist  
+    return SE3.curlywedge(twist) @ twist + pose.adjoint() @ dtwist
 
 
-def compute_linacc(pose, twist, dtwist, coord_xfer_twist=False):
-    if coord_xfer_twist:  #  if twist is not coordinate transfered beforehand
+def compute_linacc(pose, twist, dtwist, coord_xfer_tdtwist=False):
+    if coord_xfer_tdtwist:  #  if twist is not coordinate transfered beforehand
         twist = pose.adjoint() @ twist
-    
+        dtwist = coordinate_transform_dtwist(pose, twist, dtwist, coord_xfer_twist=False) 
+  
     htrans = np.array([*pose.trans, 1])
     linvel = compute_linvel(pose, twist)
 

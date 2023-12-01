@@ -8,25 +8,24 @@
     <material name="grid" texture="grid" texrepeat="1 1" texuniform="true" reflectance=".2"/>
   </asset>
 
-  <worldbody>
-    <!geom name="floor" size="0 0 .05" type="plane" material="grid" condim="3"/>
+  <worldbody>  <! body idx: 0 />
     <light name="top" pos="0 0 3"/>
-    <body name="link1" pos="0 0 .01">
+    <body name="link1" pos="0 0 .01">  <! body idx: 1 />
       <joint name="tx" type="slide" axis="1 0 0"/>
       <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
-      <body name="link2">
+      <body name="link2">  <! body idx: 2 />
         <joint name="ty" type="slide" axis="0 1 0"/>
         <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
-        <body name="link3">
+        <body name="link3">  <! body idx: 3 />
           <joint name="tz" type="slide" axis="0 0 1"/>
           <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
-          <body name="link4">
+          <body name="link4">  <! body idx: 4 />
             <joint name="rx" type="hinge" axis="1 0 0"/>
             <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
-            <body name="link5">
+            <body name="link5">  <! body idx: 5 />
               <joint name="ry" type="hinge" axis="0 1 0"/>
               <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
-              <body name="object">
+              <body name="object">  <! body idx: 6 />
                 <joint name="rz" type="hinge" axis="0 0 1"/>
                 <site name="ft_sen"/>
                 <geom name="red_plastic_cuboid" type="box" density="1060" size=".1 .2 .3" rgba="1 0 0 1"/>
@@ -51,31 +50,18 @@
   </actuator>
 
   <sensor>
-    <jointpos name="tx" joint="tx"/>  <! sensordata gruop idx: 0 />
-    <jointpos name="ty" joint="ty"/>
-    <jointpos name="tz" joint="tz"/>
-    <jointpos name="rx" joint="rx"/>
-    <jointpos name="ry" joint="ry"/>
-    <jointpos name="rz" joint="rz"/>
-    <jointvel name="dtx" joint="tx"/>  <! sensordata group idx: 1 />
-    <jointvel name="dty" joint="ty"/>
-    <jointvel name="dtz" joint="tz"/>
-    <jointvel name="drx" joint="rx"/>
-    <jointvel name="dry" joint="ry"/>
-    <jointvel name="drz" joint="rz"/>
-    <actuatorfrc name="frc_tx" actuator="mtr_tx"/>  <! sensordata group idx: 2 />
+    <actuatorfrc name="frc_tx" actuator="mtr_tx"/>  <! sensordata group idx: 0 />
     <actuatorfrc name="frc_ty" actuator="mtr_ty"/>
     <actuatorfrc name="frc_tz" actuator="mtr_tz"/>
     <actuatorfrc name="frc_rx" actuator="mtr_rx"/>
     <actuatorfrc name="frc_ry" actuator="mtr_ry"/>
     <actuatorfrc name="frc_rz" actuator="mtr_rz"/>
-    <force name="frc" site="ft_sen"/>  <! sensordata group idx: 3 />
+    <force name="frc" site="ft_sen"/>  <! sensordata group idx: 1 />
     <torque name="trq" site="ft_sen"/>
-    <framelinvel name="obj_linvel" objtype="body" objname="object"/>  <! sensordata group idx: 4 />
-    <frameangvel name="obj_angvel" objtype="body" objname="object"/>
-    <framelinacc name="obj_linacc" objtype="body" objname="object"/>  <! sensordata group idx: 5. this sensor actually returns total linear acceleration />
-    <frameangacc name="obj_angacc" objtype="body" objname="object"/>
-    <framelinvel name="sen_linvel" objtype="site" objname="ft_sen"/>  <! sensordata group idx: 6 />
+    <framelinvel name="linvel_x_obj" objtype="body" objname="object"/>  <! sensordata group idx: 2 />
+    <frameangvel name="angvel_x_obj" objtype="body" objname="object"/>
+    <framelinacc name="linacc_x_obj" objtype="body" objname="object"/>  <! sensordata group idx: 3 />
+    <frameangacc name="angacc_x_obj" objtype="body" objname="object"/>
   </sensor>
 
   <keyframe>

@@ -18,19 +18,18 @@ from tqdm import tqdm
 # Remove redundant space at the head and tail of the horizontal axis's scale
 mpl.rcParams['axes.xmargin'] = 0
 # Reduce the number of digits of values with numpy
-np.set_printoptions(precision=6, suppress=True)
+np.set_printoptions(precision=5, suppress=True)
 
 
 def main():
     config_file = "./configs/config.toml"
+
     m, d, t, cam, ss, plan = load_configs(config_file)
 
     K = dyn.compute_gain_matrix(m, d, ss)
 
-    out = cv2.VideoWriter(
-        cam.output_file, cam.fourcc, t.fps, (cam.width, cam.height))
-    renderer = mj.Renderer(
-        m, cam.height, cam.width)
+    out = cv2.VideoWriter(cam.output_file, cam.fourcc, t.fps, (cam.width, cam.height))
+    renderer = mj.Renderer(m, cam.height, cam.width)
 
     # Description of suffixes used from the section below:
     #   This   |        |
@@ -56,8 +55,8 @@ def main():
 
     mom_i = np.array([
         *body_spati_b[-1, 3:, 3:].diagonal(),
-        *body_spati_b[-1, 3, 4:],
-        body_spati_b[-1, 4, 5]])
+        *body_spati_b[-1, 3 , 4:],
+         body_spati_b[-1, 4 , 5 ]])
 
     print("Target object's inertial parameters wr2 its body frame ======\n"
          f"    Mass:               {m.body_mass[-1]}\n"
@@ -86,25 +85,10 @@ def main():
     # gain matrix for linear quadratic regulator
     K = dyn.compute_gain_matrix(m, d, ss)
 
-    # Prepare for data logging ================================================
     # IDs for convenience
     sen_id = mj.mj_name2id(m, mj.mjtObj.mjOBJ_SITE, "ft_sen")
     obj_id = mj.mj_name2id(m, mj.mjtObj.mjOBJ_BODY, "object")
-    # Trajectory
-    traj = []
-    # Joint positions
-    qpos = []
-    # Residual of qpos
-    res_qpos = np.empty(m.nu)
-    # Control signals
-    ctrl = []
-    tgt_ctrls = []
-    # Scale sampled coordinates ∈ (-1, 1) in wisp to the dimensions of an axis-
-    # aligned bounding box of the object.
-    # NOTE: setting the longest edge of the bounding box is recommended because
-    # choosing a cuboid rather than a cube may affect the prediction result of
-    # NeMD, the auther haven't checked it yet tho
-#    aabb_scale = 0.5
+    
     # Dictionary to be converted to a .json file for training
     transforms = dict(
         date_time=datetime.now().strftime("%d/%m/%Y_%H:%M:%S"),
@@ -121,109 +105,94 @@ def main():
     if not os.path.isdir(obs_dir):
         os.makedirs(obs_dir, exist_ok=True)
 
-    # Others
-    sensorreads = []
+    # Prepare data containers =================================================
+    res_qpos = np.empty(m.nu)
+    tgt_trajectory = []
+    trajectory = []
+    linaccs_sen_obj = []
+    fts_sen = []
     time = []
     frame_count = 0
-    obj_ttl_linaccs_sen = []
-    obj_twists_sen = []
-    obj_accels_sen = []
-    fts_sen = []
 
-    # =========================================================================
-    # Main loop
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # Main loop ===============================================================
     for step in tqdm(range(t.n_steps), desc="Progress of simulation"):
-        traj.append(plan(step))
-
-        tgt_ctrl, parent_poses_child, twists, dtwists = dyn.inverse(
-            traj[-1], pose_home_ba, body_spati_b, uscrew_bb, twist_00, dtwist_00)
-        tgt_ctrls.append(tgt_ctrl)
-
-        # Retrieve joint variables
-        qpos.append(d.qpos.copy())
+        # Compute actuator controls and evolute the simulatoin
+        tgt_traj = plan(step)
+        tgt_ctrl, _, _, _= dyn.inverse(
+            tgt_traj, pose_home_ba, body_spati_b, uscrew_bb, twist_00, dtwist_00)
         # Residual of state
         mj.mj_differentiatePos(  # Use this func to differenciate quat properly
             m,  # MjModel
-            res_qpos,  # data buffer for the residual of qpos
+            res_qpos,  # data container for the residual of qpos
             m.nu,  # idx of a joint up to which res_qpos are calculated
-            qpos[-1],  # current qpos
-            traj[-1][0])  # target qpos or next qpos to calkculate dqvel
-        res_state = np.concatenate((res_qpos, traj[-1][1] - d.qvel))
+            d.qpos,  # current qpos
+            tgt_traj[0])  # target qpos or next qpos to calkculate dqvel
+        res_state = np.concatenate((res_qpos, tgt_traj[1] - d.qvel))
         # Compute and set control, or actuator inputs
-        ctrl.append(tgt_ctrls[-1] - K @ res_state)
-        d.ctrl = ctrl[-1]
+        d.ctrl = tgt_ctrl - K @ res_state
 
-        # Evolute the simulation
-        mj.mj_step(m, d)
+        mj.mj_step(m, d) # Evolve the simulation = = = = = = = = = = = = = = = 
 
-        # Store other necessary data
+        # Process sensor reads and compute necessary data
         sensorread = d.sensordata.copy()
-        sensorreads.append(sensorread)
-        time.append(d.time)
-
+        # Scale sampled normalized coordinates ∈ (-1, 1) in wisp to the maximum 
+        # length of an axis-aligned bounding box of the object.
         aabb_scale = 0.3
-
         # Camera pose rel. to the object
-        obj_pose_x = tf.trzs2SE3(d.xpos[obj_id], d.xmat[obj_id])
-        cam_pose_x = tf.trzs2SE3(d.cam_xpos[cam.id], d.cam_xmat[cam.id])
-        cam_pose_obj = obj_pose_x.inv().dot(cam_pose_x)
+        pose_x_obj = tf.trzs2SE3(d.xpos[obj_id], d.xmat[obj_id])
+        pose_x_cam = tf.trzs2SE3(d.cam_xpos[cam.id], d.cam_xmat[cam.id])
+        pose_obj_cam = pose_x_obj.inv().dot(pose_x_cam)
         # FT sensor pose rel. to the object
-        sen_pose_x = tf.trzs2SE3(d.site_xpos[sen_id], d.site_xmat[sen_id])
-        x_pose_sen = sen_pose_x.inv()  # SE3Matrix object
-        x_rot_sen = x_pose_sen.rot  # SO3Matrix object
-        sen_pose_obj = obj_pose_x.inv().dot(sen_pose_x)
-        obj_pose_sen = sen_pose_obj.inv()
+        pose_x_sen = tf.trzs2SE3(d.site_xpos[sen_id], d.site_xmat[sen_id])
+        pose_obj_sen = pose_x_obj.inv().dot(pose_x_sen)
+        pose_sen_obj = pose_obj_sen.inv()
 
-        obj_vel_x = sensorread[4*m.nu:5*m.nu]
-        obj_twist_sen = x_pose_sen.adjoint() @ obj_vel_x
+        traj = np.stack((d.qpos, d.qvel, d.qacc))
+        _, poses_chile_parent, twists, dtwists = dyn.inverse(
+            traj, pose_home_ba, body_spati_b, uscrew_bb, twist_00, dtwist_00)
 
-        obj_acc_x = sensorread[5*m.nu:6*m.nu]
-        obj_linacc_x = obj_acc_x[:3]
-        obj_ttl_linacc_sen = x_rot_sen.dot(obj_linacc_x)
-        obj_linacc_sen = obj_ttl_linacc_sen - np.cross(obj_twist_sen[:3], obj_twist_sen[3:])
+        # First-order time derivative - - - - - - - - - - - - - - - - - - - - -
+        twist_obj_obj = twists[-1]
+        twist_sen_obj = pose_sen_obj.adjoint() @ twist_obj_obj
+        linvel_sen_obj = dyn.compute_linvel(pose_sen_obj, twist_obj_obj, coord_xfer_twist=True)
 
-        obj_angacc_sen = x_rot_sen.dot(obj_acc_x[3:])
-        obj_accel_sen = [obj_linacc_sen.tolist(), obj_angacc_sen.tolist()]
+        # Second-order time derivative - - - - - - - - - - - - - - - - - - - - 
+        dtwist_obj_obj = dtwists[-1]
+        dtwist_sen_obj = dyn.coordinate_transform_dtwist(
+            pose_sen_obj, twist_sen_obj, dtwist_obj_obj)  # , coord_xfer_twist=True)
+        linacc_sen_obj = dyn.compute_linacc(
+            pose_sen_obj, twist_sen_obj, dtwist_sen_obj)  # , coord_xfer_twist=True)
+        
+#        v_sen_obj, w_sen_obj = np.split(twist_sen_obj, 2)
+#        dv_sen_obj, dw_sen_obj = np.split(dtwist_sen_obj, 2)
+#        skewed_w_sen_obj = SO3.wedge(w_sen_obj)
+#        skewed_dw_sen_obj = SO3.wedge(dw_sen_obj)
+#        # 
+#        _linacc1_sen_obj = dv_sen_obj + skewed_w_sen_obj @ v_sen_obj
+#        _linacc2_sen_obj = skewed_dw_sen_obj @ pose_sen_obj.trans \
+#                         + skewed_w_sen_obj @ skewed_w_sen_obj @ pose_sen_obj.trans  # element-wise part
+#        _linacc_sen_obj = _linacc1_sen_obj + _linacc2_sen_obj
 
-        ft_sen = sensorread[3*m.nu:4*m.nu].tolist()  # Store frames following the fps
+        # Retrieve force and torque measurements
+        ft_sen = sensorread[1*m.nu:2*m.nu]
+        total_mass = ft_sen[:3] / linacc_sen_obj
 
-        # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 
-        # obj_linvel/acc_x の復元 =================================================
-        _obj_twist_obj = twists[-1]
-        _obj_linvel_x = dyn.compute_linvel(obj_pose_x, _obj_twist_obj, coord_xfer_twist=True)
-                                            # framelinvel と絶対誤差 0.0016 くらい。mujoco も c++ で
-                                            # 書いたラグランジュの運動方程式で模擬してるわけで、
-                                            # それを真値あつかいしてる分の誤差も乗っていそう
+        # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 
 
-        _obj_dtwist_obj = dtwists[-1]
-        _obj_dtwist_x = dyn.coordinate_transform_dtwist(
-            obj_pose_x, _obj_twist_obj, _obj_dtwist_obj, coord_xfer_twist=True)
-        _obj_linacc_x = dyn.compute_linacc(
-            obj_pose_x, _obj_twist_obj, _obj_dtwist_x, coord_xfer_twist=True)
-
-        # obj_linacc_sen の復元 ===============================================
-        _obj_twist_obj = twists[-1]
-        _obj_dtwist_sen = dyn.coordinate_transform_dtwist(
-            obj_pose_sen, _obj_twist_obj, _obj_dtwist_obj, coord_xfer_twist=True)
-        _obj_linacc_sen = dyn.compute_linacc(
-            obj_pose_sen, _obj_twist_obj, _obj_dtwist_sen, coord_xfer_twist=True)
-
-
-        if frame_count <= time[-1] * t.fps:
-#            tol = 1e-03
+#        ADD SOME CODES HERE
+        
+        if frame_count <= d.time * t.fps:
 #            print(f"{np.isclose(__obj_linacc_x, _obj_linacc_x)=}")
-#            print(f"{abs(__obj_linacc_x - _obj_linacc_x)=}")
+#            if total_mass.mean() < 50 or 51.6 < total_mass.mean():
+#                print(f"{ np.median(total_mass)=}")  # .mean() だと値が吹っ飛ぶ瞬間がある。プロットと
+#                                                     # 見比べると、いずれかの軸沿いの acc が 0 近辺に
+#                                                     # なったときに near-zero-division で吹っ飛ぶ
 
-#            print("==========================================================")
-            print(f"{         ft_sen[0]=}")
-            print(f"{_obj_linacc_sen[0]=}")
-            total_mass = ft_sen[:3] / _obj_linacc_sen
-            print(f"{     total_mass[0]=}")  # x 軸の計算が甘いが median を取れば行けた
-                                             # 積み上げ誤差がまぁまぁあるけど一旦そこは無視
-                                             # x 軸のみ near-zero division とかになってそう
+#            print(f"{np.isclose(linvel_sen_obj, _linvel_sen_obj)=}")  # True
+#            print(f"{np.isclose(linacc_sen_obj, _linacc1_sen_obj)=}")  # True
+#            print(f"{np.isclose(_linacc2_sen_obj, np.zeros_like(_linacc2_sen_obj))=}")  # True
 
-            # ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 検証用コード追加ゾーン ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑
+        # ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 検証用コード追加ゾーン ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 
 
             # Writing a single frame of a dataset =============================
             renderer.update_scene(d, cam.id)
@@ -238,27 +207,26 @@ def main():
             # Write a video frame
             out.write(bgr)
 
-            # Log velocity components relative to the sensor frame
-            obj_twists_sen.append(obj_twist_sen)
-            # Log acceleration components relative to the sensor frame
-            obj_ttl_linaccs_sen.append(obj_ttl_linacc_sen)
-            obj_accels_sen.append(obj_accel_sen)
-            # Log force and torque mesurements 
-            fts_sen.append(ft_sen)
-
             # Log NeMD ingredients ============================================
             frame = dict(
                 file_path=os.path.join(dataset_hierarchy[1], file_name),
-                cam_pose_obj=cam_pose_obj.as_matrix().tolist(),
-                obj_pose_sen=obj_pose_sen.as_matrix().tolist(),
-                obj_twist_sen=obj_twist_sen.tolist(),
-                obj_accel_sen=obj_accel_sen,
+                cam_pose_obj=pose_obj_cam.as_matrix().tolist(),
+                obj_pose_sen=pose_sen_obj.as_matrix().tolist(),
+                obj_twist_sen=twist_sen_obj.tolist(),
+                obj_accel_sen=dtwist_sen_obj.tolist(),
 #                obj_linacc_sen=obj_linacc_sen,
+                ft_sen=ft_sen.tolist(),
                 aabb_scale=[aabb_scale],
-                ft_sen=ft_sen,
                 )
 
             transforms["frames"].append(frame)
+
+            # Log velocity components relative to the sensor frame
+            tgt_trajectory.append(tgt_traj)
+            trajectory.append(traj)
+            linaccs_sen_obj.append(linacc_sen_obj)
+            fts_sen.append(ft_sen)
+            time.append(d.time)
 
             # Sampling for NeMD terminated while "frame_count" incremented
             frame_count += 1
@@ -273,9 +241,11 @@ def main():
         json.dump(transforms, f, indent=2)
 
     # Convert lists of logged data into ndarrays ==============================
-    traj = np.asarray(traj)
-    qpos = np.asarray(qpos)
-    tgt_ctrls = np.asarray(tgt_ctrls)
+    tgt_trajectory = np.array(tgt_trajectory)
+    trajectory = np.array(trajectory)
+    linaccs_sen_obj = np.array(linaccs_sen_obj)
+    fts_sen = np.array(fts_sen)
+    frame_iter = np.arange(frame_count)
 
     # Visualize data ==========================================================
     # Object linear acceleration and ft sensor measurements rel. to {sensor}
@@ -285,29 +255,21 @@ def main():
     qpos_axes[1].set(xlabel="time [s]")
     yls = ["q0-2 [m]", "q3-5 [rad]"]
     for i in range(len(qpos_axes)):
-        slcr = slice(i * 3, (i + 1) * 3)
+        slcr = slice(i*3, (i+1)*3)
         vis.ax_plot_lines_w_tgt(
-            qpos_axes[i], time, qpos[:, slcr], traj[:, 0, slcr], yls[i])
-
-
-    print(f"{qpos.shape=}")
-    print(f"{traj.shape=}")
-
+            qpos_axes[i], time, trajectory[:, 0, slcr], tgt_trajectory[:, 0, slcr], yls[i])
 
     # Object linear acceleration and ft sensor measurements rel. to {sensor}
-    fts_sen = np.array(fts_sen)
     acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)
     acc_ft_fig.suptitle("linacc vs ft")
     acc_ft_axes[0].set(xlabel="# of frames")
     acc_ft_axes[2].set(xlabel="time [s]")
-    vis.ax_plot_lines(
-        acc_ft_axes[0], range(len(obj_ttl_linaccs_sen)), np.array(obj_ttl_linaccs_sen),
-        "obj_linacc_sen [m/s/s]"
-        )
-    vis.ax_plot_lines(
-        acc_ft_axes[1], time, fts_sen[:, :3], "frc_sen [N]")
-    vis.ax_plot_lines(
-        acc_ft_axes[2], time, fts_sen[:, 3:], "trq_sen [N·m]")
+    vis.ax_plot_lines(acc_ft_axes[0], frame_iter, linaccs_sen_obj, "obj_linacc_sen [m/s/s]")
+    vis.ax_plot_lines(acc_ft_axes[1], frame_iter, fts_sen[:, :3], "frc_sen [N]")
+    vis.ax_plot_lines(acc_ft_axes[2], frame_iter, fts_sen[:, 3:], "trq_sen [N·m]")
+
+    for ax in acc_ft_axes:
+        ax.hlines(0.0, frame_iter[0], frame_iter[-1], ls="dashed", alpha=0.5)
 
     # Joint forces and torques
 #     ctrl_fig, ctrl_axes = plt.subplots(3, 1, sharex="col", tight_layout=True)
