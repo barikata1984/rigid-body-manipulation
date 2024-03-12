@@ -11,6 +11,7 @@ from matplotlib import pyplot as plt
 from configure import load_configs
 from liegroups import SO3
 from datetime import datetime
+from pathlib import Path
 from scipy import linalg
 from tqdm import tqdm
 
@@ -27,10 +28,8 @@ def main():
 
     K = dyn.compute_gain_matrix(m, d, ss)
 
-    out = cv2.VideoWriter(
-        cam.output_file, cam.fourcc, t.fps, (cam.width, cam.height))
-    renderer = mj.Renderer(
-        m, cam.height, cam.width)
+    out = cv2.VideoWriter(cam.output_file, cam.fourcc, t.fps, (cam.width, cam.height))
+    renderer = mj.Renderer(m, cam.height, cam.width)
 
     # Description of suffixes used from the section below:
     #   This   |        |
@@ -48,41 +47,66 @@ def main():
     # Compose the principal spatial inertia matrix for each body including the
     # worldbody
 
-    body_spati_i = np.array([
-        dyn.compose_spati_i(m, i) for m, i in zip(m.body_mass, m.body_inertia)])
-    # Convert sinert_i to sinert_b rel2 the body frame
-    body_spati_pose_b = tf.posquat2SE3(m.body_ipos, m.body_iquat)
-    body_spati_b = dyn.transfer_sinert(body_spati_pose_b, body_spati_i)
+    # {descriptor}_{reference}_{described}
+    #
+    #    descriptor | Definitin
+    # --------------+------------
+    #       (s)imat | (spatial) inertia matrix
+    #       (h)pose | (home) pose
+    #         momsi | moments of inertia
+    #      (u)screw | (unit) screw
+    #   (d/dd)twist | (first/second-order time derivative of) twist
+    #  (lin/ang)vel | (linear/angular) velocity
+    #  (lin/ang)acc | (linear/angular) acceleration
+    #          gacc | graviatational acceleration
+    # 's' may follow a descriptor to clarify that the variable multiple descriptors.
+    #
+    #     reference |
+    #     /descried | Definition
+    # --------------+-------------
+    #             x | world frame
+    #             b | body itself or its frame (refer to how the body frame is defined on the official documentation
+    #            bi | body's principal frame where the body's interia ellipsoid is defined
+    #          a/ai | parent itself or its frame/principal frame where the parent's interia ellipsoid is defined
+    #          c/ci | child itself or its frame/principal frame frame where the childl's interia ellipsoid is defined
+    #             q | joint space
+    #               | 
 
-    mom_i = np.array([
-        *body_spati_b[-1, 3:, 3:].diagonal(),
-        *body_spati_b[-1, 3, 4:],
-        body_spati_b[-1, 4, 5]])
+
+    # Spatial inertia matrices of all the bodies incl. the links and the obj
+    simats_bi_b = dyn.compose_spatial_inertia_matrix(m.body_mass, m.body_inertia)
+    # Convert sinert_i to sinert_b rel2 the body frame
+    poses_b_bi = tf.posquat2SE3(m.body_ipos, m.body_iquat)
+    simats_b_b = dyn.transfer_sinert(poses_b_bi, simats_bi_b)
+
+    momsi_b_b = np.array([*simats_b_b[-1, 3:, 3:].diagonal(),
+                          *simats_b_b[-1, 3, 4:],
+                           simats_b_b[-1, 4, 5]])
 
     print("Target object's inertial parameters wr2 its body frame ======\n"
          f"    Mass:               {m.body_mass[-1]}\n"
-         f"    First moments:      {SO3.vee(body_spati_b[-1, 3:, :3])}\n"
-         f"    Moments of inertia: {mom_i}\n")
+         f"    First moments:      {SO3.vee(simats_b_b[-1, 3:, :3])}\n"
+         f"    Moments of inertia: {momsi_b_b}\n")
 
     # Configure SE3 of child frame rel2 parent frame (M_{i, i - 1} in MR)
-    pose_home_ba = tf.posquat2SE3(m.body_pos, m.body_quat)
+    hposes_a_b = tf.posquat2SE3(m.body_pos, m.body_quat)
     # Configure SE3 of each body frame rel2 worldbody (M_{i} = M_{0, i} in MR)
-    pose_home_xb = [pose_home_ba[0].inv()]  # xb = 00, 01, ..., 06
-    for p_h_ba in pose_home_ba[1:]:
-        pose_home_xb.append(pose_home_xb[-1].dot(p_h_ba.inv()))
+    hposes_x_b = [hposes_a_b[0].inv()]  # xb = 00, 01, ..., 06
+    for hp_a_b in hposes_a_b[1:]:
+        hposes_x_b.append(hposes_x_b[-1].dot(hp_a_b.inv()))
 
     # Obtain unit screw rel2 each link = body (A_{i} in MR)
-    uscrew_bb = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
+    uscrew_b_b = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
     for b, (jnt_type, ax) in enumerate(zip(m.jnt_type, m.jnt_axis), 0):
         slicer = 3 * (jnt_type - 2)  # jnt_type: 2 for slide, 3 for hinge
-        uscrew_bb[b, slicer:slicer + 3] = ax / linalg.norm(ax)
+        uscrew_b_b[b, slicer:slicer + 3] = ax / linalg.norm(ax)
 
     # Set up dynamics related variables =======================================
     # (d)twist vectors for the worldbody to be used for inverse dynamics
-    twist_00 = np.zeros(6)
+    twist_x_x = np.zeros(6)
     gacc_x = np.zeros(6)
     gacc_x[:3] = -mj.MjOption().gravity
-    dtwist_00 = gacc_x.copy()
+    dtwist_x_x = gacc_x.copy()
     # gain matrix for linear quadratic regulator
     K = dyn.compute_gain_matrix(m, d, ss)
 
@@ -104,8 +128,8 @@ def main():
     # NOTE: setting the longest edge of the bounding box is recommended because
     # choosing a cuboid rather than a cube may affect the prediction result of
     # NeMD, the auther haven't checked it yet tho
-#    aabb_scale = 0.5
-    # Dictionary to be converted to a .json file for training
+    aabb_scale = 0.5
+    # Dictionary to be converted to a .json file to train a NeMD
     transforms = dict(
         date_time=datetime.now().strftime("%d/%m/%Y_%H:%M:%S"),
         camera_angle_x=cam.fovx,
@@ -114,10 +138,9 @@ def main():
     )
 
     # Make a directory in which the .json file is saved
-    dataset_dir = "data/uniform"
-#    dataset_dir = "data/composite"
-    dataset_hierarchy = [dataset_dir, "images"]
-    obs_dir = os.path.join(*dataset_hierarchy)
+    obj_name = "uniform"  # "stacked"
+    dataset_dir = Path.cwd() / "data" / obj_name
+    obs_dir = dataset_dir / "images"
     if not os.path.isdir(obs_dir):
         os.makedirs(obs_dir, exist_ok=True)
     # Others
@@ -139,8 +162,8 @@ def main():
         traj.append(plan(step))
         tgt_ctrl.append(
             dyn.inverse(
-                traj[-1], pose_home_ba, body_spati_b, uscrew_bb, twist_00,
-                dtwist_00
+                traj[-1], hposes_a_b, simats_b_b, uscrew_b_b, twist_x_x,
+                dtwist_x_x
                 )
             )
 
@@ -177,7 +200,7 @@ def main():
                 np.all(bgr == 0, axis=-1), 0, 255)[..., np.newaxis]
             file_name = f"{frame_count:04}"
             cv2.imwrite(
-                os.path.join(*dataset_hierarchy, file_name) + ".png",
+                str(obs_dir / file_name / ".png"),
                 np.append(bgr, alpha, axis=2))  # image (bgr + alpha)
             # Write a video frame
             out.write(bgr)
@@ -191,8 +214,7 @@ def main():
             sen_pose_x = tf.trzs2SE3(d.site_xpos[sen_id], d.site_xmat[sen_id])
             sen_pose_obj = obj_pose_x.inv().dot(sen_pose_x)
             # Object linear acceleration rel. to the sensor
-            # NOTE: 
-            
+
             # Log velocities
             obj_vel_x = sensordata[-1][4*m.nu:5*m.nu]
             obj_linvel_sen.append(sen_pose_x.inv().rot.dot(obj_vel_x[:3]).tolist())
@@ -208,15 +230,15 @@ def main():
 
             # Log NeMD ingredients ============================================
             frame = dict(
-                file_path=os.path.join(dataset_hierarchy[1], file_name),
+                file_path=str(obs_dir / file_name),
                 cam_pose_obj=cam_pose_obj.as_matrix().tolist(),
                 obj_pose_sen=sen_pose_obj.inv().as_matrix().tolist(),
-                obj_linvel_sen=obj_linvel_sen[-1].tolist(),
-                obj_angvel_sen=obj_angvel_sen[-1].tolist(),
-                obj_linacc_sen=obj_linacc_sen[-1].tolist(),
-                obj_angacc_sen=obj_angacc_sen[-1].tolist(),
+                obj_linvel_sen=obj_linvel_sen[-1],
+                obj_angvel_sen=obj_angvel_sen[-1],
+                obj_linacc_sen=obj_linacc_sen[-1],
+                obj_angacc_sen=obj_angacc_sen[-1],
                 aabb_scale=[aabb_scale],
-                ft=ft_meas_sen[-1].tolist(),
+                ft=ft_meas_sen[-1],
                 )
 
             transforms["frames"].append(frame)
@@ -230,7 +252,7 @@ def main():
 #    qpos_meas, qvel_meas, qfrc_meas, ft_meas_sen, obj_vel_x, obj_acc_x = np.split(
 #        sensordata, [1*m.nu, 2*m.nu, 3*m.nu, 4*m.nu, 5*m.nu], axis=1)
 
-    with open(f"./{dataset_dir}/transform.json", "w") as f:
+    with open(dataset_dir / "transform.json", "w") as f:
         json.dump(transforms, f, indent=2)
 
     # Convert lists of logged data into ndarrays ==============================

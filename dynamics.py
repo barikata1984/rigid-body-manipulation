@@ -28,8 +28,6 @@ class StateSpace:
 
 
 def compute_gain_matrix(m, d, ss: StateSpace):
-    mj.mjd_transitionFD(m, d, ss.eps, ss.flg_centered, ss.A, ss.B, ss.C, ss.D)
-
     Q = np.eye(ss.ns)  # State cost matrix
     R = np.diag(ss.input_weights)  # Input cost matrix
 
@@ -40,17 +38,22 @@ def compute_gain_matrix(m, d, ss: StateSpace):
     return K
 
 
-def compose_spati_i(mass, principal_inertia):
-    return np.block([
-        [mass * np.eye(3), np.zeros((3, 3))],
-        [np.zeros((3, 3)), np.diag(principal_inertia)]])
+def _compose_simat(mass, diag_i):
+    imat = np.diag(diag_i)  # inertia matrix
+    return np.block([[mass * np.eye(3), np.zeros((3, 3))],
+                     [np.zeros((3, 3)), imat]])
 
 
-def transfer_sinert(pose, spati):
-    assert len(pose) == len(spati), "The numbers of spatial inertia tensors and SE3 instances do not match."
+def compose_spatial_inertia_matrix(mass, diagonal_inertia):
+    assert len(mass) == len(diagonal_inertia), "Lenght of 'mass' of the bodies and 'diagonal_inertia' vectors must match."
+    return np.array([_compose_simat(m, di) for m, di in zip(mass, diagonal_inertia)])
+
+
+def transfer_sinert(pose, spatial_inertia_matrices):
+    assert len(pose) == len(spatial_inertia_matrices), "Lenght of 'pose' and 'spatial_inertia_matrices' must match."
 
     pose_adjoint = [p.inv().adjoint() for p in pose]
-    transfered = [adj.T @ si @ adj for adj, si in zip(pose_adjoint, spati)]
+    transfered = [adj.T @ simat @ adj for adj, simat in zip(pose_adjoint, spatial_inertia_matrices)]
 
     return np.array(transfered)
 
