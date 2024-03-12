@@ -18,10 +18,11 @@ def trzs2SE3(
         s (np.ndarray, optional): 3D shear vector. Defaults to np.zeros(3).
 
     Returns:
-        _type_: homogeneous transformation
+        liegroups.SE3: single SE3 entity
     """
 
     return SE3.from_matrix(affines.compose(t, r.reshape((3, 3)), z, s))
+
 
 #@np.vectorize
 def tquat2SE3(
@@ -41,7 +42,7 @@ def tquat2SE3(
     return SE3(SO3.from_quaternion(quat), t)
 
 
-def _pq2SE3(
+def posquat2SE3(
         p: np.ndarray,
         q: np.ndarray) -> SE3:
     """Compose a SE3 object from a translation vector and a quaternion using
@@ -57,7 +58,7 @@ def _pq2SE3(
     return SE3(SO3.from_quaternion(q), p)
 
 
-def posquat2SE3(
+def posquat2SE3s(
         pos: np.ndarray,
         quat: np.ndarray):
     """Compose a SE3 object from a translation vector and a quaternion using
@@ -68,10 +69,10 @@ def posquat2SE3(
         quat (np.ndarray): unit quaternion
 
     Returns:
-        _type_: SE3 object
+        SE3: instance of liegroups.SE3
     """
-    flg = 1 == pos.ndim == quat.ndim
-     
-    return _pq2SE3(pos, quat) if flg else [_pq2SE3(p, q) for p, q in zip(pos, quat)]
+    assert len(pos) == len(quat), "Length of 'pos' and 'quat' must be the same."
+
+    return [posquat2SE3(p, q) for p, q in zip(pos, quat)]
 
 

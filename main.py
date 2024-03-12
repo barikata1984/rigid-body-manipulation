@@ -1,4 +1,6 @@
 import os
+from pathlib import Path 
+
 import cv2
 import json
 import numpy as np
@@ -22,8 +24,7 @@ np.set_printoptions(precision=5, suppress=True)
 
 
 def main():
-    config_file = "./configs/config.toml"
-
+    config_file = Path.cwd() / "configs" / "config.toml"
     m, d, t, cam, ss, plan = load_configs(config_file)
 
     K = dyn.compute_gain_matrix(m, d, ss)
@@ -31,57 +32,65 @@ def main():
     out = cv2.VideoWriter(cam.output_file, cam.fourcc, t.fps, (cam.width, cam.height))
     renderer = mj.Renderer(m, cam.height, cam.width)
 
-    # Description of suffixes used from the section below:
-    #   This   |        |
-    #  project | MuJoCo | Description
-    # ---------+--------+------------
-    #    _x    |  _x    | Described in {cartesian} or {world}
-    #    _b    |  _b    | Descried in {body)
-    #    _i    |  _i    | Described in {principal} of each body
-    #    _q    |  _q    | Described in the joint space
-    #    _xi   |  _xi   | Of {principal} rel. to {world}
-    #    _ab   |   -    | Of {body} rel. to {parent}
-    #    _ba   |   -    | Of {parent} rel. to {body}
-    #    _m    |   -    | Described in the frame a joint corresponds to
+    # Naming convention of spatial and dynamics variable:
     #
-    # Compose the principal spatial inertia matrix for each body including the
-    # worldbody
+    # {descriptor}_{reference}_{described}, where
+    #
+    #    descriptor | Definition
+    # --------------+------------
+    #       (s)imat | (spatial) inertia matrix
+    #       (h)pose | (home) pose
+    #      (u)screw | (unit) screw
+    #      (d)twist | (first-order time derivative of) twist
+    #  (lin/ang)vel | (linear/angular) velocity
+    #  (lin/ang)acc | (linear/angular) acceleration
+    #         momsi | moments of inertia
+    #          gacc | graviatational acceleration
+    #  NOTE: 's' may follow a descriptor to clarify that the variable multiple descriptors.
+    #
+    #     reference |
+    #     /descried | Definition
+    # --------------+-------------
+    #             x | world frame
+    #             b | body itself or its frame (refer to the official documentation)
+    #            bi | body's principal frame where the body's interia ellipsoid is defined
+    #          a/ai | body's parent itself or its frame/parent's principal frame
+    #          c/ci | body's child itself or its frame/child's principal frame
+    #             q | joint space
+    #               | 
 
-    body_spati_i = np.array([
-        dyn.compose_spati_i(m, i) for m, i in zip(m.body_mass, m.body_inertia)])
+    simats_bi_b = dyn.compose_spatial_inertia_matrices(m.body_mass, m.body_inertia)
     # Convert sinert_i to sinert_b rel2 the body frame
-    body_spati_pose_b = tf.posquat2SE3(m.body_ipos, m.body_iquat)
-    body_spati_b = dyn.transfer_sinert(body_spati_pose_b, body_spati_i)
-
-    mom_i = np.array([
-        *body_spati_b[-1, 3:, 3:].diagonal(),
-        *body_spati_b[-1, 3 , 4:],
-         body_spati_b[-1, 4 , 5 ]])
+    poses_b_bi = tf.posquat2SE3s(m.body_ipos, m.body_iquat)
+    simats_b_b = dyn.transfer_sinert(poses_b_bi, simats_bi_b)
+    mom_i = np.array([*simats_b_b[-1, 3:, 3:].diagonal(),
+                      *simats_b_b[-1, 3 , 4:],
+                       simats_b_b[-1, 4 , 5 ]])
 
     print("Target object's inertial parameters wr2 its body frame ======\n"
          f"    Mass:               {m.body_mass[-1]}\n"
-         f"    First moments:      {SO3.vee(body_spati_b[-1, 3:, :3])}\n"
+         f"    First moments:      {SO3.vee(simats_b_b[-1, 3:, :3])}\n"
          f"    Moments of inertia: {mom_i}\n")
 
     # Configure SE3 of child frame rel2 parent frame (M_{i, i - 1} in MR)
-    pose_home_ba = tf.posquat2SE3(m.body_pos, m.body_quat)
-    # Configure SE3 of each body frame rel2 worldbody (M_{i} = M_{0, i} in MR)
-    pose_home_xb = [pose_home_ba[0].inv()]  # xb = 00, 01, ..., 06
-    for p_h_ba in pose_home_ba[1:]:
-        pose_home_xb.append(pose_home_xb[-1].dot(p_h_ba.inv()))
+    hposes_a_b = tf.posquat2SE3s(m.body_pos, m.body_quat)
+    # # Configure SE3 of each body frame rel2 worldbody (M_{i} = M_{0, i} in MR)
+    # hposes_x_b = [hposes_a_b[0].inv()]  # xb = 00, 01, ..., 06
+    # for p_h_ba in hposes_a_b[1:]:
+    #     hposes_x_b.append(hposes_x_b[-1].dot(p_h_ba.inv()))
 
     # Obtain unit screw rel2 each link = body (A_{i} in MR)
-    uscrew_bb = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
+    uscrew_b_b = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
     for b, (jnt_type, ax) in enumerate(zip(m.jnt_type, m.jnt_axis), 0):
         slicer = 3 * (jnt_type - 2)  # jnt_type: 2 for slide, 3 for hinge
-        uscrew_bb[b, slicer:slicer + 3] = ax / linalg.norm(ax)
+        uscrew_b_b[b, slicer:slicer + 3] = ax / linalg.norm(ax)
 
     # Set up dynamics related variables =======================================
     # (d)twist vectors for the worldbody to be used for inverse dynamics
-    twist_00 = np.zeros(6)
+    twist_x_x = np.zeros(6)
     gacc_x = np.zeros(6)
     gacc_x[:3] = -mj.MjOption().gravity
-    dtwist_00 = gacc_x.copy()
+    dtwist_x_x = gacc_x.copy()
     # gain matrix for linear quadratic regulator
     K = dyn.compute_gain_matrix(m, d, ss)
 
@@ -94,14 +103,13 @@ def main():
         date_time=datetime.now().strftime("%d/%m/%Y_%H:%M:%S"),
         camera_angle_x=cam.fovx,
 #        aabb_scale=aabb_scale,
+        gt_mass_distr_file_path=None,
         frames=list(),
     )
 
     # Make a directory in which the .json file is saved
-    dataset_dir = "data/uniform"
-#    dataset_dir = "data/composite"
-    dataset_hierarchy = [dataset_dir, "images"]
-    obs_dir = os.path.join(*dataset_hierarchy)
+    dataset_dir = Path.cwd() / "data" / "uniform"  # "composite"
+    obs_dir = dataset_dir / "images"
     if not os.path.isdir(obs_dir):
         os.makedirs(obs_dir, exist_ok=True)
 
@@ -119,7 +127,7 @@ def main():
         # Compute actuator controls and evolute the simulatoin
         tgt_traj = plan(step)
         tgt_ctrl, _, _, _= dyn.inverse(
-            tgt_traj, pose_home_ba, body_spati_b, uscrew_bb, twist_00, dtwist_00)
+            tgt_traj, hposes_a_b, simats_b_b, uscrew_b_b, twist_x_x, dtwist_x_x)
         # Residual of state
         mj.mj_differentiatePos(  # Use this func to differenciate quat properly
             m,  # MjModel
@@ -144,17 +152,16 @@ def main():
         pose_obj_cam = pose_x_obj.inv().dot(pose_x_cam)
         # FT sensor pose rel. to the object
         pose_x_sen = tf.trzs2SE3(d.site_xpos[sen_id], d.site_xmat[sen_id])
-        pose_obj_sen = pose_x_obj.inv().dot(pose_x_sen)
-        pose_sen_obj = pose_obj_sen.inv()
+        pose_sen_obj = pose_x_sen.inv().dot(pose_x_obj)
 
         traj = np.stack((d.qpos, d.qvel, d.qacc))
-        _, poses_chile_parent, twists, dtwists = dyn.inverse(
-            traj, pose_home_ba, body_spati_b, uscrew_bb, twist_00, dtwist_00)
+        _, _, twists, dtwists = dyn.inverse(
+            traj, hposes_a_b, simats_b_b, uscrew_b_b, twist_x_x, dtwist_x_x)
 
         # First-order time derivative - - - - - - - - - - - - - - - - - - - - -
         twist_obj_obj = twists[-1]
         twist_sen_obj = pose_sen_obj.adjoint() @ twist_obj_obj
-        linvel_sen_obj = dyn.compute_linvel(pose_sen_obj, twist_obj_obj, coord_xfer_twist=True)
+#        linvel_sen_obj = dyn.compute_linvel(pose_sen_obj, twist_obj_obj, coord_xfer_twist=True)
 
         # Second-order time derivative - - - - - - - - - - - - - - - - - - - - 
         dtwist_obj_obj = dtwists[-1]
@@ -162,7 +169,7 @@ def main():
             pose_sen_obj, twist_sen_obj, dtwist_obj_obj)  # , coord_xfer_twist=True)
         linacc_sen_obj = dyn.compute_linacc(
             pose_sen_obj, twist_sen_obj, dtwist_sen_obj)  # , coord_xfer_twist=True)
-        
+
 #        v_sen_obj, w_sen_obj = np.split(twist_sen_obj, 2)
 #        dv_sen_obj, dw_sen_obj = np.split(dtwist_sen_obj, 2)
 #        skewed_w_sen_obj = SO3.wedge(w_sen_obj)
@@ -175,7 +182,7 @@ def main():
 
         # Retrieve force and torque measurements
         ft_sen = sensorread[1*m.nu:2*m.nu]
-        total_mass = ft_sen[:3] / linacc_sen_obj
+#        total_mass = ft_sen[:3] / linacc_sen_obj
 
         # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 
 
@@ -201,20 +208,22 @@ def main():
             alpha = np.where(
                 np.all(bgr == 0, axis=-1), 0, 255)[..., np.newaxis]
             file_name = f"{frame_count:04}"
-            cv2.imwrite(
-                os.path.join(*dataset_hierarchy, file_name) + ".png",
-                np.append(bgr, alpha, axis=2))  # image (bgr + alpha)
+            cv2.imwrite(str(obs_dir / file_name / ".png"),
+                        np.append(bgr, alpha, axis=2))  # image (bgr + alpha)
             # Write a video frame
             out.write(bgr)
 
             # Log NeMD ingredients ============================================
             frame = dict(
-                file_path=os.path.join(dataset_hierarchy[1], file_name),
-                cam_pose_obj=pose_obj_cam.as_matrix().tolist(),
+                file_path=str(obs_dir / file_name),
+#                pose_obj_cam=pose_obj_cam.as_matrix().T.tolist(),
+                pose_obj_cam=pose_obj_cam.as_matrix().tolist(),
+                pose_sen_obj=pose_sen_obj.as_matrix().tolist(),
                 obj_pose_sen=pose_sen_obj.as_matrix().tolist(),
-                obj_twist_sen=twist_sen_obj.tolist(),
-                obj_accel_sen=dtwist_sen_obj.tolist(),
+                twist_sen_obj=twist_sen_obj.tolist(),
+                dtwist_sen_obj=dtwist_sen_obj.tolist(),
 #                obj_linacc_sen=obj_linacc_sen,
+                linacc_sen_obj=linacc_sen_obj.tolist(),
                 ft_sen=ft_sen.tolist(),
                 aabb_scale=[aabb_scale],
                 )
@@ -237,7 +246,7 @@ def main():
 #    qpos_meas, qvel_meas, qfrc_meas, ft_meas_sen, obj_vel_x, obj_acc_x = np.split(
 #        sensordata, [1*m.nu, 2*m.nu, 3*m.nu, 4*m.nu, 5*m.nu], axis=1)
 
-    with open(f"./{dataset_dir}/transform.json", "w") as f:
+    with open(dataset_dir / "transform.json", "w") as f:
         json.dump(transforms, f, indent=2)
 
     # Convert lists of logged data into ndarrays ==============================

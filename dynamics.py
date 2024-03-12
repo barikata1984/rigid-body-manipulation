@@ -40,10 +40,15 @@ def compute_gain_matrix(m, d, ss: StateSpace):
     return K
 
 
-def compose_spati_i(mass, principal_inertia):
-    return np.block([
-        [mass * np.eye(3), np.zeros((3, 3))],
-        [np.zeros((3, 3)), np.diag(principal_inertia)]])
+def _compose_simat(mass, diag_i):
+    imat = np.diag(diag_i)  # inertia matrix
+    return np.block([[mass * np.eye(3), np.zeros((3, 3))],
+                     [np.zeros((3, 3)), imat]])
+
+
+def compose_spatial_inertia_matrices(mass, diagonal_inertia):
+    assert len(mass) == len(diagonal_inertia), "Lenght of 'mass' of the bodies and 'diagonal_inertia' vectors must match."
+    return np.array([_compose_simat(m, di) for m, di in zip(mass, diagonal_inertia)])
 
 
 def transfer_sinert(pose, spati):
