@@ -57,7 +57,6 @@ def main():
     #          a/ai | body's parent itself or its frame/parent's principal frame
     #          c/ci | body's child itself or its frame/child's principal frame
     #             q | joint space
-    #               | 
 
     simats_bi_b = dyn.compose_spatial_inertia_matrices(m.body_mass, m.body_inertia)
     # Convert sinert_i to sinert_b rel2 the body frame
@@ -97,12 +96,13 @@ def main():
     # IDs for convenience
     sen_id = mj.mj_name2id(m, mj.mjtObj.mjOBJ_SITE, "ft_sen")
     obj_id = mj.mj_name2id(m, mj.mjtObj.mjOBJ_BODY, "object")
-    
+
     # Dictionary to be converted to a .json file for training
+    aabb_scale = 0.3
     transforms = dict(
         date_time=datetime.now().strftime("%d/%m/%Y_%H:%M:%S"),
         camera_angle_x=cam.fovx,
-#        aabb_scale=aabb_scale,
+        aabb_scale=aabb_scale,
         gt_mass_distr_file_path=None,
         frames=list(),
     )
@@ -145,7 +145,6 @@ def main():
         sensorread = d.sensordata.copy()
         # Scale sampled normalized coordinates ∈ (-1, 1) in wisp to the maximum 
         # length of an axis-aligned bounding box of the object.
-        aabb_scale = 0.3
         # Camera pose rel. to the object
         pose_x_obj = tf.trzs2SE3(d.xpos[obj_id], d.xmat[obj_id])
         pose_x_cam = tf.trzs2SE3(d.cam_xpos[cam.id], d.cam_xmat[cam.id])
@@ -186,18 +185,7 @@ def main():
 
         # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 
 
-#        ADD SOME CODES HERE
-        
         if frame_count <= d.time * t.fps:
-#            print(f"{np.isclose(__obj_linacc_x, _obj_linacc_x)=}")
-#            if total_mass.mean() < 50 or 51.6 < total_mass.mean():
-#                print(f"{ np.median(total_mass)=}")  # .mean() だと値が吹っ飛ぶ瞬間がある。プロットと
-#                                                     # 見比べると、いずれかの軸沿いの acc が 0 近辺に
-#                                                     # なったときに near-zero-division で吹っ飛ぶ
-
-#            print(f"{np.isclose(linvel_sen_obj, _linvel_sen_obj)=}")  # True
-#            print(f"{np.isclose(linacc_sen_obj, _linacc1_sen_obj)=}")  # True
-#            print(f"{np.isclose(_linacc2_sen_obj, np.zeros_like(_linacc2_sen_obj))=}")  # True
 
         # ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 検証用コード追加ゾーン ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 
 
@@ -217,15 +205,14 @@ def main():
             frame = dict(
                 file_path=str(obs_dir / file_name),
 #                pose_obj_cam=pose_obj_cam.as_matrix().T.tolist(),
-                pose_obj_cam=pose_obj_cam.as_matrix().tolist(),
+                transform_matrix=pose_obj_cam.as_matrix().tolist(),
                 pose_sen_obj=pose_sen_obj.as_matrix().tolist(),
-                obj_pose_sen=pose_sen_obj.as_matrix().tolist(),
                 twist_sen_obj=twist_sen_obj.tolist(),
                 dtwist_sen_obj=dtwist_sen_obj.tolist(),
 #                obj_linacc_sen=obj_linacc_sen,
                 linacc_sen_obj=linacc_sen_obj.tolist(),
                 ft_sen=ft_sen.tolist(),
-                aabb_scale=[aabb_scale],
+#                aabb_scale=[aabb_scale],
                 )
 
             transforms["frames"].append(frame)

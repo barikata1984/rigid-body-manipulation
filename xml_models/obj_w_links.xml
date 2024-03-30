@@ -1,4 +1,4 @@
-<mujoco>  
+<mujoco>
   <visual>
     <global offwidth="1980" offheight="1080"/>
   </visual>

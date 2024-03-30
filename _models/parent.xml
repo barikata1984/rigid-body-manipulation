@@ -1,0 +1,8 @@
+<mujoco model="parent">
+  <worldbody>
+    <body>
+      <geom name="foo" type="box" size=".5 .3 .1" pos="-.2 .0 .3"/>
+      <site name="attachment_site" pos="1 2 3" quat="1 0 0 1"/>
+    </body>
+  </worldbody>
+</mujoco>
