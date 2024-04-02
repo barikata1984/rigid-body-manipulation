@@ -1,0 +1,7 @@
+<mujoco model="target">
+  <worldbody>
+    <body name="object">
+      <geom name="geom" type="box" density="1000" size=".1 .2 .3" rgba="1 0 0 1"/>
+    </body>
+  </worldbody>
+</mujoco>

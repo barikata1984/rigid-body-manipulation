@@ -1,0 +1,6 @@
+manipulator:
+  _target_: dm_control.mjcf.parser.from_path
+  path: .xml_models/manipulator.xml
+  escape_separators: false
+  resolve_references: true
+  assets: null
