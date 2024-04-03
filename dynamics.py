@@ -7,16 +7,13 @@ from scipy import linalg
 
 class StateSpace:
     def __init__(self, m: mj.MjModel, d: mj.MjData, config: AttrDict):
-        self.nv = m.nv  # Number of degree of freedom
-        self.na = m.na  # Number of activations
-        self.nu = m.nu  # Number of inputs
-        self.ns = 2 * self.nv + self.na  # Number of dimensions of state space
+        self.ns = 2 * m.nv + m.na  # Number of dimensions of state space
         self.nsensordata = m.nsensordata  # Number of sensor ourputs
 
         self.A = np.zeros((self.ns, self.ns))  # State transition matrix
-        self.B = np.zeros((self.ns, self.nu))  # Input state matrix
-        self.C = np.zeros((self.nsensordata, self.ns))  # State output matrix
-        self.D = np.zeros((self.nsensordata, self.nu))  # input output matrix
+        self.B = np.zeros((self.ns, m.nu))  # Input state matrix
+        self.C = np.zeros((m.nsensordata, self.ns))  # State output matrix
+        self.D = np.zeros((m.nsensordata, m.nu))  # input output matrix
 
         self.eps = config.lqr.epsilon
         self.flg_centered = config.lqr.centered
@@ -27,11 +24,10 @@ class StateSpace:
             m, d, self.eps, self.flg_centered, self.A, self.B, self.C, self.D)
 
 
-def compute_gain_matrix(m, d, ss: StateSpace):
-    mj.mjd_transitionFD(m, d, ss.eps, ss.flg_centered, ss.A, ss.B, ss.C, ss.D)
+def compute_gain_matrix(ss: StateSpace, input_gains: list[float]):
 
     Q = np.eye(ss.ns)  # State cost matrix
-    R = np.diag(ss.input_weights)  # Input cost matrix
+    R = np.diag(input_gains)  # Input cost matrix
 
     # Compute the feedback gain matrix K
     P = linalg.solve_discrete_are(ss.A, ss.B, Q, R)

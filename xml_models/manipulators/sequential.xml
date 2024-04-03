@@ -1,0 +1,64 @@
+<mujoco model="manipulator">
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" width="512" height="512" rgb1=".1 .2 .3" rgb2=".2 .3 .4"/>
+    <material name="grid" texture="grid" texrepeat="1 1" texuniform="true" reflectance=".2"/>
+  </asset>
+
+  <worldbody>
+    <light name="top" pos="0 0 3"/>
+    <body name="link1" pos="0 0 .01">
+      <joint name="tx" type="slide" axis="1 0 0"/>
+      <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
+      <body name="link2">
+        <joint name="ty" type="slide" axis="0 1 0"/>
+        <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
+        <body name="link3">
+          <joint name="tz" type="slide" axis="0 0 1"/>
+          <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
+          <body name="link4">
+            <joint name="rx" type="hinge" axis="1 0 0"/>
+            <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
+            <body name="link5">
+              <joint name="ry" type="hinge" axis="0 1 0"/>
+              <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
+              <body name="link6">
+                <joint name="rz" type="hinge" axis="0 0 1"/>
+                <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
+                <site name="attachment"/>
+                <camera name="tracking" mode="track" pos="0 0 1"/>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <motor name="mtr_tx" joint="tx"/>
+    <motor name="mtr_ty" joint="ty"/>
+    <motor name="mtr_tz" joint="tz"/>
+    <motor name="mtr_rx" joint="rx"/>
+    <motor name="mtr_ry" joint="ry"/>
+    <motor name="mtr_rz" joint="rz"/>
+  </actuator>
+
+  <sensor>
+    <actuatorfrc name="frc_tx" actuator="mtr_tx"/>
+    <actuatorfrc name="frc_ty" actuator="mtr_ty"/>
+    <actuatorfrc name="frc_tz" actuator="mtr_tz"/>
+    <actuatorfrc name="frc_rx" actuator="mtr_rx"/>
+    <actuatorfrc name="frc_ry" actuator="mtr_ry"/>
+    <actuatorfrc name="frc_rz" actuator="mtr_rz"/>
+    <force name="frc" site="attachment"/>
+    <torque name="trq" site="attachment"/>
+    <framelinvel name="linvel_x_obj" objtype="body" objname="target/object"/>
+    <frameangvel name="angvel_x_obj" objtype="body" objname="target/object"/>
+    <framelinacc name="linacc_x_obj" objtype="body" objname="target/object"/>
+    <frameangacc name="angacc_x_obj" objtype="body" objname="target/object"/>
+  </sensor>
+
+  <keyframe>
+    <key name="init_pose" qpos="1 1 1 0 0 0"/>
+  </keyframe>
+</mujoco>

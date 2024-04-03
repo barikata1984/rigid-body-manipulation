@@ -1,20 +1,22 @@
 import os
-from pathlib import Path 
+from datetime import datetime
+from pathlib import Path
 
 import cv2
 import json
 import numpy as np
 import mujoco as mj
-import dynamics as dyn
 import matplotlib as mpl
-import visualization as vis
-import transformations as tf
-from matplotlib import pyplot as plt
-from configure import load_configs
-from liegroups import SO3, SE3
 from datetime import datetime
+from liegroups import SO3, SE3
+from matplotlib import pyplot as plt
 from scipy import linalg
 from tqdm import tqdm
+
+import dynamics as dyn
+import transformations as tf
+import visualization as vis
+from configure import load_configs
 
 
 # Remove redundant space at the head and tail of the horizontal axis's scale
@@ -26,8 +28,6 @@ np.set_printoptions(precision=5, suppress=True)
 def main():
     config_file = Path.cwd() / "configs" / "config.toml"
     m, d, t, cam, ss, plan = load_configs(config_file)
-
-    K = dyn.compute_gain_matrix(m, d, ss)
 
     out = cv2.VideoWriter(cam.output_file, cam.fourcc, t.fps, (cam.width, cam.height))
     renderer = mj.Renderer(m, cam.height, cam.width)
@@ -91,7 +91,7 @@ def main():
     gacc_x[:3] = -mj.MjOption().gravity
     dtwist_x_x = gacc_x.copy()
     # gain matrix for linear quadratic regulator
-    K = dyn.compute_gain_matrix(m, d, ss)
+    K = dyn.compute_gain_matrix(ss, [1, 1, 1, 1e+6, 1e+6, 1e+6])
 
     # IDs for convenience
     sen_id = mj.mj_name2id(m, mj.mjtObj.mjOBJ_SITE, "ft_sen")
