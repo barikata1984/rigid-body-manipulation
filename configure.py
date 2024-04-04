@@ -108,7 +108,7 @@ def load_configs(config_file):
         codec_4chr=config.track_cam.codec,
         output_file=config.track_cam.output_file)
 
-    ss = dyn.StateSpace(m, d, config)
+#    ss = dyn.StateSpace(m, d, config)
 
     plan = generate_trajectory_planner(
         m=m,
@@ -117,5 +117,5 @@ def load_configs(config_file):
         init_frame=config.trajectory.init_frame,
         dqpos=config.trajectory.dqpos)
 
-    return m, d, t, cam, ss, plan
+    return m, d, t, cam, plan  # ss, plan
 

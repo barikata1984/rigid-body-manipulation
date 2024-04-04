@@ -1,12 +1,23 @@
+from collections.abc import Iterable
+from typing import Union
+
 import numpy as np
-import mujoco as mj
+#import mujoco as mj
+#from attrdict import AttrDict
 from liegroups import SE3
-from attrdict import AttrDict
+from mujoco._functions import mjd_transitionFD
+from mujoco._structs import MjModel, MjData
+from numpy.typing import NDArray
 from scipy import linalg
 
 
 class StateSpace:
-    def __init__(self, m: mj.MjModel, d: mj.MjData, config: AttrDict):
+    def __init__(self,
+                 m: MjModel,
+                 d: MjData,
+                 epsilon: float,
+                 centered: bool,
+                 ) -> None:
         self.ns = 2 * m.nv + m.na  # Number of dimensions of state space
         self.nsensordata = m.nsensordata  # Number of sensor ourputs
 
@@ -15,20 +26,14 @@ class StateSpace:
         self.C = np.zeros((m.nsensordata, self.ns))  # State output matrix
         self.D = np.zeros((m.nsensordata, m.nu))  # input output matrix
 
-        self.eps = config.lqr.epsilon
-        self.flg_centered = config.lqr.centered
-
-        self.input_weights = config.lqr.input_weights
-
-        mj.mjd_transitionFD(
-            m, d, self.eps, self.flg_centered, self.A, self.B, self.C, self.D)
+        mjd_transitionFD(
+            m, d, epsilon, centered, self.A, self.B, self.C, self.D)
 
 
-def compute_gain_matrix(ss: StateSpace, input_gains: list[float]):
-
-    Q = np.eye(ss.ns)  # State cost matrix
-    R = np.diag(input_gains)  # Input cost matrix
-
+def compute_gain_matrix(ss: StateSpace,
+                        input_gains: list[float]) -> NDArray:
+    Q = np.eye(ss.ns)  # Initial state cost matrix
+    R = np.diag(input_gains)  # Input gain matrix
     # Compute the feedback gain matrix K
     P = linalg.solve_discrete_are(ss.A, ss.B, Q, R)
     K = linalg.pinv(R + ss.B.T @ P @ ss.B) @ ss.B.T @ P @ ss.A
@@ -36,24 +41,41 @@ def compute_gain_matrix(ss: StateSpace, input_gains: list[float]):
     return K
 
 
-def _compose_simat(mass, diag_i):
+def _compose_simat(mass: float,
+                   diag_i: Union[list[float], NDArray],
+                   ) -> NDArray:
     imat = np.diag(diag_i)  # inertia matrix
     return np.block([[mass * np.eye(3), np.zeros((3, 3))],
                      [np.zeros((3, 3)), imat]])
 
 
-def compose_spatial_inertia_matrices(mass, diagonal_inertia):
+def compose_spatial_inertia_matrices(mass,
+                                     diagonal_inertia,
+                                     ):
     assert len(mass) == len(diagonal_inertia), "Lenght of 'mass' of the bodies and 'diagonal_inertia' vectors must match."
     return np.array([_compose_simat(m, di) for m, di in zip(mass, diagonal_inertia)])
 
 
-def transfer_sinert(pose, spati):
-    assert len(pose) == len(spati), "The numbers of spatial inertia tensors and SE3 instances do not match."
+def transfer_simats(poses,  # TODO: annotate later...
+                    simats,  # TODO: annotate later...
+                    ) -> NDArray:
+    poses_is_iterable = True
 
-    pose_adjoint = [p.inv().adjoint() for p in pose]
-    transfered = [adj.T @ si @ adj for adj, si in zip(pose_adjoint, spati)]
+    # Add a batch dimension to handle a set of single pose and simat
+    if not isinstance(poses, Iterable):
+        # poses is an instance of liegroups.numpy.se3.SE3Matrix if this block hit
+        poses_is_iterable = False
+        poses = [poses]
 
-    return np.array(transfered)
+    if 2 == simats.ndim:
+        simats = [simats]
+
+    assert len(poses) == len(simats), "The numbers of spatial inertia tensors and SE3 instances do not match."
+
+    adjoints = [p.inv().adjoint() for p in poses]
+    transfered = np.array([adj.T @ sim @ adj for adj, sim in zip(adjoints, simats)])
+
+    return transfered if poses_is_iterable else transfered[0]
 
 
 def inverse(
@@ -64,7 +86,7 @@ def inverse(
         twist_0: np.ndarray,
         dtwist_0: np.ndarray,
         wrench_tip: np.ndarray = np.zeros(6),
-        pose_tip_ee=SE3.identity()):
+        pose_tip_ee: NDArray = SE3.identity()):
 
     # Prepare lie group, twist, and dtwist storage arrays
     poses = []  # T_{i, i - 1} in Modern Robotics
@@ -91,7 +113,6 @@ def inverse(
     # Backward iterations
     wrench = [wrench_tip]
     poses.append(pose_tip_ee)
-
     # Let m the # of joint/actuator axes, the backward iteration should be
     # performed from index m to 1. So, the range is set like below.
     for i in range(len(uscrew), 0, -1):
@@ -114,7 +135,7 @@ def compute_linvel(pose, twist, coord_xfer_twist=False):
     htrans = np.array([*pose.trans, 1])  # convert into homogeneous coordinates
     hlinvel = SE3.wedge(twist) @ htrans
 
-    return hlinvel[:3] 
+    return hlinvel[:3]
 
 
 def coordinate_transform_dtwist(pose, twist, dtwist, coord_xfer_twist=False):
@@ -127,7 +148,7 @@ def coordinate_transform_dtwist(pose, twist, dtwist, coord_xfer_twist=False):
 def compute_linacc(pose, twist, dtwist, coord_xfer_tdtwist=False):
     if coord_xfer_tdtwist:  #  if twist is not coordinate transfered beforehand
         twist = pose.adjoint() @ twist
-        dtwist = coordinate_transform_dtwist(pose, twist, dtwist, coord_xfer_twist=False) 
+        dtwist = coordinate_transform_dtwist(pose, twist, dtwist, coord_xfer_twist=False)
   
     htrans = np.array([*pose.trans, 1])
     linvel = compute_linvel(pose, twist)

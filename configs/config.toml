@@ -1,5 +1,5 @@
 [xml]
-  system_file = "obj_w_links.xml"
+  system_file = "_obj_w_links.xml"
   rel_root_path = "./xml_models"
 
 [simu_time]
@@ -30,6 +30,7 @@
   epsilon = 0.000001  # Differential displacement
   centered = true  # Use the centred differentiation; false for the forward one
   input_weights = [1, 1, 1, 1_000_000, 1_000_000, 1_000_000]
+#  input_weights = [1, 1, 1, 1, 1, 1]
 
 [wisp_input]
   input_file = "transforms.json"

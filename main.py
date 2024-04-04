@@ -1,22 +1,29 @@
 import os
+from copy import deepcopy
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
 import cv2
 import json
-import numpy as np
 import mujoco as mj
 import matplotlib as mpl
+import numpy as np
 from datetime import datetime
+from dm_control import mjcf
 from liegroups import SO3, SE3
 from matplotlib import pyplot as plt
+from mujoco._functions import mj_name2id
+from mujoco._structs import MjModel, MjData
+from mujoco._enums import mjtObj
+from omegaconf import OmegaConf, MISSING
 from scipy import linalg
 from tqdm import tqdm
 
-import dynamics as dyn
 import transformations as tf
 import visualization as vis
 from configure import load_configs
+from dynamics import StateSpace, compute_gain_matrix, compose_spatial_inertia_matrices, transfer_simats, inverse, coordinate_transform_dtwist, compute_linacc
 
 
 # Remove redundant space at the head and tail of the horizontal axis's scale
@@ -25,9 +32,48 @@ mpl.rcParams['axes.xmargin'] = 0
 np.set_printoptions(precision=5, suppress=True)
 
 
-def main():
+@dataclass
+class SimulationConfig:
+    manipulator_name: str = "sequential"
+    target_name: str = "uniform123_128"
+    epsilon: float = 1e-8
+    centered: bool = True
+    input_gains: list[float] = MISSING
+
+def generate_model_data(manipulator_name: str,
+                        target_name: str,
+                        ) -> tuple[MjModel, MjData]:
+    # Load a manipulator's .xml
+    xml_dir = Path.cwd() / "xml_models"
+    manipulator_path = xml_dir / "manipulators" / f"{manipulator_name}.xml"
+    manipulator = mjcf.from_path(manipulator_path)
+
+    # Load the .xml of a target object and its mass distribution .npy
+    target_dir = xml_dir / "targets" / target_name
+    target_object_path = target_dir / "object.xml"
+    mass_distr_path = target_dir / "mass_distr.npy"
+    target_object = mjcf.from_path(target_object_path)
+
+    # Attache the object to obtain the complete model tree
+    attachement_site = manipulator.find("site", "attachment")
+    attachement_site.attach(target_object)
+    # Spawn a model
+    m = MjModel.from_xml_string(manipulator.to_xml_string())  # I thought that this should print exactly the same as the final generated XML
+
+    print(f"{manipulator.to_xml_string()}")
+
+    return m, MjData(m)
+
+
+def main(cfg):
     config_file = Path.cwd() / "configs" / "config.toml"
-    m, d, t, cam, ss, plan = load_configs(config_file)
+    m, d, t, cam, plan = load_configs(config_file)
+
+    m, d = generate_model_data(cfg.manipulator_name, cfg.target_name)
+
+    ss = StateSpace(m, d, cfg.epsilon, cfg.centered)
+
+    print(f"{len(m.body_inertia)=}")
 
     out = cv2.VideoWriter(cam.output_file, cam.fourcc, t.fps, (cam.width, cam.height))
     renderer = mj.Renderer(m, cam.height, cam.width)
@@ -58,10 +104,50 @@ def main():
     #          c/ci | body's child itself or its frame/child's principal frame
     #             q | joint space
 
-    simats_bi_b = dyn.compose_spatial_inertia_matrices(m.body_mass, m.body_inertia)
+    simats_bi_b = compose_spatial_inertia_matrices(m.body_mass, m.body_inertia)
     # Convert sinert_i to sinert_b rel2 the body frame
     poses_b_bi = tf.posquat2SE3s(m.body_ipos, m.body_iquat)
-    simats_b_b = dyn.transfer_sinert(poses_b_bi, simats_bi_b)
+    poses_x_b = tf.posquat2SE3s(d.xpos, d.xquat)
+    simats_b_b = transfer_simats(poses_b_bi, simats_bi_b)
+
+    # TODO: make the following section a recursion >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    link6_id = mj_name2id(m, mjtObj.mjOBJ_BODY, "link6")
+    print(f"{link6_id=}")
+    target_id = mj_name2id(m, mjtObj.mjOBJ_BODY, "target/")
+    print(f"{target_id=}")
+    object_id = mj_name2id(m, mjtObj.mjOBJ_BODY, "target/object")
+    print(f"{object_id=}")
+
+    pose_x_link6 = poses_x_b[link6_id]
+    pose_x_target = poses_x_b[target_id]
+    pose_x_object = poses_x_b[object_id]
+
+    pose_link6_target = pose_x_link6.inv().dot(pose_x_target)
+    pose_link6_object = pose_x_link6.inv().dot(pose_x_object)
+
+    simat_target_target = simats_b_b[target_id]
+    simat_object_object = simats_b_b[object_id]
+
+#    print(f"{type(pose_link6_target)=}")
+    simat_link6_target = transfer_simats(pose_link6_target, simat_target_target)
+    simat_link6_object = transfer_simats(pose_link6_object, simat_object_object)
+
+    simats_b_b[link6_id] += simat_link6_target
+    simats_b_b[link6_id] += simat_link6_object
+
+    simats_b_b = simats_b_b[:link6_id+1]
+
+    # TODO: <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+    print(f"{simat_link6_target=}")
+    print(f"{simat_link6_object=}")
+
+    #j ここに simat_target_targe と simat_object_object を
+    #j simat_link6_target と simat_link6_object に変える処理を書いて、
+    #j でもって simat_link6_link6 に足し合わせればよいはず。
+    #j ちなみにこれが成立するのは object が link6 に welded だから
+
+
     mom_i = np.array([*simats_b_b[-1, 3:, 3:].diagonal(),
                       *simats_b_b[-1, 3 , 4:],
                        simats_b_b[-1, 4 , 5 ]])
@@ -84,6 +170,8 @@ def main():
         slicer = 3 * (jnt_type - 2)  # jnt_type: 2 for slide, 3 for hinge
         uscrew_b_b[b, slicer:slicer + 3] = ax / linalg.norm(ax)
 
+    print(f"{len(uscrew_b_b)=}")
+
     # Set up dynamics related variables =======================================
     # (d)twist vectors for the worldbody to be used for inverse dynamics
     twist_x_x = np.zeros(6)
@@ -91,7 +179,7 @@ def main():
     gacc_x[:3] = -mj.MjOption().gravity
     dtwist_x_x = gacc_x.copy()
     # gain matrix for linear quadratic regulator
-    K = dyn.compute_gain_matrix(ss, [1, 1, 1, 1e+6, 1e+6, 1e+6])
+    K = compute_gain_matrix(ss, [1, 1, 1, 1e+6, 1e+6, 1e+6])
 
     # IDs for convenience
     sen_id = mj.mj_name2id(m, mj.mjtObj.mjOBJ_SITE, "ft_sen")
@@ -126,7 +214,7 @@ def main():
     for step in tqdm(range(t.n_steps), desc="Progress of simulation"):
         # Compute actuator controls and evolute the simulatoin
         tgt_traj = plan(step)
-        tgt_ctrl, _, _, _= dyn.inverse(
+        tgt_ctrl, _, _, _= inverse(
             tgt_traj, hposes_a_b, simats_b_b, uscrew_b_b, twist_x_x, dtwist_x_x)
         # Residual of state
         mj.mj_differentiatePos(  # Use this func to differenciate quat properly
@@ -153,20 +241,23 @@ def main():
         pose_x_sen = tf.trzs2SE3(d.site_xpos[sen_id], d.site_xmat[sen_id])
         pose_sen_obj = pose_x_sen.inv().dot(pose_x_obj)
 
+        # Compute (d)twists using dyn.inverse() again to validate the method by
+        # comparing derived acceleration and force/torque with their sensor
+        # measurements later
         traj = np.stack((d.qpos, d.qvel, d.qacc))
-        _, _, twists, dtwists = dyn.inverse(
+        _, _, twists, dtwists = inverse(
             traj, hposes_a_b, simats_b_b, uscrew_b_b, twist_x_x, dtwist_x_x)
 
         # First-order time derivative - - - - - - - - - - - - - - - - - - - - -
         twist_obj_obj = twists[-1]
         twist_sen_obj = pose_sen_obj.adjoint() @ twist_obj_obj
-#        linvel_sen_obj = dyn.compute_linvel(pose_sen_obj, twist_obj_obj, coord_xfer_twist=True)
+#        linvel_sen_obj = compute_linvel(pose_sen_obj, twist_obj_obj, coord_xfer_twist=True)
 
         # Second-order time derivative - - - - - - - - - - - - - - - - - - - - 
         dtwist_obj_obj = dtwists[-1]
-        dtwist_sen_obj = dyn.coordinate_transform_dtwist(
+        dtwist_sen_obj = coordinate_transform_dtwist(
             pose_sen_obj, twist_sen_obj, dtwist_obj_obj)  # , coord_xfer_twist=True)
-        linacc_sen_obj = dyn.compute_linacc(
+        linacc_sen_obj = compute_linacc(
             pose_sen_obj, twist_sen_obj, dtwist_sen_obj)  # , coord_xfer_twist=True)
 
 #        v_sen_obj, w_sen_obj = np.split(twist_sen_obj, 2)
@@ -282,4 +373,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    base_config = OmegaConf.structured(SimulationConfig)
+    cli_config = OmegaConf.from_cli()
+    cfg = OmegaConf.merge(base_config, cli_config)
+
+    main(cfg)
