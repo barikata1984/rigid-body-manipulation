@@ -57,6 +57,7 @@ np.set_printoptions(precision=5, suppress=True)
 
 def simulate(m: MjModel,
              d: MjData,
+             gt_mass_distr,  # TODO: annotate late...
              logger, planner, controller,  # TODO: annotate late... make a BaseModule or something and use Protocol or Generic, maybe...
              ):
     _simats_bi_b = compose_spatial_inertia_matrices(m.body_mass, m.body_inertia)
@@ -291,7 +292,6 @@ if __name__ == "__main__":
     # Load configuraion
     cfg = OmegaConf.structured(SimulationConfig)
     cli_cfg = OmegaConf.from_cli()
-#    cfg = OmegaConf.merge(base_config, cli_config)
 
     try:
         yaml_cfg = OmegaConf.load(cli_cfg.read_config)
@@ -307,17 +307,17 @@ if __name__ == "__main__":
     except MissingMandatoryValue:
         pass
 
-    # Instantiate necessary classes
-    m, d, gt_mass_distr = generate_model_data(cfg)
-
     # Fill a potentially missing field of a logger configulation
     try:
         cfg.logger.dataset_dir
     except MissingMandatoryValue:
         cfg.logger.dataset_dir = Path.cwd() / "datasets" / cfg.target_name
 
+    # Generate core data structures
+    m, d, gt_mass_distr = generate_model_data(cfg)
+    # Instantiate necessary classes
     logger = autoinstantiate(cfg.logger, m, d)
     planner = autoinstantiate(cfg.planner, m, d)
     controller = autoinstantiate(cfg.controller, m, d)
 
-    simulate(m, d, logger, planner, controller)
+    simulate(m, d, gt_mass_distr, logger, planner, controller)

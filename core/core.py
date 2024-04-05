@@ -13,6 +13,7 @@ from numpy.typing import NDArray
 from omegaconf.dictconfig import DictConfig
 from omegaconf.listconfig import ListConfig
 
+# import all to make autoinstantiate() work
 from controllers import *
 from dynamics import *
 from loggers import *
@@ -24,7 +25,7 @@ class SimulationConfig:
     manipulator_name: str = "sequential"
     target_name: str = "uniform123_128"
     reset_keyframe: str = "initial_state"
-    state_space: StateSpaceConfig = StateSpaceConfig()
+    state_space: StateSpaceConfig = StateSpaceConfig()  # from dynamics
     logger: LoggerConfig = LoggerConfig()
     planner: JointPositionPlannerConfig = JointPositionPlannerConfig()
     controller: LinearQuadraticRegulatorConfig = LinearQuadraticRegulatorConfig()
