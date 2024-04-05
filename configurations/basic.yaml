@@ -1,0 +1,41 @@
+manipulator_name: sequential
+target_name: uniform123_128
+reset_keyframe: initial_state
+state_space:
+  epsilon: 1.0e-08
+  centered: true
+logger:
+  target_class: Logger
+  track_cam_name: tracking
+  fig_height: 800
+  fig_width: 800
+  fps: 60
+  videoname: output.mp4
+  videcodec: mp4v
+  dataset_dir: ???
+planner:
+  target_class: JointPositionPlanner
+  duration: 2.0
+  timestep: -1.0
+  displacement:
+  - 0.2
+  - 0.4
+  - 0.6
+  - 3.141592653589793
+  - 0.9424777960769379
+  - 4.71238898038469
+  pos_offset: ???
+controller:
+  target_class: LinearQuadraticRegulator
+  state_space:
+    epsilon: 1.0e-08
+    centered: true
+  input_gains:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 10.0
+  - 10.0
+  - 10.0
+read_config: ./configurations/basic.yaml
+write_config: ./configurations/basic.yaml

@@ -1,4 +1,3 @@
-import os
 from datetime import datetime
 from pathlib import Path
 
@@ -12,13 +11,13 @@ from mujoco._enums import mjtObj
 from mujoco._functions import mj_differentiatePos, mj_name2id, mj_step
 from mujoco._structs import MjModel, MjData, MjOption
 from omegaconf import OmegaConf
-from omegaconf.errors import MissingMandatoryValue
+from omegaconf.errors import ConfigAttributeError, MissingMandatoryValue
 from scipy import linalg
 from tqdm import tqdm
 
 import transformations as tf
 import visualization as vis
-from config import SimulationConfig, generate_model_data, autoinstantiate
+from core import SimulationConfig, generate_model_data, autoinstantiate
 from dynamics import compose_spatial_inertia_matrices, transfer_simats, inverse, coordinate_transform_dtwist, compute_linacc
 
 
@@ -56,7 +55,10 @@ mpl.rcParams['axes.xmargin'] = 0
 np.set_printoptions(precision=5, suppress=True)
 
 
-def simulate(m, d, logger, planner, controller):
+def simulate(m: MjModel,
+             d: MjData,
+             logger, planner, controller,  # TODO: annotate late... make a BaseModule or something and use Protocol or Generic, maybe...
+             ):
     _simats_bi_b = compose_spatial_inertia_matrices(m.body_mass, m.body_inertia)
     # Convert sinert_i to sinert_b rel2 the body frame
     poses_b_bi = tf.posquat2SE3s(m.body_ipos, m.body_iquat)
@@ -84,10 +86,10 @@ def simulate(m, d, logger, planner, controller):
 #         f"    First moments:      {SO3.vee(simats_b_b[-1, 3:, :3])}\n"
 #         f"    Moments of inertia: {mom_i}\n")
 
-    # Configure SE3 of child frame rel2 parent frame (M_{i, i - 1} in MR)
+    # Configure SE3 of child frame wr2 parent frame (M_{i, i - 1} in MR)
     hposes_a_b = tf.posquat2SE3s(m.body_pos, m.body_quat)
 
-    # Obtain unit screw rel2 each link = body (A_{i} in MR)
+    # Obtain unit screw wr2 each link = body (A_{i} in MR)
     uscrew_b_b = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
     for b, (jnt_type, ax) in enumerate(zip(m.jnt_type, m.jnt_axis), 0):
         slicer = 3 * (jnt_type - 2)  # jnt_type: 2 for slide, 3 for hinge
@@ -201,14 +203,14 @@ def simulate(m, d, logger, planner, controller):
             alpha = np.where(
                 np.all(bgr == 0, axis=-1), 0, 255)[..., np.newaxis]
             file_name = f"{frame_count:04}.png"
-            cv2.imwrite(str(logger.images_dir / file_name),
+            cv2.imwrite(str(logger.image_dir / file_name),
                         np.append(bgr, alpha, axis=2))  # image (bgr + alpha)
             # Write a video frame
             logger.videowriter.write(bgr)
 
             # Log NeMD ingredients ============================================
             frame = dict(
-                file_path=str(logger.images_dir / file_name),
+                file_path=str(logger.image_dir / file_name),
 #                pose_obj_cam=pose_obj_cam.as_matrix().T.tolist(),
                 transform_matrix=pose_obj_cam.as_matrix().tolist(),
                 pose_sen_obj=pose_sen_obj.as_matrix().tolist(),
@@ -287,19 +289,32 @@ def simulate(m, d, logger, planner, controller):
 
 if __name__ == "__main__":
     # Load configuraion
-    base_config = OmegaConf.structured(SimulationConfig)
-    cli_config = OmegaConf.from_cli()
-    cfg = OmegaConf.merge(base_config, cli_config)
+    cfg = OmegaConf.structured(SimulationConfig)
+    cli_cfg = OmegaConf.from_cli()
+#    cfg = OmegaConf.merge(base_config, cli_config)
+
+    try:
+        yaml_cfg = OmegaConf.load(cli_cfg.read_config)
+        cfg = OmegaConf.merge(cfg, yaml_cfg)
+    except ConfigAttributeError:  # if read_config not provided, cli_cfg does
+        pass                      # not have it as its attribute, so using
+                                  # this error rather than MissingMandatoryValue
+
+    cfg = OmegaConf.merge(cfg, cli_cfg)
+
+    try:
+        OmegaConf.save(cfg, cfg.write_config)
+    except MissingMandatoryValue:
+        pass
 
     # Instantiate necessary classes
-    m, d, gt_mass_distr = generate_model_data(cfg.core)
+    m, d, gt_mass_distr = generate_model_data(cfg)
 
-    # Fill a potentially missing field of a logger comfigulation
+    # Fill a potentially missing field of a logger configulation
     try:
         cfg.logger.dataset_dir
     except MissingMandatoryValue:
-        cfg.logger.dataset_dir = Path.cwd() / "data" / cfg.core.target_name
-        pass
+        cfg.logger.dataset_dir = Path.cwd() / "datasets" / cfg.target_name
 
     logger = autoinstantiate(cfg.logger, m, d)
     planner = autoinstantiate(cfg.planner, m, d)

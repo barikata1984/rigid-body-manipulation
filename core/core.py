@@ -2,7 +2,7 @@ import inspect
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
 
 import numpy as np
 from dm_control import mjcf
@@ -11,6 +11,7 @@ from mujoco._structs import MjData, MjModel, MjOption
 from mujoco._enums import mjtObj
 from numpy.typing import NDArray
 from omegaconf.dictconfig import DictConfig
+from omegaconf.listconfig import ListConfig
 
 from controllers import *
 from dynamics import *
@@ -19,22 +20,19 @@ from planners import *
 
 
 @dataclass
-class CoreConfig:
+class SimulationConfig:
     manipulator_name: str = "sequential"
     target_name: str = "uniform123_128"
     reset_keyframe: str = "initial_state"
-
-
-@dataclass
-class SimulationConfig:
-    core: CoreConfig = CoreConfig()
     state_space: StateSpaceConfig = StateSpaceConfig()
     logger: LoggerConfig = LoggerConfig()
     planner: JointPositionPlannerConfig = JointPositionPlannerConfig()
     controller: LinearQuadraticRegulatorConfig = LinearQuadraticRegulatorConfig()
+    read_config: str = MISSING
+    write_config: str = MISSING
 
 
-def generate_model_data(cfg: CoreConfig,
+def generate_model_data(cfg: Union[DictConfig, ListConfig],
                         ) -> tuple[MjModel, MjData, NDArray]:
     # Load a manipulator's .xml
     xml_dir = Path.cwd() / "xml_models"
@@ -79,9 +77,9 @@ def generate_model_data(cfg: CoreConfig,
 def autoinstantiate(cfg: DictConfig,
                     m: MjModel,
                     d: MjData,
-                    ) -> Any:  # TODO: reasonable but rough, use Protocol or Generic
+                    *args, **kwargs) -> Any:  # TODO: reasonable but rough, use Protocol or Generic
 
     for name, _class in inspect.getmembers(sys.modules[__name__], inspect.isclass):
         if cfg.target_class == name:
-            return _class(cfg, m, d)
+            return _class(cfg, m, d, *args, **kwargs)
 

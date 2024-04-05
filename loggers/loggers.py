@@ -21,8 +21,7 @@ class LoggerConfig:
     fps: int = 60
     videoname: str = "output.mp4"
     videcodec: str = "mp4v"
-    dataset_dir: Any = MISSING  # want to use os.PathLike but
-                                # omegaconf does not support
+    dataset_dir: str = MISSING
 
 
 class Logger:
@@ -38,11 +37,9 @@ class Logger:
         self.cam_fovy = radians(m.cam_fovy[self.cam_id])
         self.cam_focus = self.fig_height / tan(.5 * self.cam_fovy)
         self.cam_fovx = 2 * atan2(self.fig_width, self.cam_focus)
-        #self.output_videoname = cfg.output_videoname
-        #self.fourcc = cv2.VideoWriter_fourcc(*cfg.codec_4chr)
         self.fps = cfg.fps
-        self.dataset_dir = cfg.dataset_dir
-        self.images_dir = Path(self.dataset_dir) / "images"
+        self.dataset_dir = Path(cfg.dataset_dir)
+        self.image_dir = self.dataset_dir / "images"
 
         self.videowriter = cv2.VideoWriter(str(self.dataset_dir / cfg.videoname),
                                            cv2.VideoWriter_fourcc(*cfg.videcodec),
@@ -52,7 +49,7 @@ class Logger:
 
         self.renderer = Renderer(m, self.fig_height, self.fig_width)
 
-        os.makedirs(self.images_dir, exist_ok=True)
+        os.makedirs(self.image_dir, exist_ok=True)
 
 #        print("Tracking camera setup =======================================\n"
 #             f"    Tracking camera id:         {self.id}\n"
