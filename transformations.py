@@ -1,13 +1,14 @@
 import numpy as np
 from transforms3d import affines
 from liegroups import SO3, SE3  # may be replaced with robotics toolbox for python
+from numpy.typing import NDArray
 
 
-def trzs2SE3(
-        t: np.ndarray,
-        r: np.ndarray,
-        z: np.ndarray = np.ones(3),
-        s: np.ndarray = np.zeros(3)):
+def trzs2SE3(t: NDArray,
+             r: NDArray,
+             z: NDArray = np.ones(3),
+             s: NDArray = np.zeros(3),
+             ) -> SE3:
     """Compose an SE3 object by applying affine.compose of transforms3d and
     SE3.from_matrix module of liegrops
 
@@ -24,10 +25,9 @@ def trzs2SE3(
     return SE3.from_matrix(affines.compose(t, r.reshape((3, 3)), z, s))
 
 
-#@np.vectorize
-def tquat2SE3(
-        t: np.ndarray,
-        quat: np.ndarray):
+def tquat2SE3(t: NDArray,
+              quat: NDArray,
+              ) -> SE3:
     """Compose a SE3 object from a translation vector and a quaternion using
     the liegroups module.
 
@@ -42,9 +42,9 @@ def tquat2SE3(
     return SE3(SO3.from_quaternion(quat), t)
 
 
-def posquat2SE3(
-        p: np.ndarray,
-        q: np.ndarray) -> SE3:
+def posquat2SE3(p: NDArray,
+                q: NDArray,
+                ) -> SE3:
     """Compose a SE3 object from a translation vector and a quaternion using
     the liegroups module.
 
@@ -58,9 +58,9 @@ def posquat2SE3(
     return SE3(SO3.from_quaternion(q), p)
 
 
-def posquat2SE3s(
-        pos: np.ndarray,
-        quat: np.ndarray):
+def posquat2SE3s(pos: NDArray,
+                 quat: NDArray,
+                 ) -> list[NDArray]:
     """Compose a SE3 object from a translation vector and a quaternion using
     the liegroups module following the shapes of input pos and quat.
 

@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Union
 
 import numpy as np
@@ -11,12 +12,17 @@ from numpy.typing import NDArray
 from scipy import linalg
 
 
+@dataclass
+class StateSpaceConfig:
+    epsilon: float = 1e-8
+    centered: bool = True
+
+
 class StateSpace:
     def __init__(self,
                  m: MjModel,
                  d: MjData,
-                 epsilon: float,
-                 centered: bool,
+                 cfg: StateSpaceConfig,
                  ) -> None:
         self.ns = 2 * m.nv + m.na  # Number of dimensions of state space
         self.nsensordata = m.nsensordata  # Number of sensor ourputs
@@ -27,7 +33,7 @@ class StateSpace:
         self.D = np.zeros((m.nsensordata, m.nu))  # input output matrix
 
         mjd_transitionFD(
-            m, d, epsilon, centered, self.A, self.B, self.C, self.D)
+            m, d, cfg.epsilon, cfg.centered, self.A, self.B, self.C, self.D)
 
 
 def compute_gain_matrix(ss: StateSpace,

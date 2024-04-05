@@ -1,5 +1,0 @@
-<mujoco model="child">
-  <worldbody>
-    <geom name="bar" type="box" size=".1 .2 .3" pos=".5 .25 1."/>
-  </worldbody>
-</mujoco>

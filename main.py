@@ -1,29 +1,54 @@
 import os
-from copy import deepcopy
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
 import cv2
 import json
-import mujoco as mj
 import matplotlib as mpl
 import numpy as np
 from datetime import datetime
-from dm_control import mjcf
-from liegroups import SO3, SE3
 from matplotlib import pyplot as plt
-from mujoco._functions import mj_name2id
-from mujoco._structs import MjModel, MjData
 from mujoco._enums import mjtObj
-from omegaconf import OmegaConf, MISSING
+from mujoco._functions import mj_differentiatePos, mj_name2id, mj_step
+from mujoco._structs import MjModel, MjData, MjOption
+from omegaconf import OmegaConf
+from omegaconf.errors import MissingMandatoryValue
 from scipy import linalg
 from tqdm import tqdm
 
 import transformations as tf
 import visualization as vis
-from configure import load_configs
+from config import SimulationConfig, generate_model_data
 from dynamics import StateSpace, compute_gain_matrix, compose_spatial_inertia_matrices, transfer_simats, inverse, coordinate_transform_dtwist, compute_linacc
+from loggers import Logger
+from planners import JointPositionPlanner
+
+
+# Naming convention of spatial and dynamics variable:
+#
+# {descriptor}_{reference}_{described}, where
+#
+#    descriptor | Definition
+# --------------+------------
+#       (s)imat | (spatial) inertia matrix
+#       (h)pose | (home) pose
+#      (u)screw | (unit) screw
+#      (d)twist | (first-order time derivative of) twist
+#  (lin/ang)vel | (linear/angular) velocity
+#  (lin/ang)acc | (linear/angular) acceleration
+#         momsi | moments of inertia
+#          gacc | graviatational acceleration
+#  NOTE: 's' may follow a descriptor to clarify that the variable multiple descriptors.
+#
+#     reference |
+#     /descried | Definition
+# --------------+-------------
+#             x | world frame
+#             b | body itself or its frame (refer to the official documentation)
+#            bi | body's principal frame where the body's interia ellipsoid is defined
+#          a/ai | body's parent itself or its frame/parent's principal frame
+#          c/ci | body's child itself or its frame/child's principal frame
+#             q | joint space
 
 
 # Remove redundant space at the head and tail of the horizontal axis's scale
@@ -32,137 +57,36 @@ mpl.rcParams['axes.xmargin'] = 0
 np.set_printoptions(precision=5, suppress=True)
 
 
-@dataclass
-class SimulationConfig:
-    manipulator_name: str = "sequential"
-    target_name: str = "uniform123_128"
-    epsilon: float = 1e-8
-    centered: bool = True
-    input_gains: list[float] = MISSING
-
-def generate_model_data(manipulator_name: str,
-                        target_name: str,
-                        ) -> tuple[MjModel, MjData]:
-    # Load a manipulator's .xml
-    xml_dir = Path.cwd() / "xml_models"
-    manipulator_path = xml_dir / "manipulators" / f"{manipulator_name}.xml"
-    manipulator = mjcf.from_path(manipulator_path)
-
-    # Load the .xml of a target object and its mass distribution .npy
-    target_dir = xml_dir / "targets" / target_name
-    target_object_path = target_dir / "object.xml"
-    mass_distr_path = target_dir / "mass_distr.npy"
-    target_object = mjcf.from_path(target_object_path)
-
-    # Attache the object to obtain the complete model tree
-    attachement_site = manipulator.find("site", "attachment")
-    attachement_site.attach(target_object)
-    # Spawn a model
-    m = MjModel.from_xml_string(manipulator.to_xml_string())  # I thought that this should print exactly the same as the final generated XML
-
-    print(f"{manipulator.to_xml_string()}")
-
-    return m, MjData(m)
-
-
-def main(cfg):
-    config_file = Path.cwd() / "configs" / "config.toml"
-    m, d, t, cam, plan = load_configs(config_file)
-
-    m, d = generate_model_data(cfg.manipulator_name, cfg.target_name)
-
-    ss = StateSpace(m, d, cfg.epsilon, cfg.centered)
-
-    print(f"{len(m.body_inertia)=}")
-
-    out = cv2.VideoWriter(cam.output_file, cam.fourcc, t.fps, (cam.width, cam.height))
-    renderer = mj.Renderer(m, cam.height, cam.width)
-
-    # Naming convention of spatial and dynamics variable:
-    #
-    # {descriptor}_{reference}_{described}, where
-    #
-    #    descriptor | Definition
-    # --------------+------------
-    #       (s)imat | (spatial) inertia matrix
-    #       (h)pose | (home) pose
-    #      (u)screw | (unit) screw
-    #      (d)twist | (first-order time derivative of) twist
-    #  (lin/ang)vel | (linear/angular) velocity
-    #  (lin/ang)acc | (linear/angular) acceleration
-    #         momsi | moments of inertia
-    #          gacc | graviatational acceleration
-    #  NOTE: 's' may follow a descriptor to clarify that the variable multiple descriptors.
-    #
-    #     reference |
-    #     /descried | Definition
-    # --------------+-------------
-    #             x | world frame
-    #             b | body itself or its frame (refer to the official documentation)
-    #            bi | body's principal frame where the body's interia ellipsoid is defined
-    #          a/ai | body's parent itself or its frame/parent's principal frame
-    #          c/ci | body's child itself or its frame/child's principal frame
-    #             q | joint space
-
-    simats_bi_b = compose_spatial_inertia_matrices(m.body_mass, m.body_inertia)
+def simulate(m, d, ss, logger, planner):
+    _simats_bi_b = compose_spatial_inertia_matrices(m.body_mass, m.body_inertia)
     # Convert sinert_i to sinert_b rel2 the body frame
     poses_b_bi = tf.posquat2SE3s(m.body_ipos, m.body_iquat)
     poses_x_b = tf.posquat2SE3s(d.xpos, d.xquat)
-    simats_b_b = transfer_simats(poses_b_bi, simats_bi_b)
+    _simats_b_b = transfer_simats(poses_b_bi, _simats_bi_b)
 
-    # TODO: make the following section a recursion >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    # Join the spatial inertia matrices of bodies later than, or fixed relative to,
+    # link6 to the matrix of link6 so that dyn.inverse() can consider the bodies'
+    # inertia later
     link6_id = mj_name2id(m, mjtObj.mjOBJ_BODY, "link6")
-    print(f"{link6_id=}")
-    target_id = mj_name2id(m, mjtObj.mjOBJ_BODY, "target/")
-    print(f"{target_id=}")
-    object_id = mj_name2id(m, mjtObj.mjOBJ_BODY, "target/object")
-    print(f"{object_id=}")
-
     pose_x_link6 = poses_x_b[link6_id]
-    pose_x_target = poses_x_b[target_id]
-    pose_x_object = poses_x_b[object_id]
+    simats_b_b = _simats_b_b[:link6_id+1]
 
-    pose_link6_target = pose_x_link6.inv().dot(pose_x_target)
-    pose_link6_object = pose_x_link6.inv().dot(pose_x_object)
-
-    simat_target_target = simats_b_b[target_id]
-    simat_object_object = simats_b_b[object_id]
-
-#    print(f"{type(pose_link6_target)=}")
-    simat_link6_target = transfer_simats(pose_link6_target, simat_target_target)
-    simat_link6_object = transfer_simats(pose_link6_object, simat_object_object)
-
-    simats_b_b[link6_id] += simat_link6_target
-    simats_b_b[link6_id] += simat_link6_object
-
-    simats_b_b = simats_b_b[:link6_id+1]
-
-    # TODO: <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-
-    print(f"{simat_link6_target=}")
-    print(f"{simat_link6_object=}")
-
-    #j ここに simat_target_targe と simat_object_object を
-    #j simat_link6_target と simat_link6_object に変える処理を書いて、
-    #j でもって simat_link6_link6 に足し合わせればよいはず。
-    #j ちなみにこれが成立するのは object が link6 に welded だから
-
+    for p_x_b, _sim_b_b in zip(poses_x_b[link6_id+1:], _simats_b_b[link6_id+1:]):
+        p_link6_b = pose_x_link6.inv().dot(p_x_b)
+        _sim_link6_b = transfer_simats(p_link6_b, _sim_b_b)
+        simats_b_b[link6_id] += _sim_link6_b
 
     mom_i = np.array([*simats_b_b[-1, 3:, 3:].diagonal(),
                       *simats_b_b[-1, 3 , 4:],
                        simats_b_b[-1, 4 , 5 ]])
 
-    print("Target object's inertial parameters wr2 its body frame ======\n"
-         f"    Mass:               {m.body_mass[-1]}\n"
-         f"    First moments:      {SO3.vee(simats_b_b[-1, 3:, :3])}\n"
-         f"    Moments of inertia: {mom_i}\n")
+#    print("Target object's inertial parameters wr2 its body frame ======\n"
+#         f"    Mass:               {m.body_mass[-1]}\n"
+#         f"    First moments:      {SO3.vee(simats_b_b[-1, 3:, :3])}\n"
+#         f"    Moments of inertia: {mom_i}\n")
 
     # Configure SE3 of child frame rel2 parent frame (M_{i, i - 1} in MR)
     hposes_a_b = tf.posquat2SE3s(m.body_pos, m.body_quat)
-    # # Configure SE3 of each body frame rel2 worldbody (M_{i} = M_{0, i} in MR)
-    # hposes_x_b = [hposes_a_b[0].inv()]  # xb = 00, 01, ..., 06
-    # for p_h_ba in hposes_a_b[1:]:
-    #     hposes_x_b.append(hposes_x_b[-1].dot(p_h_ba.inv()))
 
     # Obtain unit screw rel2 each link = body (A_{i} in MR)
     uscrew_b_b = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
@@ -170,36 +94,28 @@ def main(cfg):
         slicer = 3 * (jnt_type - 2)  # jnt_type: 2 for slide, 3 for hinge
         uscrew_b_b[b, slicer:slicer + 3] = ax / linalg.norm(ax)
 
-    print(f"{len(uscrew_b_b)=}")
-
     # Set up dynamics related variables =======================================
     # (d)twist vectors for the worldbody to be used for inverse dynamics
     twist_x_x = np.zeros(6)
     gacc_x = np.zeros(6)
-    gacc_x[:3] = -mj.MjOption().gravity
+    gacc_x[:3] = -1 * MjOption().gravity
     dtwist_x_x = gacc_x.copy()
     # gain matrix for linear quadratic regulator
-    K = compute_gain_matrix(ss, [1, 1, 1, 1e+6, 1e+6, 1e+6])
+    K = compute_gain_matrix(ss, [1, 1, 1, 1e+1, 1e+1, 1e+1])
 
     # IDs for convenience
-    sen_id = mj.mj_name2id(m, mj.mjtObj.mjOBJ_SITE, "ft_sen")
-    obj_id = mj.mj_name2id(m, mj.mjtObj.mjOBJ_BODY, "object")
+    sensor_id = mj_name2id(m, mjtObj.mjOBJ_SITE, "ft_sen")
+    object_id = mj_name2id(m, mjtObj.mjOBJ_BODY, "target/object")
 
     # Dictionary to be converted to a .json file for training
     aabb_scale = 0.3
     transforms = dict(
         date_time=datetime.now().strftime("%d/%m/%Y_%H:%M:%S"),
-        camera_angle_x=cam.fovx,
+        camera_angle_x=logger.cam_fovx,
         aabb_scale=aabb_scale,
         gt_mass_distr_file_path=None,
-        frames=list(),
+        frames=[],  # list(),
     )
-
-    # Make a directory in which the .json file is saved
-    dataset_dir = Path.cwd() / "data" / "uniform"  # "composite"
-    obs_dir = dataset_dir / "images"
-    if not os.path.isdir(obs_dir):
-        os.makedirs(obs_dir, exist_ok=True)
 
     # Prepare data containers =================================================
     res_qpos = np.empty(m.nu)
@@ -211,13 +127,13 @@ def main(cfg):
     frame_count = 0
 
     # Main loop ===============================================================
-    for step in tqdm(range(t.n_steps), desc="Progress of simulation"):
+    for step in tqdm(range(planner.n_steps), desc="Progress"):
         # Compute actuator controls and evolute the simulatoin
-        tgt_traj = plan(step)
+        tgt_traj = planner.plan(step)
         tgt_ctrl, _, _, _= inverse(
             tgt_traj, hposes_a_b, simats_b_b, uscrew_b_b, twist_x_x, dtwist_x_x)
         # Residual of state
-        mj.mj_differentiatePos(  # Use this func to differenciate quat properly
+        mj_differentiatePos(  # Use this func to differenciate quat properly
             m,  # MjModel
             res_qpos,  # data container for the residual of qpos
             m.nu,  # idx of a joint up to which res_qpos are calculated
@@ -227,18 +143,19 @@ def main(cfg):
         # Compute and set control, or actuator inputs
         d.ctrl = tgt_ctrl - K @ res_state
 
-        mj.mj_step(m, d) # Evolve the simulation = = = = = = = = = = = = = = = 
+        mj_step(m, d) # Evolve the simulation = = = = = = = = = = = = = = =
 
         # Process sensor reads and compute necessary data
         sensorread = d.sensordata.copy()
         # Scale sampled normalized coordinates ∈ (-1, 1) in wisp to the maximum 
         # length of an axis-aligned bounding box of the object.
         # Camera pose rel. to the object
-        pose_x_obj = tf.trzs2SE3(d.xpos[obj_id], d.xmat[obj_id])
-        pose_x_cam = tf.trzs2SE3(d.cam_xpos[cam.id], d.cam_xmat[cam.id])
+        pose_x_obj = tf.trzs2SE3(d.xpos[object_id], d.xmat[object_id])
+        pose_x_cam = tf.trzs2SE3(d.cam_xpos[logger.cam_id],
+                                 d.cam_xmat[logger.cam_id])
         pose_obj_cam = pose_x_obj.inv().dot(pose_x_cam)
         # FT sensor pose rel. to the object
-        pose_x_sen = tf.trzs2SE3(d.site_xpos[sen_id], d.site_xmat[sen_id])
+        pose_x_sen = tf.trzs2SE3(d.site_xpos[sensor_id], d.site_xmat[sensor_id])
         pose_sen_obj = pose_x_sen.inv().dot(pose_x_obj)
 
         # Compute (d)twists using dyn.inverse() again to validate the method by
@@ -276,25 +193,25 @@ def main(cfg):
 
         # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 
 
-        if frame_count <= d.time * t.fps:
+        if frame_count <= d.time * logger.fps:
 
         # ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 検証用コード追加ゾーン ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 
 
             # Writing a single frame of a dataset =============================
-            renderer.update_scene(d, cam.id)
-            bgr = renderer.render()[:, :, [2, 1, 0]]
+            logger.renderer.update_scene(d, logger.cam_id)
+            bgr = logger.renderer.render()[:, :, [2, 1, 0]]
             # Make an alpha mask to remove the black background
             alpha = np.where(
                 np.all(bgr == 0, axis=-1), 0, 255)[..., np.newaxis]
-            file_name = f"{frame_count:04}"
-            cv2.imwrite(str(obs_dir / file_name / ".png"),
+            file_name = f"{frame_count:04}.png"
+            cv2.imwrite(str(logger.images_dir / file_name),  # / ".png"),
                         np.append(bgr, alpha, axis=2))  # image (bgr + alpha)
             # Write a video frame
-            out.write(bgr)
+            logger.videowriter.write(bgr)
 
             # Log NeMD ingredients ============================================
             frame = dict(
-                file_path=str(obs_dir / file_name),
+                file_path=str(logger.images_dir / file_name),
 #                pose_obj_cam=pose_obj_cam.as_matrix().T.tolist(),
                 transform_matrix=pose_obj_cam.as_matrix().tolist(),
                 pose_sen_obj=pose_sen_obj.as_matrix().tolist(),
@@ -318,13 +235,12 @@ def main(cfg):
             # Sampling for NeMD terminated while "frame_count" incremented
             frame_count += 1
 
-    # VideoWriter released
-    out.release()
+    logger.videowriter.release()
 
 #    qpos_meas, qvel_meas, qfrc_meas, ft_meas_sen, obj_vel_x, obj_acc_x = np.split(
 #        sensordata, [1*m.nu, 2*m.nu, 3*m.nu, 4*m.nu, 5*m.nu], axis=1)
 
-    with open(dataset_dir / "transform.json", "w") as f:
+    with open(logger.dataset_dir / "transform.json", "w") as f:
         json.dump(transforms, f, indent=2)
 
     # Convert lists of logged data into ndarrays ==============================
@@ -373,8 +289,31 @@ def main(cfg):
 
 
 if __name__ == "__main__":
+    # Load configuraion
     base_config = OmegaConf.structured(SimulationConfig)
     cli_config = OmegaConf.from_cli()
     cfg = OmegaConf.merge(base_config, cli_config)
 
-    main(cfg)
+    # Instantiate necessary classes
+    m, d, gt_mass_distr = generate_model_data(cfg.core)
+    ss = StateSpace(m, d, cfg.state_space)
+
+    # Fill a potentially missing field of Logger
+    try:
+        cfg.logger.dataset_dir
+    except MissingMandatoryValue:
+        cfg.logger.dataset_dir = Path.cwd() / "data" / cfg.core.target_name
+        pass
+
+    logger = Logger(m, cfg.logger)
+    os.makedirs(logger.images_dir, exist_ok=True)
+
+    # Fill a potentially missing field of JointPositionPlanner
+    try:
+        cfg.planner.pos_offset
+    except MissingMandatoryValue:
+        cfg.planner.pos_offset = d.qpos.copy().tolist()  # awkward but omegaconf
+                                                         # does not support NDArray
+    planner = JointPositionPlanner(cfg.planner)
+
+    simulate(m, d, ss, logger, planner)
