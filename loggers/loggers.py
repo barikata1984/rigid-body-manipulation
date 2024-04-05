@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from math import atan2, radians, tan
 from pathlib import Path
@@ -6,13 +7,14 @@ from typing import Any
 import cv2
 from mujoco._enums import mjtObj
 from mujoco._functions import mj_name2id
-from mujoco._structs import MjModel
+from mujoco._structs import MjData, MjModel
 from mujoco.renderer import Renderer
 from omegaconf import MISSING
 
 
 @dataclass
 class LoggerConfig:
+    target_class: str = "Logger"
     track_cam_name: str = "tracking"
     fig_height: int = 800
     fig_width: int = 800
@@ -25,8 +27,9 @@ class LoggerConfig:
 
 class Logger:
     def __init__(self,
-                m: MjModel,
                 cfg: LoggerConfig,
+                m: MjModel,
+                d: MjData,
                 ) -> None:
         self.cam_name = cfg.track_cam_name
         self.cam_id = mj_name2id(m, mjtObj.mjOBJ_CAMERA, self.cam_name)
@@ -48,6 +51,8 @@ class Logger:
                                            )
 
         self.renderer = Renderer(m, self.fig_height, self.fig_width)
+
+        os.makedirs(self.images_dir, exist_ok=True)
 
 #        print("Tracking camera setup =======================================\n"
 #             f"    Tracking camera id:         {self.id}\n"

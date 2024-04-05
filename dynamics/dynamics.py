@@ -20,31 +20,31 @@ class StateSpaceConfig:
 
 class StateSpace:
     def __init__(self,
+                 cfg: StateSpaceConfig,
                  m: MjModel,
                  d: MjData,
-                 cfg: StateSpaceConfig,
                  ) -> None:
+        self.epsilon = cfg.epsilon
+        self.centered = cfg.centered
+
         self.ns = 2 * m.nv + m.na  # Number of dimensions of state space
         self.nsensordata = m.nsensordata  # Number of sensor ourputs
 
         self.A = np.zeros((self.ns, self.ns))  # State transition matrix
         self.B = np.zeros((self.ns, m.nu))  # Input state matrix
         self.C = np.zeros((m.nsensordata, self.ns))  # State output matrix
-        self.D = np.zeros((m.nsensordata, m.nu))  # input output matrix
+        self.D = np.zeros((m.nsensordata, m.nu))  # Input output matrix
 
+        # Populate the matrices
+        self.update_matrices(m, d)
+
+    def update_matrices(self,
+                        m: MjModel,
+                        d: MjData,
+                        ) -> None:
         mjd_transitionFD(
-            m, d, cfg.epsilon, cfg.centered, self.A, self.B, self.C, self.D)
+            m, d, self.epsilon, self.centered, self.A, self.B, self.C, self.D)
 
-
-def compute_gain_matrix(ss: StateSpace,
-                        input_gains: list[float]) -> NDArray:
-    Q = np.eye(ss.ns)  # Initial state cost matrix
-    R = np.diag(input_gains)  # Input gain matrix
-    # Compute the feedback gain matrix K
-    P = linalg.solve_discrete_are(ss.A, ss.B, Q, R)
-    K = linalg.pinv(R + ss.B.T @ P @ ss.B) @ ss.B.T @ P @ ss.A
-
-    return K
 
 
 def _compose_simat(mass: float,

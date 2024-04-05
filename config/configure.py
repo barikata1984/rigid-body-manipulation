@@ -1,5 +1,8 @@
+import inspect
+import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from dm_control import mjcf
@@ -7,11 +10,12 @@ from mujoco._functions import mj_name2id, mj_resetDataKeyframe
 from mujoco._structs import MjData, MjModel, MjOption
 from mujoco._enums import mjtObj
 from numpy.typing import NDArray
-from omegaconf import MISSING
+from omegaconf.dictconfig import DictConfig
 
-from dynamics import StateSpaceConfig
-from loggers import LoggerConfig
-from planners import JointPositionPlannerConfig
+from controllers import *
+from dynamics import *
+from loggers import *
+from planners import *
 
 
 @dataclass
@@ -27,8 +31,7 @@ class SimulationConfig:
     state_space: StateSpaceConfig = StateSpaceConfig()
     logger: LoggerConfig = LoggerConfig()
     planner: JointPositionPlannerConfig = JointPositionPlannerConfig()
-    # ControlConfig?
-    input_gains: list[float] = MISSING
+    controller: LinearQuadraticRegulatorConfig = LinearQuadraticRegulatorConfig()
 
 
 def generate_model_data(cfg: CoreConfig,
@@ -61,8 +64,6 @@ def generate_model_data(cfg: CoreConfig,
 
     return m, d, gt_mass_distr
 
-
-
     #print("Configure manipulator and object ============================")
     #xml_file = config.xml.system_file
     #print(f"    Loaded xml file: {xml_file}")
@@ -73,3 +74,14 @@ def generate_model_data(cfg: CoreConfig,
     #     f"    degrees of freedom (nu):            {m.nu:>2}\n"
     #     f"    actuator activations (na):          {m.na:>2}\n"
     #     f"    sensor outputs (nsensordata):       {m.nsensordata:>2}")
+
+
+def autoinstantiate(cfg: DictConfig,
+                    m: MjModel,
+                    d: MjData,
+                    ) -> Any:  # TODO: reasonable but rough, use Protocol or Generic
+
+    for name, _class in inspect.getmembers(sys.modules[__name__], inspect.isclass):
+        if cfg.target_class == name:
+            return _class(cfg, m, d)
+

@@ -8,10 +8,12 @@ from mujoco._structs import MjData, MjModel, MjOption
 from numpy import linalg as la
 from numpy.typing import ArrayLike, NDArray
 from omegaconf import MISSING
+from omegaconf.errors import MissingMandatoryValue
 
 
 @dataclass
 class JointPositionPlannerConfig:
+    target_class: str = "JointPositionPlanner"
     duration: float = MISSING
     timestep: float = -1
     displacement: list[float] = field(default_factory=lambda: [0.2, 0.4, 0.6,
@@ -24,7 +26,17 @@ class JointPositionPlannerConfig:
 class JointPositionPlanner:
     def __init__(self,
                  cfg: JointPositionPlannerConfig,
+                 m: MjModel,
+                 d: MjData,
                  ) -> None:
+
+        # Fill a potentially missing field of a planner configuration
+        try:
+            cfg.pos_offset
+        except MissingMandatoryValue:
+            cfg.pos_offset = d.qpos.copy().tolist()  # awkward but omegaconf
+                                                     # does not support NDArray
+
         self.duration = cfg.duration
         self.timestep = MjOption().timestep if cfg.timestep <= 0 else cfg.timestep
         self.n_steps = int(self.duration / self.timestep)

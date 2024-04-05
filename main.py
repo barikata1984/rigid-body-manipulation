@@ -18,13 +18,11 @@ from tqdm import tqdm
 
 import transformations as tf
 import visualization as vis
-from config import SimulationConfig, generate_model_data
-from dynamics import StateSpace, compute_gain_matrix, compose_spatial_inertia_matrices, transfer_simats, inverse, coordinate_transform_dtwist, compute_linacc
-from loggers import Logger
-from planners import JointPositionPlanner
+from config import SimulationConfig, generate_model_data, autoinstantiate
+from dynamics import compose_spatial_inertia_matrices, transfer_simats, inverse, coordinate_transform_dtwist, compute_linacc
 
 
-# Naming convention of spatial and dynamics variable:
+# Naming convention of spatial and dynamics variables:
 #
 # {descriptor}_{reference}_{described}, where
 #
@@ -49,6 +47,7 @@ from planners import JointPositionPlanner
 #          a/ai | body's parent itself or its frame/parent's principal frame
 #          c/ci | body's child itself or its frame/child's principal frame
 #             q | joint space
+#
 
 
 # Remove redundant space at the head and tail of the horizontal axis's scale
@@ -57,7 +56,7 @@ mpl.rcParams['axes.xmargin'] = 0
 np.set_printoptions(precision=5, suppress=True)
 
 
-def simulate(m, d, ss, logger, planner):
+def simulate(m, d, logger, planner, controller):
     _simats_bi_b = compose_spatial_inertia_matrices(m.body_mass, m.body_inertia)
     # Convert sinert_i to sinert_b rel2 the body frame
     poses_b_bi = tf.posquat2SE3s(m.body_ipos, m.body_iquat)
@@ -100,8 +99,6 @@ def simulate(m, d, ss, logger, planner):
     gacc_x = np.zeros(6)
     gacc_x[:3] = -1 * MjOption().gravity
     dtwist_x_x = gacc_x.copy()
-    # gain matrix for linear quadratic regulator
-    K = compute_gain_matrix(ss, [1, 1, 1, 1e+1, 1e+1, 1e+1])
 
     # IDs for convenience
     sensor_id = mj_name2id(m, mjtObj.mjOBJ_SITE, "ft_sen")
@@ -141,13 +138,13 @@ def simulate(m, d, ss, logger, planner):
             tgt_traj[0])  # target qpos or next qpos to calkculate dqvel
         res_state = np.concatenate((res_qpos, tgt_traj[1] - d.qvel))
         # Compute and set control, or actuator inputs
-        d.ctrl = tgt_ctrl - K @ res_state
+        d.ctrl = tgt_ctrl - controller.control_gain @ res_state
 
-        mj_step(m, d) # Evolve the simulation = = = = = = = = = = = = = = =
+        mj_step(m, d)  # Evolve the simulation = = = = = = = = = = = = = = =
 
         # Process sensor reads and compute necessary data
         sensorread = d.sensordata.copy()
-        # Scale sampled normalized coordinates ∈ (-1, 1) in wisp to the maximum 
+        # Scale sampled normalized coordinates ∈ (-1, 1) in wisp to the maximum
         # length of an axis-aligned bounding box of the object.
         # Camera pose rel. to the object
         pose_x_obj = tf.trzs2SE3(d.xpos[object_id], d.xmat[object_id])
@@ -204,7 +201,7 @@ def simulate(m, d, ss, logger, planner):
             alpha = np.where(
                 np.all(bgr == 0, axis=-1), 0, 255)[..., np.newaxis]
             file_name = f"{frame_count:04}.png"
-            cv2.imwrite(str(logger.images_dir / file_name),  # / ".png"),
+            cv2.imwrite(str(logger.images_dir / file_name),
                         np.append(bgr, alpha, axis=2))  # image (bgr + alpha)
             # Write a video frame
             logger.videowriter.write(bgr)
@@ -296,24 +293,16 @@ if __name__ == "__main__":
 
     # Instantiate necessary classes
     m, d, gt_mass_distr = generate_model_data(cfg.core)
-    ss = StateSpace(m, d, cfg.state_space)
 
-    # Fill a potentially missing field of Logger
+    # Fill a potentially missing field of a logger comfigulation
     try:
         cfg.logger.dataset_dir
     except MissingMandatoryValue:
         cfg.logger.dataset_dir = Path.cwd() / "data" / cfg.core.target_name
         pass
 
-    logger = Logger(m, cfg.logger)
-    os.makedirs(logger.images_dir, exist_ok=True)
+    logger = autoinstantiate(cfg.logger, m, d)
+    planner = autoinstantiate(cfg.planner, m, d)
+    controller = autoinstantiate(cfg.controller, m, d)
 
-    # Fill a potentially missing field of JointPositionPlanner
-    try:
-        cfg.planner.pos_offset
-    except MissingMandatoryValue:
-        cfg.planner.pos_offset = d.qpos.copy().tolist()  # awkward but omegaconf
-                                                         # does not support NDArray
-    planner = JointPositionPlanner(cfg.planner)
-
-    simulate(m, d, ss, logger, planner)
+    simulate(m, d, logger, planner, controller)
