@@ -1,0 +1,6 @@
+<mujoco>
+  <size nuser_body="2"/>
+  <worldbody>
+    <body user="1 2 3"/>
+  </worldbody>
+</mujoco>

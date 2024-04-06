@@ -42,8 +42,8 @@ class StateSpace:
                         m: MjModel,
                         d: MjData,
                         ) -> None:
-        mjd_transitionFD(
-            m, d, self.epsilon, self.centered, self.A, self.B, self.C, self.D)
+        mjd_transitionFD(m, d, self.epsilon, self.centered,
+                         self.A, self.B, self.C, self.D)
 
 
 
@@ -155,7 +155,7 @@ def compute_linacc(pose, twist, dtwist, coord_xfer_tdtwist=False):
     if coord_xfer_tdtwist:  #  if twist is not coordinate transfered beforehand
         twist = pose.adjoint() @ twist
         dtwist = coordinate_transform_dtwist(pose, twist, dtwist, coord_xfer_twist=False)
-  
+
     htrans = np.array([*pose.trans, 1])
     linvel = compute_linvel(pose, twist)
 

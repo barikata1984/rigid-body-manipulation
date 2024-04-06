@@ -1,5 +1,12 @@
 <mujoco model="target">
-  <body name="object">
-    <geom name="object_geom" type="box" density="1000" size=".1 .2 .3" rgba="1 0 0 1"/>
-  </body>
+  <custom>
+    <numeric name="aabb_scale" size="1" data="1.28"/>
+  </custom>
+
+  <worldbody>
+    <body name="object">
+      <geom name="top" type="box" density="500" size=".16 .32 .32" pos=".0 .0 .32" rgba="0 1 0 1"/>
+      <geom name="bottom" type="box" density="2000" size=".16 .32 .32" pos=".0 .0 -.32" rgba="0 0 1 1"/>
+    </body>
+  </worldbody>
 </mujoco>

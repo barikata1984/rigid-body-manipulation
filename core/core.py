@@ -35,24 +35,31 @@ class SimulationConfig:
 
 def generate_model_data(cfg: Union[DictConfig, ListConfig],
                         ) -> tuple[MjModel, MjData, NDArray]:
-    # Load a manipulator's .xml
+    # Load the .xml of a manipulator
     xml_dir = Path.cwd() / "xml_models"
     manipulator_path = xml_dir / "manipulators" / f"{cfg.manipulator_name}.xml"
     manipulator = mjcf.from_path(manipulator_path)
 
-    # Load the .xml of a target object and its mass distribution .npy
+    # Load the .xml of a target object and its ground truth mass distribution .npy
     target_dir = xml_dir / "targets" / cfg.target_name
     target_object_path = target_dir / "object.xml"
     target_object = mjcf.from_path(target_object_path)
 
-    mass_distr_path = target_dir / "mass_distr.npy"
+    mass_distr_path = target_dir / "gt_mass_distr.npy"
     gt_mass_distr = np.zeros(0)
 
     # Attache the object to obtain the complete model tree
     attachement_site = manipulator.find("site", "attachment")
     attachement_site.attach(target_object)
     # Spawn a model and a data
-    m = MjModel.from_xml_string(manipulator.to_xml_string())  # I thought that this should print exactly the same as the final generated XML
+
+    # Relocate the track cam accoding to the size of the target object's bbox
+    target_object_aabb_scale = target_object.find("numeric", "aabb_scale")
+    track_cam_pos = [0, 0, 2*target_object_aabb_scale.data[0]]
+    track_cam = manipulator.find('camera', cfg.logger.track_cam_name)
+    track_cam.pos = track_cam_pos
+
+    m = MjModel.from_xml_string(manipulator.to_xml_string())
     d = MjData(m)
 
     # Reset the manipulator's configuration if reset_keyframe specified.

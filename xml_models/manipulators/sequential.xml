@@ -1,4 +1,6 @@
 <mujoco model="manipulator">
+  <size nuser_body="1"/>
+
   <visual>
     <global offwidth="1980" offheight="1080"/>
   </visual>
@@ -29,7 +31,7 @@
                 <joint name="rz" type="hinge" axis="0 0 1"/>
                 <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
                 <site name="attachment"/>
-                <camera name="tracking" mode="track" pos="0 0 1"/>
+                <camera name="tracking" mode="track"/>
               </body>
             </body>
           </body>

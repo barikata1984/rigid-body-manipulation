@@ -31,18 +31,21 @@ class LinearQuadraticRegulator:
             cfg.input_gains = np.ones(m.nu).tolist()  # awkward but omegaconf
                                                       # does not support NDArray
 
-        self.state_space = StateSpace(cfg.state_space, m, d)
-        self.control_gain = compute_gain_matrix(self.state_space, cfg.input_gains)
+        self.ss = StateSpace(cfg.state_space, m, d)
+        self.input_gains = cfg.input_gains
+        self.control_gain = self.update_control_gain(m, d)
 
+    def update_control_gain(self,
+                            m: MjModel,
+                            d: MjData,
+                            ) -> NDArray:
+        self.ss.update_matrices(m, d)
 
-def compute_gain_matrix(ss: StateSpace,
-                        input_gains: ArrayLike,
-                        ) -> NDArray:
-    Q = np.eye(ss.ns)  # Initial state cost matrix
-    R = np.diag(input_gains)  # Input gain matrix
-    # Compute the feedback gain matrix K
-    P = linalg.solve_discrete_are(ss.A, ss.B, Q, R)
-    K = linalg.pinv(R + ss.B.T @ P @ ss.B) @ ss.B.T @ P @ ss.A
+        Q = np.eye(self.ss.ns)  # Initial state cost matrix R = np.diag(self.input_gains)  # Input gain matrix
+        R = np.diag(self.input_gains)  # Input gain matrix
+        # Compute the feedback gain matrix K
+        P = linalg.solve_discrete_are(self.ss.A, self.ss.B, Q, R)
+        K = linalg.pinv(R + self.ss.B.T @ P @ self.ss.B) @ self.ss.B.T @ P @ self.ss.A
 
-    return K
+        return K
 

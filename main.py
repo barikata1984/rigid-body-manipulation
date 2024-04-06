@@ -6,6 +6,7 @@ import json
 import matplotlib as mpl
 import numpy as np
 from datetime import datetime
+from liegroups import SO3
 from matplotlib import pyplot as plt
 from mujoco._enums import mjtObj
 from mujoco._functions import mj_differentiatePos, mj_name2id, mj_step
@@ -108,7 +109,7 @@ def simulate(m: MjModel,
     object_id = mj_name2id(m, mjtObj.mjOBJ_BODY, "target/object")
 
     # Dictionary to be converted to a .json file for training
-    aabb_scale = 0.3
+    aabb_scale = 1.28
     transforms = dict(
         date_time=datetime.now().strftime("%d/%m/%Y_%H:%M:%S"),
         camera_angle_x=logger.cam_fovx,
@@ -144,6 +145,7 @@ def simulate(m: MjModel,
         d.ctrl = tgt_ctrl - controller.control_gain @ res_state
 
         mj_step(m, d)  # Evolve the simulation = = = = = = = = = = = = = = =
+        # controller.update_control_gain(m, d)
 
         # Process sensor reads and compute necessary data
         sensorread = d.sensordata.copy()
@@ -177,25 +179,30 @@ def simulate(m: MjModel,
         linacc_sen_obj = compute_linacc(
             pose_sen_obj, twist_sen_obj, dtwist_sen_obj)  # , coord_xfer_twist=True)
 
-#        v_sen_obj, w_sen_obj = np.split(twist_sen_obj, 2)
-#        dv_sen_obj, dw_sen_obj = np.split(dtwist_sen_obj, 2)
-#        skewed_w_sen_obj = SO3.wedge(w_sen_obj)
-#        skewed_dw_sen_obj = SO3.wedge(dw_sen_obj)
-#        # 
-#        _linacc1_sen_obj = dv_sen_obj + skewed_w_sen_obj @ v_sen_obj
-#        _linacc2_sen_obj = skewed_dw_sen_obj @ pose_sen_obj.trans \
-#                         + skewed_w_sen_obj @ skewed_w_sen_obj @ pose_sen_obj.trans  # element-wise part
-#        _linacc_sen_obj = _linacc1_sen_obj + _linacc2_sen_obj
+        # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 
+        v_sen_obj, w_sen_obj = np.split(twist_sen_obj, 2)
+        dv_sen_obj, dw_sen_obj = np.split(dtwist_sen_obj, 2)
+        skewed_w_sen_obj = SO3.wedge(w_sen_obj)
+        skewed_dw_sen_obj = SO3.wedge(dw_sen_obj)
+        # 
+        _linacc1_sen_obj = dv_sen_obj + skewed_w_sen_obj @ v_sen_obj
+        _linacc2_sen_obj = skewed_dw_sen_obj @ pose_sen_obj.trans \
+                         + skewed_w_sen_obj @ skewed_w_sen_obj @ pose_sen_obj.trans  # element-wise part
+        _linacc_sen_obj = _linacc1_sen_obj + _linacc2_sen_obj
 
         # Retrieve force and torque measurements
         ft_sen = sensorread[1*m.nu:2*m.nu]
-#        total_mass = ft_sen[:3] / linacc_sen_obj
+        total_mass = ft_sen[:3] / linacc_sen_obj  # linacc_sen_obj would be wrong...
+        _total_mass = ft_sen[:3] / _linacc_sen_obj  # linacc_sen_obj would be wrong...
 
-        # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 
 
         if frame_count <= d.time * logger.fps:
 
+
         # ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 検証用コード追加ゾーン ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 
+
+            #print(f"{total_mass=}")
+            #print(f"{_total_mass=}")
 
             # Writing a single frame of a dataset =============================
             logger.renderer.update_scene(d, logger.cam_id)
@@ -315,6 +322,7 @@ if __name__ == "__main__":
 
     # Generate core data structures
     m, d, gt_mass_distr = generate_model_data(cfg)
+
     # Instantiate necessary classes
     logger = autoinstantiate(cfg.logger, m, d)
     planner = autoinstantiate(cfg.planner, m, d)
