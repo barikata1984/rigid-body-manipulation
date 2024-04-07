@@ -3,13 +3,10 @@ from dataclasses import dataclass
 from typing import Union
 
 import numpy as np
-#import mujoco as mj
-#from attrdict import AttrDict
 from liegroups import SE3
 from mujoco._functions import mjd_transitionFD
 from mujoco._structs import MjModel, MjData
 from numpy.typing import NDArray
-from scipy import linalg
 
 
 @dataclass

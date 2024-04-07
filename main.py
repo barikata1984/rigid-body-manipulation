@@ -43,7 +43,8 @@ from dynamics import compose_spatial_inertia_matrices, transfer_simats, inverse,
 # --------------+-------------
 #             x | world frame
 #             b | body itself or its frame (refer to the official documentation)
-#            bi | body's principal frame where the body's interia ellipsoid is defined
+#            bi | frame where the body's interia ellipsoid is defined
+#            bj | frame attached to the body
 #          a/ai | body's parent itself or its frame/parent's principal frame
 #          c/ci | body's child itself or its frame/child's principal frame
 #             q | joint space
@@ -92,10 +93,18 @@ def simulate(m: MjModel,
     hposes_a_b = tf.posquat2SE3s(m.body_pos, m.body_quat)
 
     # Obtain unit screw wr2 each link = body (A_{i} in MR)
+    # NOTE: m.jnt_axis of shape (m.njnt, 3) express the directions of joints axes wr2 {b},
+    # whih mean the axes is considered as the joints' orientational displacements wr2 {b}
     uscrew_b_b = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
-    for b, (jnt_type, ax) in enumerate(zip(m.jnt_type, m.jnt_axis), 0):
-        slicer = 3 * (jnt_type - 2)  # jnt_type: 2 for slide, 3 for hinge
-        uscrew_b_b[b, slicer:slicer + 3] = ax / linalg.norm(ax)
+    for b, (jnt_type, jnt_ax) in enumerate(zip(m.jnt_type, m.jnt_axis), 0):
+        # Instances of ligroups SE3 classes assume the first 3 elements of
+        # screw axes are for translation and the last 3 elements for rotation
+        if 2 == jnt_type:  # transtation axis
+            uscrew_b_b[b, :3] += jnt_ax
+        elif 3 == jnt_type:  # rotation axis
+            uscrew_b_b[b, 3:] += jnt_ax
+        else:
+          raise TypeError("Only slide or hinge joints, represented as 2 or 3, are supported.")
 
     # Set up dynamics related variables =======================================
     # (d)twist vectors for the worldbody to be used for inverse dynamics
@@ -198,7 +207,7 @@ def simulate(m: MjModel,
 
         if frame_count <= d.time * logger.fps:
 
-
+            #print(f"{np.allclose(twists[-2], twists[-1])=}")
         # ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 検証用コード追加ゾーン ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 
 
             #print(f"{total_mass=}")
