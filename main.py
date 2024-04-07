@@ -169,14 +169,14 @@ def simulate(m: MjModel,
 
         # First-order time derivative - - - - - - - - - - - - - - - - - - - - -
         twist_obj_obj = twists[-1]
-        twist_sen_obj = pose_sen_obj.adjoint() @ twist_obj_obj
+        twist_sen_obj = pose_sen_obj.adjoint() @ twist_obj_obj  # Eq. 3.83-84 in Modern Robotics
 #        linvel_sen_obj = compute_linvel(pose_sen_obj, twist_obj_obj, coord_xfer_twist=True)
 
         # Second-order time derivative - - - - - - - - - - - - - - - - - - - - 
         dtwist_obj_obj = dtwists[-1]
         dtwist_sen_obj = coordinate_transform_dtwist(
             pose_sen_obj, twist_sen_obj, dtwist_obj_obj)  # , coord_xfer_twist=True)
-        linacc_sen_obj = compute_linacc(
+        linacc_sen_obj = compute_linacc(  # Not \dot{v} but \ddot{p} in Modern Robotics
             pose_sen_obj, twist_sen_obj, dtwist_sen_obj)  # , coord_xfer_twist=True)
 
         # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 
@@ -302,12 +302,11 @@ if __name__ == "__main__":
 
     try:
         yaml_cfg = OmegaConf.load(cli_cfg.read_config)
-        cfg = OmegaConf.merge(cfg, yaml_cfg)
-    except ConfigAttributeError:  # if read_config not provided, cli_cfg does
-        pass                      # not have it as its attribute, so using
+    except ConfigAttributeError:  # if read_config not provided on cli, cli_cfg
+        yaml_cfg = {}             # does not have it as its attribute, so using
                                   # this error rather than MissingMandatoryValue
 
-    cfg = OmegaConf.merge(cfg, cli_cfg)
+    cfg = OmegaConf.merge(cfg, yaml_cfg, cli_cfg)
 
     try:
         OmegaConf.save(cfg, cfg.write_config)
@@ -320,9 +319,8 @@ if __name__ == "__main__":
     except MissingMandatoryValue:
         cfg.logger.dataset_dir = Path.cwd() / "datasets" / cfg.target_name
 
-    # Generate core data structures
+    # Generate data structures
     m, d, gt_mass_distr = generate_model_data(cfg)
-
     # Instantiate necessary classes
     logger = autoinstantiate(cfg.logger, m, d)
     planner = autoinstantiate(cfg.planner, m, d)

@@ -13,7 +13,7 @@ from numpy.typing import NDArray
 from omegaconf.dictconfig import DictConfig
 from omegaconf.listconfig import ListConfig
 
-# import all to make autoinstantiate() work
+# all the modules of the packages below are imported to enable autoinstantiate()
 from controllers import *
 from dynamics import *
 from loggers import *
@@ -45,7 +45,7 @@ def generate_model_data(cfg: Union[DictConfig, ListConfig],
     target_object_path = target_dir / "object.xml"
     target_object = mjcf.from_path(target_object_path)
 
-    mass_distr_path = target_dir / "gt_mass_distr.npy"
+    gt_mass_distr_path = target_dir / "gt_mass_distr.npy"
     gt_mass_distr = np.zeros(0)
 
     # Attache the object to obtain the complete model tree
@@ -53,7 +53,7 @@ def generate_model_data(cfg: Union[DictConfig, ListConfig],
     attachement_site.attach(target_object)
     # Spawn a model and a data
 
-    # Relocate the track cam accoding to the size of the target object's bbox
+    # Relocate the track cam according to the target object's aabb scale
     target_object_aabb_scale = target_object.find("numeric", "aabb_scale")
     track_cam_pos = [0, 0, 2*target_object_aabb_scale.data[0]]
     track_cam = manipulator.find('camera', cfg.logger.track_cam_name)
@@ -85,7 +85,7 @@ def generate_model_data(cfg: Union[DictConfig, ListConfig],
 def autoinstantiate(cfg: DictConfig,
                     m: MjModel,
                     d: MjData,
-                    *args, **kwargs) -> Any:  # TODO: reasonable but rough, use Protocol or Generic
+                    *args, **kwargs) -> Any:  # TODO: reasonable but rough
 
     for name, _class in inspect.getmembers(sys.modules[__name__], inspect.isclass):
         if cfg.target_class == name:

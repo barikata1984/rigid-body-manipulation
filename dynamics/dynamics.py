@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Union
 
@@ -31,9 +31,9 @@ class StateSpace:
         self.nsensordata = m.nsensordata  # Number of sensor ourputs
 
         self.A = np.zeros((self.ns, self.ns))  # State transition matrix
-        self.B = np.zeros((self.ns, m.nu))  # Input state matrix
-        self.C = np.zeros((m.nsensordata, self.ns))  # State output matrix
-        self.D = np.zeros((m.nsensordata, m.nu))  # Input output matrix
+        self.B = np.zeros((self.ns, m.nu))  # Input2state matrix
+        self.C = np.zeros((m.nsensordata, self.ns))  # State2output matrix
+        self.D = np.zeros((m.nsensordata, m.nu))  # Input2output matrix
 
         # Populate the matrices
         self.update_matrices(m, d)
@@ -42,9 +42,7 @@ class StateSpace:
                         m: MjModel,
                         d: MjData,
                         ) -> None:
-        mjd_transitionFD(m, d, self.epsilon, self.centered,
-                         self.A, self.B, self.C, self.D)
-
+        mjd_transitionFD(m, d, self.epsilon, self.centered, self.A, self.B, self.C, self.D)
 
 
 def _compose_simat(mass: float,
@@ -62,13 +60,13 @@ def compose_spatial_inertia_matrices(mass,
     return np.array([_compose_simat(m, di) for m, di in zip(mass, diagonal_inertia)])
 
 
-def transfer_simats(poses,  # TODO: annotate later...
+def transfer_simats(poses: Union[SE3, Sequence[SE3]],
                     simats,  # TODO: annotate later...
                     ) -> NDArray:
     poses_is_iterable = True
 
     # Add a batch dimension to handle a set of single pose and simat
-    if not isinstance(poses, Iterable):
+    if not isinstance(poses, Sequence):
         # poses is an instance of liegroups.numpy.se3.SE3Matrix if this block hit
         poses_is_iterable = False
         poses = [poses]
@@ -96,22 +94,19 @@ def inverse(
 
     # Prepare lie group, twist, and dtwist storage arrays
     poses = []  # T_{i, i - 1} in Modern Robotics
-    twists = [twist_0]
-    dtwists = [dtwist_0]
+    twists = [twist_0]  # \mathcal{V}
+    dtwists = [dtwist_0]  # \dot{\mathcal{V}}
 
     # Forward iterations
     for i, (p_h, us) in enumerate(zip(pose_home[1:], uscrew)):
-        poses.append(SE3.exp(-us * traj[0, i]).dot(p_h))
-        Ad_se3 = poses[-1].adjoint()
-        # Compute twist
-        prior_tw = twists[-1]
-        tw = Ad_se3 @ prior_tw
+        poses.append(SE3.exp(-us * traj[0, i]).dot(p_h))  # Eq. 8.50
+        # Compute twist (Eq. 8.51 in Modern Robotics)
+        tw  = poses[-1].adjoint() @ twists[-1]
         tw += us * traj[1, i]
-        # Compute the derivatife of twist
-        prior_dtw = dtwists[-1]
-        dtw = Ad_se3 @ prior_dtw
-        dtw += us * traj[2, i]
+        # Compute the derivatife of twist (Eq. 8.52 in Modern Robotics)
+        dtw  = poses[-1].adjoint() @ dtwists[-1]
         dtw += SE3.curlywedge(tw) @ us * traj[1, i]
+        dtw += us * traj[2, i]
         # Add the twist and its derivative to their storage arrays
         twists.append(tw)
         dtwists.append(dtw)
@@ -122,16 +117,20 @@ def inverse(
     # Let m the # of joint/actuator axes, the backward iteration should be
     # performed from index m to 1. So, the range is set like below.
     for i in range(len(uscrew), 0, -1):
-        prior_w = wrench[-1]
-        w = poses[i].adjoint().T @ prior_w
+        w  = poses[i].adjoint().T @ wrench[-1]
         w += body_spati[i] @ dtwists[i]
-        w += -SE3.curlywedge(twists[i]).T @ body_spati[i] @ twists[i]
+        w += -1 * SE3.curlywedge(twists[i]).T @ body_spati[i] @ twists[i]
         wrench.append(w)
 
-    wrench = wrench[::-1]
-    ctrl_mat = wrench[:-1] * uscrew
+    wrench.reverse()
 
-    return np.sum(ctrl_mat, axis=0), poses, twists, dtwists
+    # A uscrew is a set of one-hot vectors, where the hot flag indicates the force
+    # or torque element of the wrench that each screw corresponds to. Therefore,
+    # the hadamarrd product below extracts the control signals, which are the
+    # magnitude of target force or torque signals, from wrench array
+    ctrl_mat = wrench[:-1] * uscrew  # Eq. 8.53
+
+    return np.diag(ctrl_mat), poses, twists, dtwists
 
 
 def compute_linvel(pose, twist, coord_xfer_twist=False):
@@ -148,6 +147,7 @@ def coordinate_transform_dtwist(pose, twist, dtwist, coord_xfer_twist=False):
     if coord_xfer_twist:  #  if twist is not coordinate transfered beforehand
         twist = pose.adjoint() @ twist
 
+    # curlywedge() computes lie brackets
     return SE3.curlywedge(twist) @ twist + pose.adjoint() @ dtwist
 
 

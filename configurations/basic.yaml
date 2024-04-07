@@ -31,9 +31,9 @@ controller:
     epsilon: 1.0e-08
     centered: true
   input_gains:
-  - 1.0
-  - 1.0
-  - 1.0
+  - 10.0
+  - 10.0
+  - 10.0
   - 10.0
   - 10.0
   - 10.0
