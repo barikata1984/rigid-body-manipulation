@@ -12,24 +12,24 @@
 
   <worldbody>
     <light name="top" pos="0 0 3"/>
-    <body name="link1" pos="0 0 .01">
-      <joint name="tx" type="slide" axis="1 0 0"/>
-      <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
-      <body name="link2">
-        <joint name="ty" type="slide" axis="0 1 0"/>
-        <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
-        <body name="link3">
+    <body name="link1" euler="0 90 0">  <!-- euler in deg -->
+      <joint name="tx" type="slide" axis="0 0 1"/>
+      <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>  <!-- water in 1cm**3 space -->
+      <body name="link2" euler="-90 0 0">
+        <joint name="ty" type="slide" axis="0 0 1"/>
+        <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
+        <body name="link3" euler="0 -90 0">
           <joint name="tz" type="slide" axis="0 0 1"/>
-          <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
-          <body name="link4">
-            <joint name="rx" type="hinge" axis="1 0 0"/>
-            <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
-            <body name="link5">
-              <joint name="ry" type="hinge" axis="0 1 0"/>
-              <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
-              <body name="link6">
+          <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
+          <body name="link4" euler="-90 0 0">
+            <joint name="rx" type="hinge" axis="0 0 1"/>
+            <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
+            <body name="link5" euler="0 -90 0">
+              <joint name="ry" type="hinge" axis="0 0 1"/>
+              <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
+              <body name="link6" euler="-90 0 0">
                 <joint name="rz" type="hinge" axis="0 0 1"/>
-                <inertial pos="0 0 0" mass="1" diaginertia=".00001 .00001 .00001"/>
+                <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
                 <site name="attachment"/>
                 <camera name="tracking" mode="track"/>
               </body>

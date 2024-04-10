@@ -1,5 +1,5 @@
 manipulator_name: sequential
-target_name: stacked123_128
+target_name: uniform123_128
 reset_keyframe: initial_state
 state_space:
   epsilon: 1.0e-08
@@ -21,9 +21,9 @@ planner:
   - 0.2
   - 0.4
   - 0.6
-  - 3.141592653589793
-  - 0.9424777960769379
-  - 4.71238898038469
+  - 3.1415
+  - 0.9424
+  - 4.7123889
   pos_offset: ???
 controller:
   target_class: LinearQuadraticRegulator
@@ -31,11 +31,11 @@ controller:
     epsilon: 1.0e-08
     centered: true
   input_gains:
-  - 10.0
-  - 10.0
-  - 10.0
-  - 10.0
-  - 10.0
-  - 10.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
 read_config: ./configurations/basic.yaml
 write_config: ./configurations/basic.yaml

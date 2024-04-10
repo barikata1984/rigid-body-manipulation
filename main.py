@@ -138,6 +138,8 @@ def simulate(m: MjModel,
             else:
               raise TypeError("Only slide or hinge joints, represented as 2 or 3 for m.jnt_type, are supported.")
 
+    print(f"{uscrew_b_b=}")
+
     # Set up dynamics related variables =======================================
     # (d)twist vectors for the worldbody to be used for inverse dynamics
     twist_x_x = np.zeros(6)
@@ -391,4 +393,4 @@ if __name__ == "__main__":
     planner = autoinstantiate(cfg.planner, m, d)
     controller = autoinstantiate(cfg.controller, m, d)
 
-    simulate(m, d, gt_mass_distr, logger, planner, controller)
+    simulate(m, d, gt_mass_distr_path, logger, planner, controller)

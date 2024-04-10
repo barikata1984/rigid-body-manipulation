@@ -127,7 +127,7 @@ def inverse(
     # magnitude of target force or torque signals, from wrench array
     ctrl_mat = wrench[:-1] * uscrew  # Eq. 8.53
 
-    return np.diag(ctrl_mat), poses, twists, dtwists
+    return ctrl_mat.sum(axis=1), poses, twists, dtwists
 
 
 def compute_linvel(pose, twist, coord_xfer_twist=False):
