@@ -51,7 +51,6 @@ def generate_model_data(cfg: Union[DictConfig, ListConfig],
     # Attache the object to obtain the complete model tree
     attachement_site = manipulator.find("site", "attachment")
     attachement_site.attach(target_object)
-    # Spawn a model and a data
 
     # Relocate the track cam according to the target object's aabb scale
     target_object_aabb_scale = target_object.find("numeric", "aabb_scale")
@@ -59,8 +58,11 @@ def generate_model_data(cfg: Union[DictConfig, ListConfig],
     track_cam = manipulator.find('camera', cfg.logger.track_cam_name)
     track_cam.pos = track_cam_pos
 
+    # Spawn a mujoco model and a mujoco data
     m = MjModel.from_xml_string(manipulator.to_xml_string())
     d = MjData(m)
+
+    #print(f"{manipulator.to_xml_string()}")
 
     # Reset the manipulator's configuration if reset_keyframe specified.
     # If reset_keyframe does not match any keyframe inside the .xml files,

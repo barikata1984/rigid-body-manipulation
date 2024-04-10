@@ -1,5 +1,7 @@
 from datetime import datetime
+from os import PathLike
 from pathlib import Path
+from typing import Union
 
 import cv2
 import json
@@ -13,13 +15,12 @@ from mujoco._functions import mj_differentiatePos, mj_name2id, mj_step
 from mujoco._structs import MjModel, MjData, MjOption
 from omegaconf import OmegaConf
 from omegaconf.errors import ConfigAttributeError, MissingMandatoryValue
-from scipy import linalg
 from tqdm import tqdm
 
+import dynamics as dyn
 import transformations as tf
 import visualization as vis
 from core import SimulationConfig, generate_model_data, autoinstantiate
-from dynamics import compose_spatial_inertia_matrices, transfer_simats, inverse, coordinate_transform_dtwist, compute_linacc
 
 
 # Naming convention of spatial and dynamics variables:
@@ -43,10 +44,10 @@ from dynamics import compose_spatial_inertia_matrices, transfer_simats, inverse,
 # --------------+-------------
 #             x | world frame
 #             b | body itself or its frame (refer to the official documentation)
-#            bi | frame where the body's interia ellipsoid is defined
-#            bj | frame attached to the body
-#          a/ai | body's parent itself or its frame/parent's principal frame
-#          c/ci | body's child itself or its frame/child's principal frame
+#            bi | body's principal frame
+#            bj | frame attached to a body's joint
+#       a/ai/aj | body's parent itself or its body/principal/joint frame
+#       c/ci/cj | body's child itself or its body/principal/joint frame
 #             q | joint space
 #
 
@@ -59,14 +60,14 @@ np.set_printoptions(precision=5, suppress=True)
 
 def simulate(m: MjModel,
              d: MjData,
-             gt_mass_distr,  # TODO: annotate late...
+             gt_mass_distr_path: Union[str, PathLike],
              logger, planner, controller,  # TODO: annotate late... make a BaseModule or something and use Protocol or Generic, maybe...
              ):
-    _simats_bi_b = compose_spatial_inertia_matrices(m.body_mass, m.body_inertia)
+    _simats_bi_b = dyn.compose_spatial_inertia_matrices(m.body_mass, m.body_inertia)
     # Convert sinert_i to sinert_b rel2 the body frame
     poses_b_bi = tf.posquat2SE3s(m.body_ipos, m.body_iquat)
     poses_x_b = tf.posquat2SE3s(d.xpos, d.xquat)
-    _simats_b_b = transfer_simats(poses_b_bi, _simats_bi_b)
+    _simats_b_b = dyn.transfer_simats(poses_b_bi, _simats_bi_b)
 
     # Join the spatial inertia matrices of bodies later than, or fixed relative to,
     # link6 to the matrix of link6 so that dyn.inverse() can consider the bodies'
@@ -77,12 +78,30 @@ def simulate(m: MjModel,
 
     for p_x_b, _sim_b_b in zip(poses_x_b[link6_id+1:], _simats_b_b[link6_id+1:]):
         p_link6_b = pose_x_link6.inv().dot(p_x_b)
-        _sim_link6_b = transfer_simats(p_link6_b, _sim_b_b)
+        _sim_link6_b = dyn.transfer_simats(p_link6_b, _sim_b_b)
         simats_b_b[link6_id] += _sim_link6_b
 
     mom_i = np.array([*simats_b_b[-1, 3:, 3:].diagonal(),
                       *simats_b_b[-1, 3 , 4:],
                        simats_b_b[-1, 4 , 5 ]])
+
+    #print(f"{simats_b_b[-1]=}")
+    #print(f"{m.sensor_type=}")
+    #print(f"{m.sensor_dim=}")
+    #print(f"{m.body_parentid=}")
+    """parent's body id of:
+             worldbody (body_id==0): 0,
+                 link1 (body_id==1): 0,
+                 link2 (body_id==2): 1,
+                 link3 (body_id==3): 2,
+                 link4 (body_id==4): 3,
+                 link5 (body_id==5): 4,
+                 link6 (body_id==6): 5,
+        target/ = worldbody in
+            object.xml (body_id==7): 6,
+         target/object (body_id==8): 7,
+    """
+
 
 #    print("Target object's inertial parameters wr2 its body frame ======\n"
 #         f"    Mass:               {m.body_mass[-1]}\n"
@@ -92,19 +111,32 @@ def simulate(m: MjModel,
     # Configure SE3 of child frame wr2 parent frame (M_{i, i - 1} in MR)
     hposes_a_b = tf.posquat2SE3s(m.body_pos, m.body_quat)
 
-    # Obtain unit screw wr2 each link = body (A_{i} in MR)
-    # NOTE: m.jnt_axis of shape (m.njnt, 3) express the directions of joints axes wr2 {b},
-    # whih mean the axes is considered as the joints' orientational displacements wr2 {b}
-    uscrew_b_b = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
-    for b, (jnt_type, jnt_ax) in enumerate(zip(m.jnt_type, m.jnt_axis), 0):
-        # Instances of ligroups SE3 classes assume the first 3 elements of
-        # screw axes are for translation and the last 3 elements for rotation
-        if 2 == jnt_type:  # transtation axis
-            uscrew_b_b[b, :3] += jnt_ax
-        elif 3 == jnt_type:  # rotation axis
-            uscrew_b_b[b, 3:] += jnt_ax
-        else:
-          raise TypeError("Only slide or hinge joints, represented as 2 or 3, are supported.")
+
+    # ここのユニットスクリューの定義の仕方について疑問が湧いた。
+    # Sec. 3.3.2.2 を見るとスクリューの定義にも参照座標系からみた pose が関わって
+    # いるんだけれど、下記の処置だと軸を揃えただけ、つまり姿勢は考慮しているが、
+    # 並進変位は考慮していないように見える。なので並進変位を考慮したスクリュー軸の#
+    # 定義に変更したい。
+    # 
+    # ではどうすればよいか？
+    # スクリュー軸は関節の動作の軸に一致するので、joint frame を定義して、
+    # それを body とか principal frame を参照するよう座標変換するのが良さそう。
+    # jnt_pos と jnt_axis ってので pos and axis of a joint local to the body は取れるようなので、pos_b_b と rot?_b_bj を作ってそれを pose_b_bj に合成して、それを Sec. 3.3.2.2 に従って正規化してスクリュー軸に定義するってのはできそう
+
+    if True:
+        # Obtain unit screw wr2 each link = body (A_{i} in MR)
+        # NOTE: m.jnt_axis of shape (m.njnt, 3) express the directions of joints axes wr2 {b},
+        # whih mean the axes is considered as the joints' orientational displacements wr2 {b}
+        uscrew_b_b = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
+        for b, (jnt_type, jnt_ax) in enumerate(zip(m.jnt_type, m.jnt_axis), 0):
+            # Instances of ligroups SE3 classes assume the first 3 elements of
+            # screw axes are for translation and the last 3 elements for rotation
+            if 2 == jnt_type:  # transtation axis
+                uscrew_b_b[b, :3] += jnt_ax
+            elif 3 == jnt_type:  # rotation axis
+                uscrew_b_b[b, 3:] += jnt_ax
+            else:
+              raise TypeError("Only slide or hinge joints, represented as 2 or 3 for m.jnt_type, are supported.")
 
     # Set up dynamics related variables =======================================
     # (d)twist vectors for the worldbody to be used for inverse dynamics
@@ -114,8 +146,18 @@ def simulate(m: MjModel,
     dtwist_x_x = gacc_x.copy()
 
     # IDs for convenience
-    sensor_id = mj_name2id(m, mjtObj.mjOBJ_SITE, "ft_sen")
-    object_id = mj_name2id(m, mjtObj.mjOBJ_BODY, "target/object")
+    sensor_sitename = "target/ft_sensor"
+    sen_siteid = mj_name2id(m, mjtObj.mjOBJ_SITE, sensor_sitename)
+    if -1 == sen_siteid:
+        raise ValueError(f"Sensor site named '{sensor_sitename}' not found. Check a manipulator .xml or an target object .xml")
+
+    object_name = "target/object"
+    tgt_obj_id = mj_name2id(m, mjtObj.mjOBJ_BODY, object_name)
+    if -1 == tgt_obj_id:
+        raise ValueError(f"Body for the tariget object, named '{object_name}', not found. Check a manipulator .xml or an target object .xml")
+
+    #print(f"{tgt_obj_id=}")
+    #print(f"{len(m.body_parentid)=}")
 
     # Dictionary to be converted to a .json file for training
     aabb_scale = 1.28
@@ -140,7 +182,7 @@ def simulate(m: MjModel,
     for step in tqdm(range(planner.n_steps), desc="Progress"):
         # Compute actuator controls and evolute the simulatoin
         tgt_traj = planner.plan(step)
-        tgt_ctrl, _, _, _= inverse(
+        tgt_ctrl, _, _, _= dyn.inverse(
             tgt_traj, hposes_a_b, simats_b_b, uscrew_b_b, twist_x_x, dtwist_x_x)
         # Residual of state
         mj_differentiatePos(  # Use this func to differenciate quat properly
@@ -157,23 +199,23 @@ def simulate(m: MjModel,
         # controller.update_control_gain(m, d)
 
         # Process sensor reads and compute necessary data
-        sensorread = d.sensordata.copy()
+        measurements= d.sensordata.copy()
         # Scale sampled normalized coordinates ∈ (-1, 1) in wisp to the maximum
         # length of an axis-aligned bounding box of the object.
         # Camera pose rel. to the object
-        pose_x_obj = tf.trzs2SE3(d.xpos[object_id], d.xmat[object_id])
+        pose_x_obj = tf.trzs2SE3(d.xpos[tgt_obj_id], d.xmat[tgt_obj_id])
         pose_x_cam = tf.trzs2SE3(d.cam_xpos[logger.cam_id],
                                  d.cam_xmat[logger.cam_id])
         pose_obj_cam = pose_x_obj.inv().dot(pose_x_cam)
         # FT sensor pose rel. to the object
-        pose_x_sen = tf.trzs2SE3(d.site_xpos[sensor_id], d.site_xmat[sensor_id])
+        pose_x_sen = tf.trzs2SE3(d.site_xpos[sen_siteid], d.site_xmat[sen_siteid])
         pose_sen_obj = pose_x_sen.inv().dot(pose_x_obj)
 
         # Compute (d)twists using dyn.inverse() again to validate the method by
         # comparing derived acceleration and force/torque with their sensor
         # measurements later
         traj = np.stack((d.qpos, d.qvel, d.qacc))
-        _, _, twists, dtwists = inverse(
+        _, _, twists, dtwists = dyn.inverse(
             traj, hposes_a_b, simats_b_b, uscrew_b_b, twist_x_x, dtwist_x_x)
 
         # First-order time derivative - - - - - - - - - - - - - - - - - - - - -
@@ -183,35 +225,49 @@ def simulate(m: MjModel,
 
         # Second-order time derivative - - - - - - - - - - - - - - - - - - - - 
         dtwist_obj_obj = dtwists[-1]
-        dtwist_sen_obj = coordinate_transform_dtwist(
+        dtwist_sen_obj = dyn.coordinate_transform_dtwist(
             pose_sen_obj, twist_sen_obj, dtwist_obj_obj)  # , coord_xfer_twist=True)
-        linacc_sen_obj = compute_linacc(  # Not \dot{v} but \ddot{p} in Modern Robotics
+        linacc_sen_obj = dyn.compute_linacc(  # Not \dot{v} but \ddot{p} in Modern Robotics
             pose_sen_obj, twist_sen_obj, dtwist_sen_obj)  # , coord_xfer_twist=True)
 
-        # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 
-        v_sen_obj, w_sen_obj = np.split(twist_sen_obj, 2)
-        dv_sen_obj, dw_sen_obj = np.split(dtwist_sen_obj, 2)
-        skewed_w_sen_obj = SO3.wedge(w_sen_obj)
-        skewed_dw_sen_obj = SO3.wedge(dw_sen_obj)
-        # 
-        _linacc1_sen_obj = dv_sen_obj + skewed_w_sen_obj @ v_sen_obj
-        _linacc2_sen_obj = skewed_dw_sen_obj @ pose_sen_obj.trans \
-                         + skewed_w_sen_obj @ skewed_w_sen_obj @ pose_sen_obj.trans  # element-wise part
-        _linacc_sen_obj = _linacc1_sen_obj + _linacc2_sen_obj
-
         # Retrieve force and torque measurements
-        ft_sen = sensorread[1*m.nu:2*m.nu]
-        total_mass = ft_sen[:3] / linacc_sen_obj  # linacc_sen_obj would be wrong...
-        _total_mass = ft_sen[:3] / _linacc_sen_obj  # linacc_sen_obj would be wrong...
-
+        ft_sen = measurements[-6:]
+        # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 
+#        v_sen_obj, w_sen_obj = np.split(twist_sen_obj, 2)
+#        dv_sen_obj, dw_sen_obj = np.split(dtwist_sen_obj, 2)
+#        skewed_w_sen_obj = SO3.wedge(w_sen_obj)
+#        skewed_dw_sen_obj = SO3.wedge(dw_sen_obj)
+#        # 
+#        _linacc1_sen_obj = dv_sen_obj + skewed_w_sen_obj @ v_sen_obj
+#        _linacc2_sen_obj = skewed_dw_sen_obj @ pose_sen_obj.trans \
+#                         + skewed_w_sen_obj @ skewed_w_sen_obj @ pose_sen_obj.trans  # element-wise part
+#        _linacc_sen_obj = _linacc1_sen_obj + _linacc2_sen_obj
+#
+#        # Retrieve force and torque measurements
+#        total_mass = ft_sen[:3] / linacc_sen_obj  # linacc_sen_obj would be wrong...
+#        _total_mass = ft_sen[:3] / _linacc_sen_obj  # linacc_sen_obj would be wrong...
+#
 
         if frame_count <= d.time * logger.fps:
+            # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 今使ってる検証用セクション ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 
+            #print(f"{measurements.shape=}")
+            twist_link6_link6 = twists[-1]  # 上だと _obj_obj だとしてるけど、こう考えたほうが正確
+            twist_link6plus_link6plus = twists[-1]  # もっというと、上だと _obj_obj だとしてるけど、こう考えたほうが正確
 
-            #print(f"{np.allclose(twists[-2], twists[-1])=}")
-        # ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 検証用コード追加ゾーン ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 
+            pose_sen_x = pose_x_sen.inv()
+            pose_sen_link6 = pose_sen_x.dot(pose_x_link6)
+
+   #         print(f"{pose_sen_link6.rot=}")
+
+
+            twist_sen_link6 = pose_sen_link6.adjoint() @ twist_link6_link6
+
+            # obj と link 
+            twist_sen_sen = twist_link6_link6
 
             #print(f"{total_mass=}")
             #print(f"{_total_mass=}")
+        # ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 検証用コード追加ゾーン ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 
 
             # Writing a single frame of a dataset =============================
             logger.renderer.update_scene(d, logger.cam_id)

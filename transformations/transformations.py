@@ -1,7 +1,10 @@
 import numpy as np
-from transforms3d import affines
 from liegroups import SO3, SE3  # may be replaced with robotics toolbox for python
+from mujoco._enums import mjtObj
+from mujoco._functions import mj_name2id
+from mujoco._structs import MjModel, MjData
 from numpy.typing import NDArray
+from transforms3d import affines
 
 
 def trzs2SE3(t: NDArray,
@@ -76,3 +79,48 @@ def posquat2SE3s(pos: NDArray,
     return [posquat2SE3(p, q) for p, q in zip(pos, quat)]
 
 
+
+class PoseComposer:
+    def __init__(self,
+                 m: MjModel,
+                 d: MjData,
+                 ) -> None:
+        self.m = m
+        self.d = d
+
+
+    def get_current_pose_x(self,
+                   category: str,
+                   name: str,
+                   ) -> SE3:
+        if "body" == category:
+            id = mj_name2id(self.m, mjtObj.mjOBJ_BODY, name)
+            return posquat2SE3(self.d.xpos[id], self.d.xquat[id])
+        elif "body_inertia" == category:
+            id = mj_name2id(self.m, mjtObj.mjOBJ_BODY, name)
+            return posquat2SE3(self.d.xipos[id], self.d.xiquat[id])
+        elif "joint" == category and False:
+            id = mj_name2id(self.m, mjtObj.mjOBJ_BODY, name)
+            return posquat2SE3(self.d.xipos[id], self.d.xiquat[id])
+        elif "site" == category:
+            id = mj_name2id(self.m, mjtObj.mjOBJ_SITE, name)
+            return posquat2SE3(self.d.xipos[id], self.d.xiquat[id])
+
+        # for body's principal frame
+
+        mj_name2id(m, mjtObj.mjOBJ_SITE, "target/ft_sensor")
+        d.j
+        # for joint
+
+        # for geom
+        # for site
+        # for cam 
+
+        return SE3.from_matrix(np.eye(4))
+
+    def get_current_pose_ref_des(self,  # des(cribed body, frame, or whatever this class supports)
+                                 refernce,
+                                 descried,
+                                 ) -> SE3:
+
+        return SE3.from_matrix(np.eye(4))

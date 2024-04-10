@@ -50,18 +50,18 @@
   </actuator>
 
   <sensor>
-    <actuatorfrc name="frc_tx" actuator="mtr_tx"/>
+    <!-- 6 x scalar -->
+    <actuatorfrc name="frc_tx" actuator="mtr_tx"/>  <!-- type int: 15 -->
     <actuatorfrc name="frc_ty" actuator="mtr_ty"/>
     <actuatorfrc name="frc_tz" actuator="mtr_tz"/>
     <actuatorfrc name="frc_rx" actuator="mtr_rx"/>
     <actuatorfrc name="frc_ry" actuator="mtr_ry"/>
     <actuatorfrc name="frc_rz" actuator="mtr_rz"/>
-    <force name="frc" site="attachment"/>
-    <torque name="trq" site="attachment"/>
-    <framelinvel name="linvel_x_obj" objtype="body" objname="target/object"/>
-    <frameangvel name="angvel_x_obj" objtype="body" objname="target/object"/>
-    <framelinacc name="linacc_x_obj" objtype="body" objname="target/object"/>
-    <frameangacc name="angacc_x_obj" objtype="body" objname="target/object"/>
+    <!-- 4 x 3-vector -->
+    <framelinvel name="linvel_x_obj" objtype="body" objname="target/object"/>  <!-- type int: 30 -->
+    <frameangvel name="angvel_x_obj" objtype="body" objname="target/object"/>  <!-- type int: 31 -->
+    <framelinacc name="linacc_x_obj" objtype="body" objname="target/object"/>  <!-- type int: 32 -->
+    <frameangacc name="angacc_x_obj" objtype="body" objname="target/object"/>  <!-- type int: 33 -->
   </sensor>
 
   <keyframe>
