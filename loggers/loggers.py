@@ -2,14 +2,13 @@ import os
 from dataclasses import dataclass
 from math import atan2, radians, tan
 from pathlib import Path
-from typing import Any
 
 import cv2
-from mujoco._enums import mjtObj
-from mujoco._functions import mj_name2id
 from mujoco._structs import MjData, MjModel
 from mujoco.renderer import Renderer
 from omegaconf import MISSING
+
+from utilities import get_element_id
 
 
 @dataclass
@@ -31,7 +30,7 @@ class Logger:
                 d: MjData,
                 ) -> None:
         self.cam_name = cfg.track_cam_name
-        self.cam_id = mj_name2id(m, mjtObj.mjOBJ_CAMERA, self.cam_name)
+        self.cam_id = get_element_id(m, "camera", self.cam_name)
         self.fig_height = cfg.fig_height
         self.fig_width = cfg.fig_width
         self.cam_fovy = radians(m.cam_fovy[self.cam_id])

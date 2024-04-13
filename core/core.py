@@ -93,3 +93,27 @@ def autoinstantiate(cfg: DictConfig,
         if cfg.target_class == name:
             return _class(cfg, m, d, *args, **kwargs)
 
+
+def get_element_id(m, elem_type, name):
+    obj_enum = None
+
+    if "body"== elem_type:
+        obj_enum = mjtObj.mjOBJ_BODY
+    elif "camera"== elem_type:
+        obj_enum = mjtObj.mjOBJ_CAMERA
+    elif "joint"== elem_type:
+        obj_enum = mjtObj.mjOBJ_JOINT
+    elif "sensor"== elem_type:
+        obj_enum = mjtObj.mjOBJ_SENSOR
+    elif "site"== elem_type:
+        obj_enum = mjtObj.mjOBJ_SITE
+    else:
+        raise ValueError(f"'{elem_type}' is not supported for now. Use mj_name2id and check the value of an ID instead.")
+
+    id = mj_name2id(m, obj_enum, name)
+
+    if -1 == id:
+        raise ValueError(f"ID for '{name}' not found. Check the manipulator .xml or the object .xml")
+
+    return id
+

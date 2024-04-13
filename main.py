@@ -10,8 +10,7 @@ import numpy as np
 from datetime import datetime
 from liegroups import SO3
 from matplotlib import pyplot as plt
-from mujoco._enums import mjtObj
-from mujoco._functions import mj_differentiatePos, mj_name2id, mj_step
+from mujoco._functions import mj_differentiatePos, mj_step
 from mujoco._structs import MjModel, MjData, MjOption
 from omegaconf import OmegaConf
 from omegaconf.errors import ConfigAttributeError, MissingMandatoryValue
@@ -19,6 +18,7 @@ from tqdm import tqdm
 
 import dynamics as dyn
 import transformations as tf
+import utilities as utils
 import visualization as vis
 from core import SimulationConfig, generate_model_data, autoinstantiate
 
@@ -63,45 +63,48 @@ def simulate(m: MjModel,
              gt_mass_distr_path: Union[str, PathLike],
              logger, planner, controller,  # TODO: annotate late... make a BaseModule or something and use Protocol or Generic, maybe...
              ):
+
+    # Get ids and indices for the sake of convenience
+    lastlink_id = utils.get_element_id(m, "body", "link6")
+    sen_site_id = utils.get_element_id(m, "site", "target/ft_sensor")
+    obj_id = utils.get_element_id(m, "body", "target/object")
+
+    linacc_x_idx = utils.get_sensor_measurement_idx(m, "sensor", "linacc_x_obj")
+    frc_sen_idx = utils.get_sensor_measurement_idx(m, "sensor", "target/force")
+    trq_sen_idx = utils.get_sensor_measurement_idx(m, "sensor", "target/torque")
+    ft_sen_idx = frc_sen_idx + trq_sen_idx
+
+    # Join the spatial inertia matrices of bodies later than the last link into its spatial inertia matrix so that dyn.inverse() can consider the bodies' inertia later =========================
     _simats_bi_b = dyn.compose_spatial_inertia_matrices(m.body_mass, m.body_inertia)
     # Convert sinert_i to sinert_b rel2 the body frame
     poses_b_bi = tf.posquat2SE3s(m.body_ipos, m.body_iquat)
     poses_x_b = tf.posquat2SE3s(d.xpos, d.xquat)
     _simats_b_b = dyn.transfer_simats(poses_b_bi, _simats_bi_b)
+    simats_b_b = _simats_b_b[:lastlink_id+1]
+
+    poses_b_bi = tf.posquat2SE3s(m.body_ipos, m.body_iquat)
+
+    print(f"{SO3.from_quaternion((1, 0, 0, 0)).as_matrix()=}")
+    identity_quats = [[1, 0, 0, 0] for _ in range(len(m.jnt_pos))]
+    poses_b_bj = tf.posquat2SE3s(m.jnt_pos, identity_quats)
+    #print(f"{poses_b_bj=}")
 
     # Join the spatial inertia matrices of bodies later than, or fixed relative to,
     # link6 to the matrix of link6 so that dyn.inverse() can consider the bodies'
     # inertia later
-    link6_id = mj_name2id(m, mjtObj.mjOBJ_BODY, "link6")
-    pose_x_link6 = poses_x_b[link6_id]
-    simats_b_b = _simats_b_b[:link6_id+1]
+    #link6_id = mj_name2id(m, mjtObj.mjOBJ_BODY, "link6")
+    pose_x_lastlink = poses_x_b[lastlink_id]
+    #simats_b_b = _simats_b_b[:link6_id+1]
 
-    for p_x_b, _sim_b_b in zip(poses_x_b[link6_id+1:], _simats_b_b[link6_id+1:]):
-        p_link6_b = pose_x_link6.inv().dot(p_x_b)
-        _sim_link6_b = dyn.transfer_simats(p_link6_b, _sim_b_b)
-        simats_b_b[link6_id] += _sim_link6_b
+    for p_x_b, _sim_b_b in zip(poses_x_b[lastlink_id+1:], _simats_b_b[lastlink_id+1:]):
+        #p_link6_b = pose_x_link6.inv().dot(p_x_b)
+        p_lastlink_b = pose_x_lastlink.inv().dot(p_x_b)
+        _sim_lastlink_b = dyn.transfer_simats(p_lastlink_b, _sim_b_b)
+        simats_b_b[lastlink_id] += _sim_lastlink_b
 
     mom_i = np.array([*simats_b_b[-1, 3:, 3:].diagonal(),
                       *simats_b_b[-1, 3 , 4:],
                        simats_b_b[-1, 4 , 5 ]])
-
-    #print(f"{simats_b_b[-1]=}")
-    #print(f"{m.sensor_type=}")
-    #print(f"{m.sensor_dim=}")
-    #print(f"{m.body_parentid=}")
-    """parent's body id of:
-             worldbody (body_id==0): 0,
-                 link1 (body_id==1): 0,
-                 link2 (body_id==2): 1,
-                 link3 (body_id==3): 2,
-                 link4 (body_id==4): 3,
-                 link5 (body_id==5): 4,
-                 link6 (body_id==6): 5,
-        target/ = worldbody in
-            object.xml (body_id==7): 6,
-         target/object (body_id==8): 7,
-    """
-
 
 #    print("Target object's inertial parameters wr2 its body frame ======\n"
 #         f"    Mass:               {m.body_mass[-1]}\n"
@@ -110,7 +113,6 @@ def simulate(m: MjModel,
 
     # Configure SE3 of child frame wr2 parent frame (M_{i, i - 1} in MR)
     hposes_a_b = tf.posquat2SE3s(m.body_pos, m.body_quat)
-
 
     # ここのユニットスクリューの定義の仕方について疑問が湧いた。
     # Sec. 3.3.2.2 を見るとスクリューの定義にも参照座標系からみた pose が関わって
@@ -138,28 +140,12 @@ def simulate(m: MjModel,
             else:
               raise TypeError("Only slide or hinge joints, represented as 2 or 3 for m.jnt_type, are supported.")
 
-    print(f"{uscrew_b_b=}")
-
     # Set up dynamics related variables =======================================
     # (d)twist vectors for the worldbody to be used for inverse dynamics
     twist_x_x = np.zeros(6)
     gacc_x = np.zeros(6)
     gacc_x[:3] = -1 * MjOption().gravity
     dtwist_x_x = gacc_x.copy()
-
-    # IDs for convenience
-    sensor_sitename = "target/ft_sensor"
-    sen_siteid = mj_name2id(m, mjtObj.mjOBJ_SITE, sensor_sitename)
-    if -1 == sen_siteid:
-        raise ValueError(f"Sensor site named '{sensor_sitename}' not found. Check a manipulator .xml or an target object .xml")
-
-    object_name = "target/object"
-    tgt_obj_id = mj_name2id(m, mjtObj.mjOBJ_BODY, object_name)
-    if -1 == tgt_obj_id:
-        raise ValueError(f"Body for the tariget object, named '{object_name}', not found. Check a manipulator .xml or an target object .xml")
-
-    #print(f"{tgt_obj_id=}")
-    #print(f"{len(m.body_parentid)=}")
 
     # Dictionary to be converted to a .json file for training
     aabb_scale = 1.28
@@ -198,19 +184,18 @@ def simulate(m: MjModel,
         d.ctrl = tgt_ctrl - controller.control_gain @ res_state
 
         mj_step(m, d)  # Evolve the simulation = = = = = = = = = = = = = = =
-        # controller.update_control_gain(m, d)
 
         # Process sensor reads and compute necessary data
         measurements= d.sensordata.copy()
         # Scale sampled normalized coordinates ∈ (-1, 1) in wisp to the maximum
         # length of an axis-aligned bounding box of the object.
         # Camera pose rel. to the object
-        pose_x_obj = tf.trzs2SE3(d.xpos[tgt_obj_id], d.xmat[tgt_obj_id])
+        pose_x_obj = tf.trzs2SE3(d.xpos[obj_id], d.xmat[obj_id])
         pose_x_cam = tf.trzs2SE3(d.cam_xpos[logger.cam_id],
                                  d.cam_xmat[logger.cam_id])
         pose_obj_cam = pose_x_obj.inv().dot(pose_x_cam)
         # FT sensor pose rel. to the object
-        pose_x_sen = tf.trzs2SE3(d.site_xpos[sen_siteid], d.site_xmat[sen_siteid])
+        pose_x_sen = tf.trzs2SE3(d.site_xpos[sen_site_id], d.site_xmat[sen_site_id])
         pose_sen_obj = pose_x_sen.inv().dot(pose_x_obj)
 
         # Compute (d)twists using dyn.inverse() again to validate the method by
@@ -233,7 +218,9 @@ def simulate(m: MjModel,
             pose_sen_obj, twist_sen_obj, dtwist_sen_obj)  # , coord_xfer_twist=True)
 
         # Retrieve force and torque measurements
-        ft_sen = measurements[-6:]
+        ft_sen = measurements[ft_sen_idx]
+        #linacc_x_obj = measurements[linacc_x_idx]
+        #linaccl_sen_obj = pose_sen_x.as_matrix() @ linacc_x_obj
         # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 
 #        v_sen_obj, w_sen_obj = np.split(twist_sen_obj, 2)
 #        dv_sen_obj, dw_sen_obj = np.split(dtwist_sen_obj, 2)
@@ -257,15 +244,15 @@ def simulate(m: MjModel,
             twist_link6plus_link6plus = twists[-1]  # もっというと、上だと _obj_obj だとしてるけど、こう考えたほうが正確
 
             pose_sen_x = pose_x_sen.inv()
-            pose_sen_link6 = pose_sen_x.dot(pose_x_link6)
+            pose_sen_lastlink = pose_sen_x.dot(pose_x_lastlink)
 
    #         print(f"{pose_sen_link6.rot=}")
 
 
-            twist_sen_link6 = pose_sen_link6.adjoint() @ twist_link6_link6
+            #twist_sen_link6 = pose_sen_lastlink.adjoint() @ twist_lastlink_lastlink
 
             # obj と link 
-            twist_sen_sen = twist_link6_link6
+            #twist_sen_sen = twist_link6_link6
 
             #print(f"{total_mass=}")
             #print(f"{_total_mass=}")
@@ -387,7 +374,7 @@ if __name__ == "__main__":
         cfg.logger.dataset_dir = Path.cwd() / "datasets" / cfg.target_name
 
     # Generate data structures
-    m, d, gt_mass_distr = generate_model_data(cfg)
+    m, d, gt_mass_distr_path = generate_model_data(cfg)
     # Instantiate necessary classes
     logger = autoinstantiate(cfg.logger, m, d)
     planner = autoinstantiate(cfg.planner, m, d)

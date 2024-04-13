@@ -13,22 +13,22 @@
   <worldbody>
     <light name="top" pos="0 0 3"/>
     <body name="link1" euler="0 90 0">  <!-- euler in deg -->
-      <joint name="tx" type="slide" axis="0 0 1"/>
+      <joint name="x" type="slide" axis="0 0 1"/>
       <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>  <!-- water in 1cm**3 space -->
       <body name="link2" euler="-90 0 0">
-        <joint name="ty" type="slide" axis="0 0 1"/>
+        <joint name="y" type="slide" axis="0 0 1"/>
         <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
         <body name="link3" euler="0 -90 0">
-          <joint name="tz" type="slide" axis="0 0 1"/>
+          <joint name="z" type="slide" axis="0 0 1"/>
           <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
           <body name="link4" euler="-90 0 0">
-            <joint name="rx" type="hinge" axis="0 0 1"/>
+            <joint name="roll" type="hinge" axis="0 0 1"/>
             <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
             <body name="link5" euler="0 -90 0">
-              <joint name="ry" type="hinge" axis="0 0 1"/>
+              <joint name="pitch" type="hinge" axis="0 0 1"/>
               <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
               <body name="link6" euler="-90 0 0">
-                <joint name="rz" type="hinge" axis="0 0 1"/>
+                <joint name="yaw" type="hinge" axis="0 0 1"/>
                 <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
                 <site name="attachment"/>
                 <camera name="tracking" mode="track"/>
@@ -41,22 +41,22 @@
   </worldbody>
 
   <actuator>
-    <motor name="mtr_tx" joint="tx"/>
-    <motor name="mtr_ty" joint="ty"/>
-    <motor name="mtr_tz" joint="tz"/>
-    <motor name="mtr_rx" joint="rx"/>
-    <motor name="mtr_ry" joint="ry"/>
-    <motor name="mtr_rz" joint="rz"/>
+    <motor name="x" joint="x"/>
+    <motor name="y" joint="y"/>
+    <motor name="z" joint="z"/>
+    <motor name="roll" joint="roll"/>
+    <motor name="pitch" joint="pitch"/>
+    <motor name="yaw" joint="yaw"/>
   </actuator>
 
   <sensor>
     <!-- 6 x scalar -->
-    <actuatorfrc name="frc_tx" actuator="mtr_tx"/>  <!-- type int: 15 -->
-    <actuatorfrc name="frc_ty" actuator="mtr_ty"/>
-    <actuatorfrc name="frc_tz" actuator="mtr_tz"/>
-    <actuatorfrc name="frc_rx" actuator="mtr_rx"/>
-    <actuatorfrc name="frc_ry" actuator="mtr_ry"/>
-    <actuatorfrc name="frc_rz" actuator="mtr_rz"/>
+    <actuatorfrc name="x" actuator="x"/>  <!-- type int: 15 -->
+    <actuatorfrc name="y" actuator="y"/>
+    <actuatorfrc name="z" actuator="z"/>
+    <actuatorfrc name="roll" actuator="roll"/>
+    <actuatorfrc name="pitch" actuator="pitch"/>
+    <actuatorfrc name="yaw" actuator="yaw"/>
     <!-- 4 x 3-vector -->
     <framelinvel name="linvel_x_obj" objtype="body" objname="target/object"/>  <!-- type int: 30 -->
     <frameangvel name="angvel_x_obj" objtype="body" objname="target/object"/>  <!-- type int: 31 -->

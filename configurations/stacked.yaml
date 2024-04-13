@@ -34,8 +34,8 @@ controller:
   - 1.0
   - 1.0
   - 1.0
-  - 10.0
-  - 10.0
-  - 10.0
-read_config: ./configurations/basic.yaml
+  - 1.0
+  - 1.0
+  - 1.0
+read_config: ./configurations/stacked.yaml
 write_config: ./configurations/stacked.yaml

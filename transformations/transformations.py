@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+from typing import Sequence
+
 import numpy as np
 from liegroups import SO3, SE3  # may be replaced with robotics toolbox for python
 from mujoco._enums import mjtObj
@@ -79,6 +82,17 @@ def posquat2SE3s(pos: NDArray,
     return [posquat2SE3(p, q) for p, q in zip(pos, quat)]
 
 
+@dataclass
+class ElementDescriptor:
+    category: str
+    name: str
+
+
+@dataclass
+class ElementDescriptors:
+    categories: Sequence[str]
+    names: Sequence[str]
+
 
 class PoseComposer:
     def __init__(self,
@@ -89,10 +103,10 @@ class PoseComposer:
         self.d = d
 
 
-    def get_current_pose_x(self,
-                   category: str,
-                   name: str,
-                   ) -> SE3:
+    def compose(self,
+                category: str,
+                name: str,
+                ) -> SE3:
         if "body" == category:
             id = mj_name2id(self.m, mjtObj.mjOBJ_BODY, name)
             return posquat2SE3(self.d.xpos[id], self.d.xquat[id])
@@ -118,7 +132,7 @@ class PoseComposer:
 
         return SE3.from_matrix(np.eye(4))
 
-    def get_current_pose_ref_des(self,  # des(cribed body, frame, or whatever this class supports)
+    def compose_ref2des(self,  # des(cribed body, frame, or whatever this class supports)
                                  refernce,
                                  descried,
                                  ) -> SE3:

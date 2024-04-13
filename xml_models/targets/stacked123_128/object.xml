@@ -12,7 +12,7 @@
   </worldbody>
 
   <sensor>
-    <force name="frc" site="ft_sensor"/>
-    <torque name="trq" site="ft_sensor"/>
+    <force name="force" site="ft_sensor"/>
+    <torque name="torque" site="ft_sensor"/>
   </sensor>
 </mujoco>
