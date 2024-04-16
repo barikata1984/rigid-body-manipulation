@@ -50,33 +50,35 @@ def _compose_simat(mass: float,
                      [np.zeros((3, 3)), imat]])
 
 
-def compose_spatial_inertia_matrices(mass,
-                                     diagonal_inertia,
-                                     ):
+def compose_spatial_inertia_matrix(mass,
+                                   diagonal_inertia,
+                                   ):
     assert len(mass) == len(diagonal_inertia), "Lenght of 'mass' of the bodies and 'diagonal_inertia' vectors must match."
     return np.array([_compose_simat(m, di) for m, di in zip(mass, diagonal_inertia)])
 
 
-def transfer_simats(poses: Union[SE3, Sequence[SE3]],
-                    simats,  # TODO: annotate later...
-                    ) -> NDArray:
-    poses_is_iterable = True
+def transfer_simat(pose: Union[SE3, Sequence[SE3]],
+                   simat: NDArray,
+                   ) -> NDArray:
+    single_pose = False
+    single_simat = False
 
     # Add a batch dimension to handle a set of single pose and simat
-    if not isinstance(poses, Sequence):
+    if isinstance(pose, SE3):
         # poses is an instance of liegroups.numpy.se3.SE3Matrix if this block hit
-        poses_is_iterable = False
-        poses = [poses]
+        single_pose = True
+        pose = [pose]
 
-    if 2 == simats.ndim:
-        simats = [simats]
+    if 2 == simat.ndim:
+        single_simat = True
+        simat = np.expand_dims(simat, 0)
 
-    assert len(poses) == len(simats), "The numbers of spatial inertia tensors and SE3 instances do not match."
+    assert len(pose) == len(simat), "The numbers of spatial inertia tensors and SE3 instances do not match."
 
-    adjoints = [p.inv().adjoint() for p in poses]
-    transfered = np.array([adj.T @ sim @ adj for adj, sim in zip(adjoints, simats)])
+    adjoint = [p.inv().adjoint() for p in pose]
+    transfered = np.array([adj.T @ sim @ adj for adj, sim in zip(adjoint, simat)])
 
-    return transfered if poses_is_iterable else transfered[0]
+    return transfered[0] if single_pose and single_simat else transfered
 
 
 def inverse(
