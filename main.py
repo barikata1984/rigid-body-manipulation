@@ -1,4 +1,3 @@
-from datetime import datetime
 from os import PathLike
 from pathlib import Path
 from typing import Union
@@ -7,7 +6,6 @@ import cv2
 import json
 import matplotlib as mpl
 import numpy as np
-from datetime import datetime
 from liegroups import SO3
 from matplotlib import pyplot as plt
 from mujoco._functions import mj_differentiatePos, mj_step
@@ -82,7 +80,7 @@ def simulate(m: MjModel,
     # Join the spatial inertia matrices of bodies later than the last link into its spatial inertia matrix so that dyn.inverse() can consider the bodies' inertia later =========================
     # この時点で _simats_bi_b には x, link1, ..., link6, attachment, object の simats が入っている
     _simats_bi_b = dyn.compose_spatial_inertia_matrix(m.body_mass, m.body_inertia)
-    # NOTE: gets obsolete soon >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    # NOTE: gets obsolete soon >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     # Convert sinert_i to sinert_b rel2 the body frame
     poses_b_bi = tf.compose(m.body_ipos, m.body_iquat)
     _simats_b_b = dyn.transfer_simat(poses_b_bi, _simats_bi_b)
@@ -98,7 +96,7 @@ def simulate(m: MjModel,
         p_llink_b = pose_x_llink.inv().dot(p_x_b)
         _sim_llink_b = dyn.transfer_simat(p_llink_b, _sim_b_b)
         simats_b_b[llink_id] += _sim_llink_b
-    # NOTE: <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< gets obsolete soon
+    # NOTE: <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< gets obsolete soon
 
     simats_bi_b = _simats_bi_b[:llink_id+1]
     # こっちで組んでいきたいです〜
@@ -177,16 +175,6 @@ def simulate(m: MjModel,
     gacc_x = np.zeros(6)
     gacc_x[:3] = -1 * MjOption().gravity
     dtwist_x_x = gacc_x.copy()
-
-    # Dictionary to be converted to a .json file for training
-    aabb_scale = 1.28
-    transforms = dict(
-        date_time=datetime.now().strftime("%d/%m/%Y_%H:%M:%S"),
-        camera_angle_x=logger.cam_fovx,
-        aabb_scale=aabb_scale,
-        gt_mass_distr_file_path=None,
-        frames=[],  # list(),
-    )
 
     # Prepare data containers =================================================
     res_qpos = np.empty(m.nu)
@@ -315,7 +303,7 @@ def simulate(m: MjModel,
 #                aabb_scale=[aabb_scale],
                 )
 
-            transforms["frames"].append(frame)
+            logger.transform["frames"].append(frame)
 
             # Log velocity components relative to the sensor frame
             tgt_trajectory.append(tgt_traj)
@@ -333,7 +321,7 @@ def simulate(m: MjModel,
 #        sensordata, [1*m.nu, 2*m.nu, 3*m.nu, 4*m.nu, 5*m.nu], axis=1)
 
     with open(logger.dataset_dir / "transform.json", "w") as f:
-        json.dump(transforms, f, indent=2)
+        json.dump(logger.transform, f, indent=2)
 
     # Convert lists of logged data into ndarrays ==============================
     tgt_trajectory = np.array(tgt_trajectory)
@@ -381,7 +369,7 @@ def simulate(m: MjModel,
 
 
 if __name__ == "__main__":
-    # Load configuraion
+    # Load configuraion >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     cfg = OmegaConf.structured(SimulationConfig)
     cli_cfg = OmegaConf.from_cli()
 
@@ -397,15 +385,23 @@ if __name__ == "__main__":
         OmegaConf.save(cfg, cfg.write_config)
     except MissingMandatoryValue:
         pass
+    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< Load configuraion
 
-    # Fill a potentially missing field of a logger configulation
+    # Generate mujoco data structures and aux
+    m, d, target_object_aabb_scale, gt_mass_distr_path = generate_model_data(cfg)
+
+    # Fill (potentially) missing fields of a logger configulation >>>>>>>>>>>>>>>>>>
+    try:
+        cfg.logger.target_object_aabb_scale
+    except MissingMandatoryValue:
+        cfg.logger.target_object_aabb_scale = float(target_object_aabb_scale)
+
     try:
         cfg.logger.dataset_dir
     except MissingMandatoryValue:
         cfg.logger.dataset_dir = Path.cwd() / "datasets" / cfg.target_name
+    # <<<<<<<<<<<<<<<<<< Fill (potentially) missing fields of a logger configulation
 
-    # Generate data structures
-    m, d, gt_mass_distr_path = generate_model_data(cfg)
     # Instantiate necessary classes
     logger = autoinstantiate(cfg.logger, m, d)
     planner = autoinstantiate(cfg.planner, m, d)

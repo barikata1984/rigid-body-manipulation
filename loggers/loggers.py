@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from dataclasses import dataclass
 from math import atan2, radians, tan
 from pathlib import Path
@@ -21,6 +22,7 @@ class LoggerConfig:
     videoname: str = "output.mp4"
     videcodec: str = "mp4v"
     dataset_dir: str = MISSING
+    target_object_aabb_scale: float = MISSING
 
 
 class Logger:
@@ -39,7 +41,6 @@ class Logger:
         self.fps = cfg.fps
         self.dataset_dir = Path(cfg.dataset_dir)
         self.image_dir = self.dataset_dir / "images"
-
         self.videowriter = cv2.VideoWriter(str(self.dataset_dir / cfg.videoname),
                                            cv2.VideoWriter_fourcc(*cfg.videcodec),
                                            self.fps,
@@ -47,7 +48,15 @@ class Logger:
                                            )
 
         self.renderer = Renderer(m, self.fig_height, self.fig_width)
+        self.transform = dict(
+            date_time=datetime.now().strftime("%d/%m/%Y_%H:%M:%S"),
+            camera_angle_x=self.cam_fovx,
+            aabb_scale=cfg.target_object_aabb_scale,
+            gt_mass_distr_file_path=None,
+            frames=[],  # list(),
+        )
 
+    # Prepare data containers =================================================
         os.makedirs(self.image_dir, exist_ok=True)
 
 #        print("Tracking camera setup =======================================\n"

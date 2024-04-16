@@ -13,6 +13,7 @@ logger:
   videoname: output.mp4
   videcodec: mp4v
   dataset_dir: ???
+  target_object_aabb_scale: ???
 planner:
   target_class: JointPositionPlanner
   duration: 2.0

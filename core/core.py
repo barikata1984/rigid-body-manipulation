@@ -1,6 +1,7 @@
 import inspect
 import sys
 from dataclasses import dataclass
+from os import PathLike
 from pathlib import Path
 from typing import Any, Union
 
@@ -34,7 +35,7 @@ class SimulationConfig:
 
 
 def generate_model_data(cfg: Union[DictConfig, ListConfig],
-                        ) -> tuple[MjModel, MjData, NDArray]:
+                        ) -> tuple[MjModel, MjData, float, PathLike]:
     # Load the .xml of a manipulator
     xml_dir = Path.cwd() / "xml_models"
     manipulator_path = xml_dir / "manipulators" / f"{cfg.manipulator_name}.xml"
@@ -44,17 +45,15 @@ def generate_model_data(cfg: Union[DictConfig, ListConfig],
     target_dir = xml_dir / "targets" / cfg.target_name
     target_object_path = target_dir / "object.xml"
     target_object = mjcf.from_path(target_object_path)
-
     gt_mass_distr_path = target_dir / "gt_mass_distr.npy"
-    gt_mass_distr = np.zeros(0)
 
     # Attache the object to obtain the complete model tree
     attachement_site = manipulator.find("site", "attachment")
     attachement_site.attach(target_object)
 
     # Relocate the track cam according to the target object's aabb scale
-    target_object_aabb_scale = target_object.find("numeric", "aabb_scale")
-    track_cam_pos = [0, 0, 2*target_object_aabb_scale.data[0]]
+    target_object_aabb_scale = target_object.find("numeric", "aabb_scale").data[0]
+    track_cam_pos = [0, 0, 2*target_object_aabb_scale]
     track_cam = manipulator.find('camera', cfg.logger.track_cam_name)
     track_cam.pos = track_cam_pos
 
@@ -70,7 +69,7 @@ def generate_model_data(cfg: Union[DictConfig, ListConfig],
     mj_resetDataKeyframe(m, d,
                          mj_name2id(m, mjtObj.mjOBJ_KEY, cfg.reset_keyframe))
 
-    return m, d, gt_mass_distr
+    return m, d, target_object_aabb_scale, gt_mass_distr_path
 
     #print("Configure manipulator and object ============================")
     #xml_file = config.xml.system_file
