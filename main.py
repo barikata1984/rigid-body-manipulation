@@ -42,12 +42,15 @@ from core import SimulationConfig, generate_model_data, autoinstantiate
 #     reference |
 #     /descried | Definition
 # --------------+-------------
-#             x | world frame
 #             b | body itself or its frame (refer to the official documentation)
 #            bi | body's principal frame
 #            bj | frame attached to a body's joint
 #       a/ai/aj | body's parent itself or its body/principal/joint frame
 #       c/ci/cj | body's child itself or its body/principal/joint frame
+#             l | link itself or its frame (l ∈ b)
+#            li | link's principal frame
+#            lj | frame attached to a link's joint
+#             x | world frame (x ∈ b)
 #             q | joint space
 #
 
@@ -65,10 +68,12 @@ def simulate(m: MjModel,
              ):
 
     # Get ids and indices for the sake of convenience
+    flink_id = utils.get_element_id(m, "body", "link1")  # f(irst)link
     llink_id = utils.get_element_id(m, "body", "link6")  # l(ast)link
     sen_site_id = utils.get_element_id(m, "site", "target/ft_sensor")
     obj_id = utils.get_element_id(m, "body", "target/object")
 
+    f2llink_idx = slice(flink_id, llink_id + 1)
     linacc_x_idx = utils.get_sensor_measurement_idx(m, "sensor", "linacc_x_obj")
     frc_sen_idx = utils.get_sensor_measurement_idx(m, "sensor", "target/force")
     trq_sen_idx = utils.get_sensor_measurement_idx(m, "sensor", "target/torque")
@@ -77,6 +82,7 @@ def simulate(m: MjModel,
     # Join the spatial inertia matrices of bodies later than the last link into its spatial inertia matrix so that dyn.inverse() can consider the bodies' inertia later =========================
     # この時点で _simats_bi_b には x, link1, ..., link6, attachment, object の simats が入っている
     _simats_bi_b = dyn.compose_spatial_inertia_matrix(m.body_mass, m.body_inertia)
+    # NOTE: gets obsolete soon >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     # Convert sinert_i to sinert_b rel2 the body frame
     poses_b_bi = tf.compose(m.body_ipos, m.body_iquat)
     _simats_b_b = dyn.transfer_simat(poses_b_bi, _simats_bi_b)
@@ -92,6 +98,19 @@ def simulate(m: MjModel,
         p_llink_b = pose_x_llink.inv().dot(p_x_b)
         _sim_llink_b = dyn.transfer_simat(p_llink_b, _sim_b_b)
         simats_b_b[llink_id] += _sim_llink_b
+    # NOTE: <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< gets obsolete soon
+
+    simats_bi_b = _simats_bi_b[:llink_id+1]
+    # こっちで組んでいきたいです〜
+    poses_b_bi = tf.compose(m.body_ipos, m.body_iquat)
+    pose_b_llinki = poses_b_bi[llink_id]  # principal frame of the last link
+    for p_b_bi, _sim_bi_b in zip(poses_b_bi[llink_id+1:], _simats_bi_b[llink_id+1:]):
+        #p_link6_b = pose_x_link6.inv().dot(p_x_b)
+        p_llinki_bi = pose_b_llinki.inv().dot(p_b_bi)
+        _sim_llinki_b = dyn.transfer_simat(p_llinki_bi, _sim_bi_b)
+        simats_bi_b[llink_id] += _sim_llinki_b
+
+
 
 #    mom_i = np.array([*simats_b_b[-1, 3:, 3:].diagonal(),
 #                      *simats_b_b[-1, 3 , 4:],
@@ -116,20 +135,41 @@ def simulate(m: MjModel,
     # それを body とか principal frame を参照するよう座標変換するのが良さそう。
     # jnt_pos と jnt_axis ってので pos and axis of a joint local to the body は取れるようなので、pos_b_b と rot?_b_bj を作ってそれを pose_b_bj に合成して、それを Sec. 3.3.2.2 に従って正規化してスクリュー軸に定義するってのはできそう
 
-    if True:
-        # Obtain unit screw wr2 each link = body (A_{i} in MR)
-        # NOTE: m.jnt_axis of shape (m.njnt, 3) express the directions of joints axes wr2 {b},
-        # whih mean the axes is considered as the joints' orientational displacements wr2 {b}
-        uscrew_b_b = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
-        for b, (jnt_type, jnt_ax) in enumerate(zip(m.jnt_type, m.jnt_axis), 0):
-            # Instances of ligroups SE3 classes assume the first 3 elements of
-            # screw axes are for translation and the last 3 elements for rotation
-            if 2 == jnt_type:  # transtation axis
-                uscrew_b_b[b, :3] += jnt_ax
-            elif 3 == jnt_type:  # rotation axis
-                uscrew_b_b[b, 3:] += jnt_ax
-            else:
-              raise TypeError("Only slide or hinge joints, represented as 2 or 3 for m.jnt_type, are supported.")
+    # Obtain unit screw wr2 each link = body (A_{i} in MR)
+    # NOTE: m.jnt_axis of shape (m.njnt, 3) express the directions of joints axes wr2 {b},
+    # which mean the axes is considered as the joints' orientational displacements wr2 {b}
+    uscrew_b_b = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
+    for b, (jnt_type, jnt_ax) in enumerate(zip(m.jnt_type, m.jnt_axis), 0):
+        # Instances of ligroups SE3 classes assume the first 3 elements of
+        # screw axes are for translation and the last 3 elements for rotation
+        if 2 == jnt_type:  # transtation axis
+            uscrew_b_b[b, :3] += jnt_ax
+        elif 3 == jnt_type:  # rotation axis
+            uscrew_b_b[b, 3:] += jnt_ax
+        else:
+          raise TypeError("Only slide or hinge joints, represented as 2 or 3 for m.jnt_type, are supported.")
+
+    uscrew_lj_lj = np.zeros((m.body_jntnum.sum(), 6))
+    for b, (jnt_type, jnt_ax) in enumerate(zip(m.jnt_type, m.jnt_axis), 0):
+        # Instances of ligroups SE3 classes assume the first 3 elements of
+        # screw axes are for translation and the last 3 elements for rotation
+        if 2 == jnt_type:  # transtation axis
+            uscrew_lj_lj[b, :3] += jnt_ax
+        elif 3 == jnt_type:  # rotation axis
+            uscrew_lj_lj[b, 3:] += jnt_ax
+        else:
+          raise TypeError("Only slide or hinge joints, represented as 2 or 3 for m.jnt_type, are supported.")
+
+    poses_l_li = poses_b_bi[f2llink_idx]  # len == 6
+    id_quat = [1, 0, 0, 0]
+    id_quats = [id_quat for _ in range(m.njnt)]
+    poses_l_lj = tf.compose(m.jnt_pos, np.vstack(id_quats))
+
+    uscrew_li_lj = []
+    for p_l_li, p_l_lj, us_lj_lj in zip(poses_l_li, poses_l_lj, uscrew_lj_lj):
+        p_li_lj = p_l_li.inv().dot(p_l_lj)
+        uscrew_li_lj.append(p_li_lj.adjoint() @ us_lj_lj)
+
 
     # Set up dynamics related variables =======================================
     # (d)twist vectors for the worldbody to be used for inverse dynamics
