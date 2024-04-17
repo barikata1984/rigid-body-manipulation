@@ -50,7 +50,7 @@ def _compose_simat(mass: float,
                      [np.zeros((3, 3)), imat]])
 
 
-def compose_spatial_inertia_matrix(mass,
+def get_spatial_inertia_matrix(mass,
                                    diagonal_inertia,
                                    ):
     assert len(mass) == len(diagonal_inertia), "Lenght of 'mass' of the bodies and 'diagonal_inertia' vectors must match."

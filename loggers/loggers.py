@@ -5,6 +5,7 @@ from math import atan2, radians, tan
 from pathlib import Path
 
 import cv2
+import json
 from mujoco._structs import MjData, MjModel
 from mujoco.renderer import Renderer
 from omegaconf import MISSING
@@ -41,13 +42,14 @@ class Logger:
         self.fps = cfg.fps
         self.dataset_dir = Path(cfg.dataset_dir)
         self.image_dir = self.dataset_dir / "images"
-        self.videowriter = cv2.VideoWriter(str(self.dataset_dir / cfg.videoname),
-                                           cv2.VideoWriter_fourcc(*cfg.videcodec),
-                                           self.fps,
-                                           (self.fig_width, self.fig_height),
-                                           )
-
         self.renderer = Renderer(m, self.fig_height, self.fig_width)
+        self.videowriter = cv2.VideoWriter(
+            str(self.dataset_dir / cfg.videoname),
+            cv2.VideoWriter_fourcc(*cfg.videcodec),
+            self.fps,
+            (self.fig_width, self.fig_height),
+        )
+
         self.transform = dict(
             date_time=datetime.now().strftime("%d/%m/%Y_%H:%M:%S"),
             camera_angle_x=self.cam_fovx,
@@ -56,8 +58,12 @@ class Logger:
             frames=[],  # list(),
         )
 
-    # Prepare data containers =================================================
         os.makedirs(self.image_dir, exist_ok=True)
+
+    def finish(self):
+        self.videowriter.release()
+        with open(self.dataset_dir / "transform.json", "w") as f:
+            json.dump(self.transform, f, indent=2)
 
 #        print("Tracking camera setup =======================================\n"
 #             f"    Tracking camera id:         {self.id}\n"
