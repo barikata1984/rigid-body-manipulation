@@ -14,6 +14,7 @@ logger:
   videcodec: mp4v
   dataset_dir: ???
   target_object_aabb_scale: ???
+  gt_mass_distr_file_path: ???
 planner:
   target_class: JointPositionPlanner
   duration: 2.0

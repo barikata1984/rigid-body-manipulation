@@ -24,6 +24,7 @@ class LoggerConfig:
     videcodec: str = "mp4v"
     dataset_dir: str = MISSING
     target_object_aabb_scale: float = MISSING
+    gt_mass_distr_file_path: str = MISSING
 
 
 class Logger:
@@ -54,7 +55,7 @@ class Logger:
             date_time=datetime.now().strftime("%d/%m/%Y_%H:%M:%S"),
             camera_angle_x=self.cam_fovx,
             aabb_scale=cfg.target_object_aabb_scale,
-            gt_mass_distr_file_path=None,
+            gt_mass_distr_file_path=cfg.gt_mass_distr_file_path,
             frames=[],  # list(),
         )
 

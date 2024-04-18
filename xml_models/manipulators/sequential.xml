@@ -21,10 +21,10 @@
         <body name="link3" euler="0 -90 0">
           <joint name="z" type="slide" axis="0 0 1"/>
           <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
-          <body name="link4" euler="-90 0 0">
+          <body name="link4" euler="90 0 0">
             <joint name="roll" type="hinge" axis="0 0 1"/>
             <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
-            <body name="link5" euler="0 -90 0">
+            <body name="link5" euler="0 90 0">
               <joint name="pitch" type="hinge" axis="0 0 1"/>
               <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
               <body name="link6" euler="-90 0 0">

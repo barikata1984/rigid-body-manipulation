@@ -1,6 +1,4 @@
-from os import PathLike
 from pathlib import Path
-from typing import Union
 
 import cv2
 import matplotlib as mpl
@@ -60,11 +58,10 @@ np.set_printoptions(precision=5, suppress=True)
 
 def simulate(m: MjModel,
              d: MjData,
-             gt_mass_distr_path: Union[str, PathLike],
              logger, planner, controller,  # TODO: annotate late... make a BaseModule or something and use Protocol or Generic, maybe...
              ):
 
-    # Get ids and indices for the sake of convenience
+    # Get ids and indices for the sake of convenience ==============================
     flink_id = utils.get_element_id(m, "body", "link1")  # f(irst)link
     llink_id = utils.get_element_id(m, "body", "link6")  # l(ast)link
     sen_site_id = utils.get_element_id(m, "site", "target/ft_sensor")
@@ -79,7 +76,7 @@ def simulate(m: MjModel,
 
     # Join the spatial inertia matrices of bodies later than the last link into its spatial inertia matrix so that dyn.inverse() can consider the bodies' inertia =========================
     # この時点で _simats_bi_b には x, link1, ..., link6, attachment, object の simats が入っている
-    _simats_bi_b = dyn.get_spatial_inertia_matrix(m.body_mass, m.body_inertia)  # len == 9
+    _simats_bi_b = dyn.get_spatial_inertia_matrix(m.body_mass, m.body_inertia)  # all bodies
 
     simats_bi_b = _simats_bi_b[:llink_id+1]
     poses_b_bi = tf.compose(m.body_ipos, m.body_iquat)  # len == 9
@@ -90,20 +87,27 @@ def simulate(m: MjModel,
         _sim_llinki_b = dyn.transfer_simat(p_llinki_bi, _sim_bi_b)
         simats_bi_b[llink_id] += _sim_llinki_b
 
-    print(f"{len(simats_bi_b)=}")  # 7: x, link1, ..., link5, link6 + attachment + obj
+
+    simat_llinki_llink = _simats_bi_b[llink_id]  # worldbody and all the links
+    simat_llinki_m = simat_llinki_llink
+    pose_llink_llinki = poses_b_bi[llink_id]  # principal frame of the last link
+    for p_b_bi, _sim_bi_b in zip(poses_b_bi[llink_id+1:], _simats_bi_b[llink_id+1:]):
+        #p_link6_b = pose_x_link6.inv().dot(p_x_b)
+        p_llinki_bi = pose_llink_llinki.inv().dot(p_b_bi)
+
+
     simat_llinki_m = simats_bi_b[-1]  # (lastlink) m(erged with the object) = link6 obj attached to
-    print(f"{simat_llinki_m=}")  # 7: x, link1, ..., link5, link6 + attachment + obj
     f_moms1 = simat_llinki_m[3:, :3]
-    f_moms2 = simat_llinki_m[:3, 3:]
 
     mass_eye = simat_llinki_m[:3, :3]
     mass = np.diagonal(mass_eye)[0]
 
     print(f"{mass=}")   # this one looks correct
-    print(f"{SO3.vee(f_moms1)/mass=}")   # this one looks correct
-    print(f"{SO3.vee(f_moms2)/mass=}")
 
     trans_li_mi = SO3.vee(f_moms1) / mass
+
+    print(f"{d.subtree_com[llink_id]=}")
+    print(f"{trans_li_mi=}")
 
     id_rot = SO3.from_quaternion([1, 0, 0, 0])
     pose_llinki_mi = SE3(id_rot, trans_li_mi)
@@ -200,7 +204,7 @@ def simulate(m: MjModel,
         # Compute (d)twists using dyn.inverse() again to validate the method by
         # comparing derived acceleration and force/torque with their sensor
         # measurements later
-        traj = np.stack((d.qpos, d.qvel, d.qacc))
+        traj = np.stack((d.qpos, d.qvel, d.qacc))   # actually the same as sensor measurements
         _, _, twists, dtwists = dyn.inverse(
             #tgt_traj, hposes_a_b, simats_b_b, uscrew_b_b, twist_x_x, dtwist_x_x)
             traj, hposes_k_l, simats_bi_b, np.array(uscrew_li_lj), twist_x_x, dtwist_x_x)
@@ -352,7 +356,7 @@ def simulate(m: MjModel,
 
 
 if __name__ == "__main__":
-    # Load configuraion >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    # Load configuraion >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     cfg = OmegaConf.structured(SimulationConfig)
     cli_cfg = OmegaConf.from_cli()
 
@@ -368,26 +372,31 @@ if __name__ == "__main__":
         OmegaConf.save(cfg, cfg.write_config)
     except MissingMandatoryValue:
         pass
-    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     # Generate mujoco data structures and aux data
-    m, d, target_object_aabb_scale, gt_mass_distr_path = generate_model_data(cfg)
+    m, d, target_object_aabb_scale, gt_mass_distr_file_path = generate_model_data(cfg)
 
-    # Fill (potentially) missing fields of a logger configulation >>>>>>>>>>>>>>>>>>
+    # Fill (potentially) missing fields of a logger configulation >>>>>>>>>>>>>>>>>
     try:
         cfg.logger.target_object_aabb_scale
     except MissingMandatoryValue:
         cfg.logger.target_object_aabb_scale = float(target_object_aabb_scale)
 
     try:
+        cfg.logger.gt_mass_distr_file_path
+    except MissingMandatoryValue:
+        cfg.logger.gt_mass_distr_file_path = gt_mass_distr_file_path
+
+    try:
         cfg.logger.dataset_dir
     except MissingMandatoryValue:
         cfg.logger.dataset_dir = Path.cwd() / "datasets" / cfg.target_name
-    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     # Instantiate necessary classes
     logger = autoinstantiate(cfg.logger, m, d)
     planner = autoinstantiate(cfg.planner, m, d)
     controller = autoinstantiate(cfg.controller, m, d)
 
-    simulate(m, d, gt_mass_distr_path, logger, planner, controller)
+    simulate(m, d, logger, planner, controller)
