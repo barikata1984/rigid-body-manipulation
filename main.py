@@ -48,6 +48,14 @@ from core import SimulationConfig, generate_model_data, autoinstantiate
 #             x | world frame (x ∈ b)
 #             q | joint space
 #
+# ┏━━━━━━━━━━━━━━━━━━━━━━━ "b"ody and its p"a"rent body ━━━━━━━━━━━━━━━━━━━━━━┓
+#
+#  x, link1 (firstlink), link2, ..., link6 or sth (lastlink), attachment, object
+#
+#                                   ┗━ lastlink "m"erged with the later ones ━┛
+#
+# ┗━━━━━━━━ "l"ink and its parent (= prior to 'l', which is "k") body ━━━━━━━━┛
+#
 
 
 # Remove redundant space at the head and tail of the horizontal axis's scale
@@ -61,14 +69,14 @@ def simulate(m: MjModel,
              logger, planner, controller,  # TODO: annotate late... make a BaseModule or something and use Protocol or Generic, maybe...
              ):
 
-    # Get ids and indices for the sake of convenience ==============================
-    flink_id = utils.get_element_id(m, "body", "link1")  # f(irst)link
-    llink_id = utils.get_element_id(m, "body", "link6")  # l(ast)link
+    # Get ids and indices for the sake of convenience =============================
+    fl_id = utils.get_element_id(m, "body", "link1")  # f(irst) l(ink)
+    ll_id = utils.get_element_id(m, "body", "link6")  # l(ast) l(ink)
     sen_site_id = utils.get_element_id(m, "site", "target/ft_sensor")
     obj_id = utils.get_element_id(m, "body", "target/object")
 
-    x2llink_idx = slice(0, llink_id + 1)  # 0 for worldboidy
-    f2llink_idx = slice(flink_id, llink_id + 1)
+    x2ll_idx = slice(0, ll_id + 1)  # 0 for worldboidy
+    fl2ll_idx = slice(fl_id, ll_id + 1)
     linacc_x_idx = utils.get_sensor_measurement_idx(m, "sensor", "linacc_x_obj")
     frc_sen_idx = utils.get_sensor_measurement_idx(m, "sensor", "target/force")
     trq_sen_idx = utils.get_sensor_measurement_idx(m, "sensor", "target/torque")
@@ -78,43 +86,36 @@ def simulate(m: MjModel,
     # この時点で _simats_bi_b には x, link1, ..., link6, attachment, object の simats が入っている
     _simats_bi_b = dyn.get_spatial_inertia_matrix(m.body_mass, m.body_inertia)  # all bodies
 
-    simats_bi_b = _simats_bi_b[:llink_id+1]
+    simats_bi_b = _simats_bi_b[:ll_id+1].copy()
     poses_b_bi = tf.compose(m.body_ipos, m.body_iquat)  # len == 9
-    pose_b_llinki = poses_b_bi[llink_id]  # principal frame of the last link
-    for p_b_bi, _sim_bi_b in zip(poses_b_bi[llink_id+1:], _simats_bi_b[llink_id+1:]):
+    pose_b_lli = poses_b_bi[ll_id]  # principal frame of the last link
+    for p_b_bi, _sim_bi_b in zip(poses_b_bi[ll_id+1:], _simats_bi_b[ll_id+1:]):
         #p_link6_b = pose_x_link6.inv().dot(p_x_b)
-        p_llinki_bi = pose_b_llinki.inv().dot(p_b_bi)
-        _sim_llinki_b = dyn.transfer_simat(p_llinki_bi, _sim_bi_b)
-        simats_bi_b[llink_id] += _sim_llinki_b
+        p_lli_bi = pose_b_lli.inv().dot(p_b_bi)
+        _sim_lli_b = dyn.transfer_simat(p_lli_bi, _sim_bi_b)
+        simats_bi_b[ll_id] += _sim_lli_b
 
+    # TEST SECTION TO GENERATE THE LASTLINK MERGED WITH THE OBJECT >>>>>>>>>>>>>>>>
 
-    simat_llinki_llink = _simats_bi_b[llink_id]  # worldbody and all the links
-    simat_llinki_m = simat_llinki_llink
-    pose_llink_llinki = poses_b_bi[llink_id]  # principal frame of the last link
-    for p_b_bi, _sim_bi_b in zip(poses_b_bi[llink_id+1:], _simats_bi_b[llink_id+1:]):
-        #p_link6_b = pose_x_link6.inv().dot(p_x_b)
-        p_llinki_bi = pose_llink_llinki.inv().dot(p_b_bi)
+    # 最終的に欲しい物はなにか？
+    # 1. simat_mi_m
+    poses_x_bi = tf.compose(d.xipos, d.ximat)
+    pose_x_mi = tf.compose(d.subtree_com, d.ximat)[ll_id]  # subtree_com ≒ subtree_xipos
+    simat_mi_m = np.zeros((6, 6))
+    for i in range(ll_id, m.nbody):
+        simat_bi_b= _simats_bi_b[i]
+        pose_x_bi = poses_x_bi[i]
+        pose_mi_bi = pose_x_mi.inv().dot(pose_x_bi)
+        simat_mi_b = dyn.transfer_simat(pose_mi_bi, simat_bi_b)
+        simat_mi_m += simat_mi_b
+    print(f"{simat_mi_m=}")  # うまくいったように見える
 
-
-    simat_llinki_m = simats_bi_b[-1]  # (lastlink) m(erged with the object) = link6 obj attached to
-    f_moms1 = simat_llinki_m[3:, :3]
-
-    mass_eye = simat_llinki_m[:3, :3]
-    mass = np.diagonal(mass_eye)[0]
-
-    print(f"{mass=}")   # this one looks correct
-
-    trans_li_mi = SO3.vee(f_moms1) / mass
-
-    print(f"{d.subtree_com[llink_id]=}")
-    print(f"{trans_li_mi=}")
-
-    id_rot = SO3.from_quaternion([1, 0, 0, 0])
-    pose_llinki_mi = SE3(id_rot, trans_li_mi)
-
-    adjoint_llinki_mi = pose_llinki_mi.adjoint()
-    simat_mi_mi = adjoint_llinki_mi.T @ simat_llinki_m @ adjoint_llinki_mi
-    print(f"{simat_mi_mi=}")
+    # 2. pose_llj_mi
+    pose_x_ll = poses_x_bi[ll_id]
+    pose_llj_ll = SE3(SO3.identity(), m.jnt_pos[-1])
+    pose_x_llj = pose_x_ll.dot(pose_llj_ll.inv())
+    pose_llj_mi = pose_x_llj.inv().dot(pose_x_mi)
+    print(f"{pose_llj_mi=}")  # うまくいったように見える
 
     #    mom_i = np.array([*simats_b_b[-1, 3:, 3:].diagonal(),
 #                      *simats_b_b[-1, 3 , 4:],
@@ -125,10 +126,12 @@ def simulate(m: MjModel,
 #         f"    First moments:      {SO3.vee(simats_b_b[-1, 3:, :3])}\n"
 #         f"    Moments of inertia: {mom_i}\n")
 
-    # Configure SE3 of child frame wr2 parent frame (M_{i, i - 1} in MR)
-    hposes_k_l = tf.compose(m.body_pos, m.body_quat)[x2llink_idx]
+    # <<<<<<<<<<<<<<<< TEST SECTION TO GENERATE THE LASTLINK MERGED WITH THE OBJECT
 
-    poses_l_li = poses_b_bi[f2llink_idx]  # len == 6
+    # Configure SE3 of child frame wr2 parent frame (M_{i, i - 1} in MR)
+    hposes_k_l = tf.compose(m.body_pos, m.body_quat)[x2ll_idx]
+
+    poses_l_li = poses_b_bi[fl2ll_idx]  # len == 6
     id_quat = [1, 0, 0, 0]
     id_quats = [id_quat for _ in range(m.njnt)]
     poses_l_lj = tf.compose(m.jnt_pos, np.vstack(id_quats))
@@ -164,11 +167,11 @@ def simulate(m: MjModel,
     time = []
     frame_count = 0
 
-    print(f"{len(hposes_k_l)=}")
-    print(f"{len(simats_bi_b)=}")
-    print(f"{len(uscrew_li_lj)=}")
-    print(f"{len(twist_x_x)=}")
-    print(f"{len(dtwist_x_x)=}")
+    #print(f"{len(hposes_k_l)=}")
+    #print(f"{len(simats_bi_b)=}")
+    #print(f"{len(uscrew_li_lj)=}")
+    #print(f"{len(twist_x_x)=}")
+    #print(f"{len(dtwist_x_x)=}")
     # Main loop ===============================================================
     for step in tqdm(range(planner.n_steps), desc="Progress"):
         # Compute actuator controls and evolute the simulatoin
