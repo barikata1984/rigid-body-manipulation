@@ -42,19 +42,19 @@ class StateSpace:
         mjd_transitionFD(m, d, self.epsilon, self.centered, self.A, self.B, self.C, self.D)
 
 
-def _compose_simat(mass: float,
-                   diag_i: Union[list[float], NDArray],
-                   ) -> NDArray:
+def _get_simat(mass: float,
+               diag_i: Union[list[float], NDArray],
+               ) -> NDArray:
     imat = np.diag(diag_i)  # inertia matrix
     return np.block([[mass * np.eye(3), np.zeros((3, 3))],
                      [np.zeros((3, 3)), imat]])
 
 
 def get_spatial_inertia_matrix(mass,
-                                   diagonal_inertia,
-                                   ):
-    assert len(mass) == len(diagonal_inertia), "Lenght of 'mass' of the bodies and 'diagonal_inertia' vectors must match."
-    return np.array([_compose_simat(m, di) for m, di in zip(mass, diagonal_inertia)])
+                               diagonal_inertia,
+                               ):
+    assert len(mass) == len(diagonal_inertia), "Lenght of 'mass' of the bodies and that of 'diagonal_inertia' vectors must match."
+    return np.array([_get_simat(m, di) for m, di in zip(mass, diagonal_inertia)])
 
 
 def transfer_simat(pose: Union[SE3, Sequence[SE3]],
@@ -81,15 +81,15 @@ def transfer_simat(pose: Union[SE3, Sequence[SE3]],
     return transfered[0] if single_pose and single_simat else transfered
 
 
-def inverse(
-        traj: np.ndarray,
-        pose_home,
-        body_spati: np.ndarray,
-        uscrew: np.ndarray,
-        twist_0: np.ndarray,
-        dtwist_0: np.ndarray,
-        wrench_tip: np.ndarray = np.zeros(6),
-        pose_tip_ee: NDArray = SE3.identity()):
+def inverse(traj: np.ndarray,
+            hposes_body_parent,
+            simats_bodyi: np.ndarray,
+            uscrews_bodyi: np.ndarray,
+            twist_0: np.ndarray,
+            dtwist_0: np.ndarray,
+            wrench_tip: np.ndarray = np.zeros(6),
+            pose_tip_ee: NDArray = SE3.identity(),
+            ):
 
     # Prepare lie group, twist, and dtwist storage arrays
     poses = []  # T_{i, i - 1} in Modern Robotics
@@ -97,8 +97,8 @@ def inverse(
     dtwists = [dtwist_0]  # \dot{\mathcal{V}}
 
     # Forward iterations
-    for i, (p_h, us) in enumerate(zip(pose_home[1:], uscrew)):
-        poses.append(SE3.exp(-us * traj[0, i]).dot(p_h))  # Eq. 8.50
+    for i, (h_p, us) in enumerate(zip(hposes_body_parent[1:], uscrews_bodyi)):
+        poses.append(SE3.exp(-1 * us * traj[0, i]).dot(h_p))  # Eq. 8.50
         # Compute twist (Eq. 8.51 in Modern Robotics)
         tw  = poses[-1].adjoint() @ twists[-1]
         tw += us * traj[1, i]
@@ -115,10 +115,10 @@ def inverse(
     poses.append(pose_tip_ee)
     # Let m the # of joint/actuator axes, the backward iteration should be
     # performed from index m to 1. So, the range is set like below.
-    for i in range(len(uscrew), 0, -1):
+    for i in range(len(uscrews_bodyi), 0, -1):
         w  = poses[i].adjoint().T @ wrench[-1]
-        w += body_spati[i] @ dtwists[i]
-        w += -1 * SE3.curlywedge(twists[i]).T @ body_spati[i] @ twists[i]
+        w += simats_bodyi[i] @ dtwists[i]
+        w += -1 * SE3.curlywedge(twists[i]).T @ simats_bodyi[i] @ twists[i]
         wrench.append(w)
 
     wrench.reverse()
@@ -127,7 +127,7 @@ def inverse(
     # or torque element of the wrench that each screw corresponds to. Therefore,
     # the hadamarrd product below extracts the control signals, which are the
     # magnitude of target force or torque signals, from wrench array
-    ctrl_mat = wrench[:-1] * uscrew  # Eq. 8.53
+    ctrl_mat = wrench[:-1] * uscrews_bodyi  # Eq. 8.53
 
     return ctrl_mat.sum(axis=1), poses, twists, dtwists
 

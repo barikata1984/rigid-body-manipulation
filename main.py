@@ -1,9 +1,10 @@
+from functools import partial
 from pathlib import Path
 
 import cv2
 import matplotlib as mpl
 import numpy as np
-from liegroups import SO3, SE3
+from liegroups import SE3
 from matplotlib import pyplot as plt
 from mujoco._functions import mj_differentiatePos, mj_step
 from mujoco._structs import MjModel, MjData, MjOption
@@ -32,7 +33,6 @@ from core import SimulationConfig, generate_model_data, autoinstantiate
 #  (lin/ang)acc | (linear/angular) acceleration
 #         momsi | moments of inertia
 #          gacc | graviatational acceleration
-#  NOTE: 's' may follow a descriptor to clarify that the variable multiple descriptors.
 #
 #     reference |
 #     /descried | Definition
@@ -41,20 +41,22 @@ from core import SimulationConfig, generate_model_data, autoinstantiate
 #            bi | body's principal frame
 #            bj | frame attached to a body's joint
 #       a/ai/aj | body's parent itself or its body/principal/joint frame
-#       c/ci/cj | body's child itself or its body/principal/joint frame
-#             l | link itself or its frame (l ∈ b)
-#            li | link's principal frame
-#            lj | frame attached to a link's joint
+#       l/li/lj | link itself or its body/principal/joint frame
+#       k/ki/kj | link's parent itself or its body/principal/joint frame
+#       m/mi/mj | merged lastlink itself or its body/principal/joint frame
 #             x | world frame (x ∈ b)
 #             q | joint space
 #
-# ┏━━━━━━━━━━━━━━━━━━━━━━━ "b"ody and its p"a"rent body ━━━━━━━━━━━━━━━━━━━━━━┓
+#  NOTE: 's' follows the descriptor part of a variable's name to clarify that
+#        the variable contains multiple descriptors.
+#
+# ┏━━━━━━━━━━━━━━━━━━━━━━━━ "b"ody and its p"a"rent body ━━━━━━━━━━━━━━━━━━━━━━━┓
 #
 #  x, link1 (firstlink), link2, ..., link6 or sth (lastlink), attachment, object
 #
-#                                   ┗━ lastlink "m"erged with the later ones ━┛
+#                                   ┗━━ lastlink "m"erged with the later ones ━━┛
 #
-# ┗━━━━━━━━ "l"ink and its parent (= prior to 'l', which is "k") body ━━━━━━━━┛
+# ┗━━━━━━━━━ "l"ink and its parent body (= prior to 'l', which is "k") ━━━━━━━━━┛
 #
 
 
@@ -72,10 +74,10 @@ def simulate(m: MjModel,
     # Get ids and indices for the sake of convenience =============================
     fl_id = utils.get_element_id(m, "body", "link1")  # f(irst) l(ink)
     ll_id = utils.get_element_id(m, "body", "link6")  # l(ast) l(ink)
-    sen_site_id = utils.get_element_id(m, "site", "target/ft_sensor")
     obj_id = utils.get_element_id(m, "body", "target/object")
+    sen_site_id = utils.get_element_id(m, "site", "target/ft_sensor")
 
-    x2ll_idx = slice(0, ll_id + 1)  # 0 for worldboidy
+    x2ll_idx = slice(0, ll_id + 1)  # 0 for worldbody
     fl2ll_idx = slice(fl_id, ll_id + 1)
     linacc_x_idx = utils.get_sensor_measurement_idx(m, "sensor", "linacc_x_obj")
     frc_sen_idx = utils.get_sensor_measurement_idx(m, "sensor", "target/force")
@@ -84,59 +86,39 @@ def simulate(m: MjModel,
 
     # Join the spatial inertia matrices of bodies later than the last link into its spatial inertia matrix so that dyn.inverse() can consider the bodies' inertia =========================
     # この時点で _simats_bi_b には x, link1, ..., link6, attachment, object の simats が入っている
-    _simats_bi_b = dyn.get_spatial_inertia_matrix(m.body_mass, m.body_inertia)  # all bodies
-
-    simats_bi_b = _simats_bi_b[:ll_id+1].copy()
-    poses_b_bi = tf.compose(m.body_ipos, m.body_iquat)  # len == 9
-    pose_b_lli = poses_b_bi[ll_id]  # principal frame of the last link
-    for p_b_bi, _sim_bi_b in zip(poses_b_bi[ll_id+1:], _simats_bi_b[ll_id+1:]):
-        #p_link6_b = pose_x_link6.inv().dot(p_x_b)
-        p_lli_bi = pose_b_lli.inv().dot(p_b_bi)
-        _sim_lli_b = dyn.transfer_simat(p_lli_bi, _sim_bi_b)
-        simats_bi_b[ll_id] += _sim_lli_b
-
-    # TEST SECTION TO GENERATE THE LASTLINK MERGED WITH THE OBJECT >>>>>>>>>>>>>>>>
-
-    # 最終的に欲しい物はなにか？
-    # 1. simat_mi_m
+    simats_bi_b = dyn.get_spatial_inertia_matrix(m.body_mass, m.body_inertia)  # all bodies
+    poses_b_bi = tf.compose(m.body_ipos, m.body_iquat)
     poses_x_bi = tf.compose(d.xipos, d.ximat)
-    pose_x_mi = tf.compose(d.subtree_com, d.ximat)[ll_id]  # subtree_com ≒ subtree_xipos
+    hposes_a_b = tf.compose(m.body_pos, m.body_quat)
+
+    # 1. simat_mi_m & simat_li_l
+    pose_x_mi = tf.compose(d.subtree_com, d.ximat)[ll_id]
     simat_mi_m = np.zeros((6, 6))
     for i in range(ll_id, m.nbody):
-        simat_bi_b= _simats_bi_b[i]
-        pose_x_bi = poses_x_bi[i]
-        pose_mi_bi = pose_x_mi.inv().dot(pose_x_bi)
-        simat_mi_b = dyn.transfer_simat(pose_mi_bi, simat_bi_b)
-        simat_mi_m += simat_mi_b
-    print(f"{simat_mi_m=}")  # うまくいったように見える
+        pose_mi_bi = pose_x_mi.inv().dot(poses_x_bi[i])
+        simat_mi_m += dyn.transfer_simat(pose_mi_bi, simats_bi_b[i])
+    simats_li_l = np.vstack([simats_bi_b[:ll_id].copy(),
+                             np.expand_dims(simat_mi_m, 0)])  # len == 7
 
-    # 2. pose_llj_mi
-    pose_x_ll = poses_x_bi[ll_id]
-    pose_llj_ll = SE3(SO3.identity(), m.jnt_pos[-1])
-    pose_x_llj = pose_x_ll.dot(pose_llj_ll.inv())
-    pose_llj_mi = pose_x_llj.inv().dot(pose_x_mi)
-    print(f"{pose_llj_mi=}")  # うまくいったように見える
+    #print(f"{simats_li_l[-1]=}")  # looks working fine
 
-    #    mom_i = np.array([*simats_b_b[-1, 3:, 3:].diagonal(),
-#                      *simats_b_b[-1, 3 , 4:],
-#                       simats_b_b[-1, 4 , 5 ]])
+    # 1. hposes_ki_li を作る
+    pose_x_ll = tf.compose(d.xpos, d.xmat)[ll_id]
+    poses_l_li = poses_b_bi[:ll_id] + [pose_x_ll.inv().dot(pose_x_mi)]
+    hposes_li_ki = [SE3.identity()]  # for worldbody
+    for k, hpose_k_l in enumerate(hposes_a_b[fl2ll_idx]):  # num iteration == 6
+        pose_ki_k = poses_l_li[k].inv()
+        pose_l_li = poses_l_li[k+1]
+        hpose_ki_li = pose_ki_k.dot(hpose_k_l.dot(pose_l_li))
+        hposes_li_ki.append(hpose_ki_li.inv())
 
-#    print("Target object's inertial parameters wr2 its body frame ======\n"
-#         f"    Mass:               {m.body_mass[-1]}\n"
-#         f"    First moments:      {SO3.vee(simats_b_b[-1, 3:, :3])}\n"
-#         f"    Moments of inertia: {mom_i}\n")
+    #print(f"{hposes_li_ki[-1]=}")  # looks working fine
 
-    # <<<<<<<<<<<<<<<< TEST SECTION TO GENERATE THE LASTLINK MERGED WITH THE OBJECT
-
-    # Configure SE3 of child frame wr2 parent frame (M_{i, i - 1} in MR)
-    hposes_k_l = tf.compose(m.body_pos, m.body_quat)[x2ll_idx]
-
-    poses_l_li = poses_b_bi[fl2ll_idx]  # len == 6
+    # 2. uscrews_li_lj を作る
     id_quat = [1, 0, 0, 0]
     id_quats = [id_quat for _ in range(m.njnt)]
     poses_l_lj = tf.compose(m.jnt_pos, np.vstack(id_quats))
-
-    uscrew_li_lj = []
+    uscrews_li_lj = []
     for i, (p_l_li, p_l_lj) in enumerate(zip(poses_l_li, poses_l_lj)):
         us_lj_lj = np.zeros(6)
         if 2 == m.jnt_type[i]:  # slider joint
@@ -147,16 +129,21 @@ def simulate(m: MjModel,
             raise TypeError("Only slide or hinge joints, represented as 2 or 3 for an element of m.jnt_type, are supported.")
 
         p_li_lj = p_l_li.inv().dot(p_l_lj)
-        uscrew_li_lj.append(p_li_lj.adjoint() @ us_lj_lj)
+        uscrews_li_lj.append(p_li_lj.adjoint() @ us_lj_lj)
 
-    uscrew_li_lj = np.array(uscrew_li_lj)
+    #print(f"{uscrews_li_lj=}")  # looks working fine
 
-    # Set up dynamics related variables =======================================
     # (d)twist vectors for the worldbody to be used for inverse dynamics
-    twist_x_x = np.zeros(6)
     gacc_x = np.zeros(6)
     gacc_x[:3] = -1 * MjOption().gravity
-    dtwist_x_x = gacc_x.copy()
+
+    inverse = partial(dyn.inverse,
+                      hposes_body_parent=hposes_li_ki,
+                      simats_bodyi=simats_li_l,
+                      uscrews_bodyi=np.array(uscrews_li_lj),
+                      twist_0=np.zeros(6),
+                      dtwist_0=gacc_x.copy(),
+                      )
 
     # Prepare data containers =================================================
     res_qpos = np.empty(m.nu)
@@ -167,18 +154,11 @@ def simulate(m: MjModel,
     time = []
     frame_count = 0
 
-    #print(f"{len(hposes_k_l)=}")
-    #print(f"{len(simats_bi_b)=}")
-    #print(f"{len(uscrew_li_lj)=}")
-    #print(f"{len(twist_x_x)=}")
-    #print(f"{len(dtwist_x_x)=}")
     # Main loop ===============================================================
     for step in tqdm(range(planner.n_steps), desc="Progress"):
         # Compute actuator controls and evolute the simulatoin
         tgt_traj = planner.plan(step)
-        tgt_ctrl, _, _, _= dyn.inverse(
-            #tgt_traj, hposes_a_b, simats_b_b, uscrew_b_b, twist_x_x, dtwist_x_x)
-            tgt_traj, hposes_k_l, simats_bi_b, np.array(uscrew_li_lj), twist_x_x, dtwist_x_x)
+        tgt_ctrl, _, _, _= inverse(tgt_traj)
         # Residual of state
         mj_differentiatePos(  # Use this func to differenciate quat properly
             m,  # MjModel
@@ -207,10 +187,8 @@ def simulate(m: MjModel,
         # Compute (d)twists using dyn.inverse() again to validate the method by
         # comparing derived acceleration and force/torque with their sensor
         # measurements later
-        traj = np.stack((d.qpos, d.qvel, d.qacc))   # actually the same as sensor measurements
-        _, _, twists, dtwists = dyn.inverse(
-            #tgt_traj, hposes_a_b, simats_b_b, uscrew_b_b, twist_x_x, dtwist_x_x)
-            traj, hposes_k_l, simats_bi_b, np.array(uscrew_li_lj), twist_x_x, dtwist_x_x)
+        act_traj = np.stack((d.qpos, d.qvel, d.qacc))   # actually the same as sensor measurements
+        _, _, twists, dtwists = inverse(act_traj)
 
         # should be rewriten later >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         twists_li_l, dtwists_li_l = twists, dtwists
