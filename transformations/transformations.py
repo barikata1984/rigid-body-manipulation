@@ -50,3 +50,11 @@ def compose(trans: NDArray,
     return poses[0] if single_trans and single_rot else poses
 
 
+def homogenize(three_vec):
+    homog = np.ones(4)
+    homog[:3] = three_vec
+    return homog
+
+
+def differentiate_adjoint(adjoint, twist):
+    return SE3.curlywedge(twist) @ adjoint

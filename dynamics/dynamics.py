@@ -3,10 +3,12 @@ from dataclasses import dataclass
 from typing import Union
 
 import numpy as np
-from liegroups import SE3
+from liegroups import SE3, SO3
 from mujoco._functions import mjd_transitionFD
 from mujoco._structs import MjModel, MjData
 from numpy.typing import NDArray
+
+import transformations as tf
 
 
 @dataclass
@@ -159,4 +161,14 @@ def compute_linacc(pose, twist, dtwist, coord_xfer_tdtwist=False):
     linvel = compute_linvel(pose, twist)
 
     return (SE3.wedge(dtwist) @ htrans)[:3] + np.cross(twist[3:], linvel)
+
+
+def get_linear_velocity(twist, pose):
+    _linvel = SE3.wedge(twist) @ tf.homogenize(pose.trans)
+    return _linvel[:3]
+
+
+def get_linear_acceleration(twist, dtwist, pose):
+    temp = SE3.wedge(dtwist) @ tf.homogenize(pose.trans)
+    return temp[:3] + SO3.wedge(twist[3:]) @ get_linear_velocity(twist, pose)
 

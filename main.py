@@ -1,3 +1,4 @@
+from copy import deepcopy
 from functools import partial
 from pathlib import Path
 
@@ -13,10 +14,10 @@ from omegaconf.errors import ConfigAttributeError, MissingMandatoryValue
 from tqdm import tqdm
 
 import dynamics as dyn
-import transformations as tf
 import utilities as utils
 import visualization as vis
 from core import SimulationConfig, generate_model_data, autoinstantiate
+from transformations import Poses, compose, differentiate_adjoint
 
 
 # Naming convention of spatial and dynamics variables:
@@ -50,13 +51,13 @@ from core import SimulationConfig, generate_model_data, autoinstantiate
 #  NOTE: 's' follows the descriptor part of a variable's name to clarify that
 #        the variable contains multiple descriptors.
 #
-# ┏━━━━━━━━━━━━━━━━━━━━━━━━ "b"ody and its p"a"rent body ━━━━━━━━━━━━━━━━━━━━━━━┓
+#        ┏━━━━━━━━━━━━━━━ Body namespace: "b"ody and its p"a"rent body ━━━━━━━━━━━━━━━━┓
 #
-#  x, link1 (firstlink), link2, ..., link6 or sth (lastlink), attachment, object
+# Bodies: x, link1 (firstlink), link2, ..., link6 or sth (lastlink), attachment, object
 #
-#                                   ┗━━ lastlink "m"erged with the later ones ━━┛
+#                                          ┗━━ lastlink "m"erged with the later ones ━━┛
 #
-# ┗━━━━━━━━━ "l"ink and its parent body (= prior to 'l', which is "k") ━━━━━━━━━┛
+#        ┗━ Link namespace: "l"ink and its parent body (= prior to 'l', which is "k") ━┛
 #
 
 
@@ -68,58 +69,61 @@ np.set_printoptions(precision=5, suppress=True)
 
 def simulate(m: MjModel,
              d: MjData,
-             logger, planner, controller,  # TODO: annotate late... make a BaseModule or something and use Protocol or Generic, maybe...
+             logger, planner, controller, poses, # TODO: annotate late... make a BaseModule or something and use Protocol or Generic, maybe...
              ):
 
-    # Get ids and indices for the sake of convenience =============================
+    # Get ids and indices for the sake of convenience ====m=========================
     fl_id = utils.get_element_id(m, "body", "link1")  # f(irst) l(ink)
     ll_id = utils.get_element_id(m, "body", "link6")  # l(ast) l(ink)
-    obj_id = utils.get_element_id(m, "body", "target/object")
-    sen_site_id = utils.get_element_id(m, "site", "target/ft_sensor")
 
-    x2ll_idx = slice(0, ll_id + 1)  # 0 for worldbody
     fl2ll_idx = slice(fl_id, ll_id + 1)
-    linacc_x_idx = utils.get_sensor_measurement_idx(m, "sensor", "linacc_x_obj")
-    frc_sen_idx = utils.get_sensor_measurement_idx(m, "sensor", "target/force")
-    trq_sen_idx = utils.get_sensor_measurement_idx(m, "sensor", "target/torque")
+    linvel_x_obj_idx = utils.get_sensor_measurement_idx(m, "linvel_x_obj")
+    linacc_x_obj_idx = utils.get_sensor_measurement_idx(m, "linacc_x_obj")
+    frc_sen_idx = utils.get_sensor_measurement_idx(m, "target/force")
+    trq_sen_idx = utils.get_sensor_measurement_idx(m, "target/torque")
     ft_sen_idx = frc_sen_idx + trq_sen_idx
 
-    # Join the spatial inertia matrices of bodies later than the last link into its spatial inertia matrix so that dyn.inverse() can consider the bodies' inertia =========================
-    # この時点で _simats_bi_b には x, link1, ..., link6, attachment, object の simats が入っている
-    simats_bi_b = dyn.get_spatial_inertia_matrix(m.body_mass, m.body_inertia)  # all bodies
-    poses_b_bi = tf.compose(m.body_ipos, m.body_iquat)
-    poses_x_bi = tf.compose(d.xipos, d.ximat)
-    hposes_a_b = tf.compose(m.body_pos, m.body_quat)
+    # Join the spatial inertia matrices of bodies later than the last link into the
+    # spatial inertia matrix of the link so that dyn.inverse() can consider the
+    # bodies' inertia ==============================================================
+    simats_bi_b = dyn.get_spatial_inertia_matrix(m.body_mass, m.body_inertia)
+    pose_x_mi = compose(d.subtree_com, d.ximat)[ll_id]
+    pose_x_obj = poses.x_("target/object", "body")
+    pose_x_obji = pose_x_obj.dot(poses.b_principalof("target/object"))
+    pose_obj_obji = pose_x_obj.inv().dot(pose_x_obji)  # static
+    pose_obj_cam = pose_x_obj.inv().dot(poses.x_cam[logger.cam_id])
+    # FT sensor pose rel. to the object
+    pose_x_sen = poses.x_("target/ft_sensor", "site")
+    pose_sen_obj = pose_x_sen.inv().dot(pose_x_obj)
 
-    # 1. simat_mi_m & simat_li_l
-    pose_x_mi = tf.compose(d.subtree_com, d.ximat)[ll_id]
+    # Get simat_mi_m and simat_li_l ================================================
     simat_mi_m = np.zeros((6, 6))
-    for i in range(ll_id, m.nbody):
-        pose_mi_bi = pose_x_mi.inv().dot(poses_x_bi[i])
-        simat_mi_m += dyn.transfer_simat(pose_mi_bi, simats_bi_b[i])
-    simats_li_l = np.vstack([simats_bi_b[:ll_id].copy(),
-                             np.expand_dims(simat_mi_m, 0)])  # len == 7
+    for b in range(ll_id, m.nbody):  # "b" here is for {ll, attachment, object}
+        pose_mi_bi = pose_x_mi.inv().dot(poses.x_bi[b])
+        simat_mi_m += dyn.transfer_simat(pose_mi_bi, simats_bi_b[b])
+    # simat_lli_ll excluded simat_mi_m included
+    simats_li_l = np.vstack([simats_bi_b[:ll_id], np.expand_dims(simat_mi_m, 0)])
 
     #print(f"{simats_li_l[-1]=}")  # looks working fine
 
-    # 1. hposes_ki_li を作る
-    pose_x_ll = tf.compose(d.xpos, d.xmat)[ll_id]
-    poses_l_li = poses_b_bi[:ll_id] + [pose_x_ll.inv().dot(pose_x_mi)]
-    hposes_li_ki = [SE3.identity()]  # for worldbody
-    for k, hpose_k_l in enumerate(hposes_a_b[fl2ll_idx]):  # num iteration == 6
-        pose_ki_k = poses_l_li[k].inv()
-        pose_l_li = poses_l_li[k+1]
-        hpose_ki_li = pose_ki_k.dot(hpose_k_l.dot(pose_l_li))
+    # Get hhposes_ki_li ============================================================
+    hpose_x_ll = compose(d.xpos, d.xmat)[ll_id]
+    hposes_l_li = poses.b_bi[:ll_id] + [hpose_x_ll.inv().dot(pose_x_mi)]
+    hposes_li_ki = [SE3.identity()]  # for worldbodl
+    for k, hpose_k_l in enumerate(poses.a_b[fl2ll_idx]):  # num_iter. == num_links
+        hpose_ki_k = hposes_l_li[k].inv()
+        hpose_l_li = hposes_l_li[k+1]
+        hpose_ki_li = hpose_ki_k.dot(hpose_k_l.dot(hpose_l_li))
         hposes_li_ki.append(hpose_ki_li.inv())
 
     #print(f"{hposes_li_ki[-1]=}")  # looks working fine
 
-    # 2. uscrews_li_lj を作る
+    # Get uscrews_li_lj ============================================================
     id_quat = [1, 0, 0, 0]
     id_quats = [id_quat for _ in range(m.njnt)]
-    poses_l_lj = tf.compose(m.jnt_pos, np.vstack(id_quats))
+    hposes_l_lj = compose(m.jnt_pos, np.vstack(id_quats))
     uscrews_li_lj = []
-    for i, (p_l_li, p_l_lj) in enumerate(zip(poses_l_li, poses_l_lj)):
+    for i, (p_l_li, p_l_lj) in enumerate(zip(hposes_l_li, hposes_l_lj)):
         us_lj_lj = np.zeros(6)
         if 2 == m.jnt_type[i]:  # slider joint
             us_lj_lj[:3] += m.jnt_axis[i]
@@ -133,10 +137,8 @@ def simulate(m: MjModel,
 
     #print(f"{uscrews_li_lj=}")  # looks working fine
 
-    # (d)twist vectors for the worldbody to be used for inverse dynamics
-    gacc_x = np.zeros(6)
-    gacc_x[:3] = -1 * MjOption().gravity
-
+    # Set some arguments of dyn.inverse() which dose not evolve along time =========
+    gacc_x = -1 * np.array([*MjOption().gravity, 0, 0, 0])
     inverse = partial(dyn.inverse,
                       hposes_body_parent=hposes_li_ki,
                       simats_bodyi=simats_li_l,
@@ -166,94 +168,59 @@ def simulate(m: MjModel,
             m.nu,  # idx of a joint up to which res_qpos are calculated
             d.qpos,  # current qpos
             tgt_traj[0])  # target qpos or next qpos to calkculate dqvel
+
         res_state = np.concatenate((res_qpos, tgt_traj[1] - d.qvel))
         # Compute and set control, or actuator inputs
         d.ctrl = tgt_ctrl - controller.control_gain @ res_state
 
-        mj_step(m, d)  # Evolve the simulation = = = = = = = = = = = = = = =
+        # Evolve the simulation >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        mj_step(m, d)
+        # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< Evolve the simulation
 
         # Process sensor reads and compute necessary data
         measurements= d.sensordata.copy()
-        # Scale sampled normalized coordinates ∈ (-1, 1) in wisp to the maximum
-        # length of an axis-aligned bounding box of the object.
-        # Camera pose rel. to the object
-        pose_x_obj = tf.compose(d.xpos[obj_id], d.xmat[obj_id])
-        pose_x_cam = tf.compose(d.cam_xpos[logger.cam_id], d.cam_xmat[logger.cam_id])
-        pose_obj_cam = pose_x_obj.inv().dot(pose_x_cam)
-        # FT sensor pose rel. to the object
-        pose_x_sen = tf.compose(d.site_xpos[sen_site_id], d.site_xmat[sen_site_id])
-        pose_sen_obj = pose_x_sen.inv().dot(pose_x_obj)
+        ft_sen = measurements[ft_sen_idx]
+        sensed_linvel_x_obj = measurements[linvel_x_obj_idx]
 
         # Compute (d)twists using dyn.inverse() again to validate the method by
         # comparing derived acceleration and force/torque with their sensor
         # measurements later
-        act_traj = np.stack((d.qpos, d.qvel, d.qacc))   # actually the same as sensor measurements
-        _, _, twists, dtwists = inverse(act_traj)
+        act_traj = np.stack((d.qpos, d.qvel, d.qacc))   # d.qSTH is the same as reading joint
+                                                        # variable sensor measurements actually
+        _, _, twists_li_l, dtwists_li_l = inverse(act_traj)
 
-        # should be rewriten later >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-        twists_li_l, dtwists_li_l = twists, dtwists
-        # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-
-        # First-order time derivative - - - - - - - - - - - - - - - - - - - - -
-        twist_obj_obj = twists[-1]
-        twist_sen_obj = pose_sen_obj.adjoint() @ twist_obj_obj  # Eq. 3.83-84 in Modern Robotics
-#        linvel_sen_obj = compute_linvel(pose_sen_obj, twist_obj_obj, coord_xfer_twist=True)
-
-        # Second-order time derivative - - - - - - - - - - - - - - - - - - - - 
-        dtwist_obj_obj = dtwists[-1]
-        dtwist_sen_obj = dyn.coordinate_transform_dtwist(
-            pose_sen_obj, twist_sen_obj, dtwist_obj_obj)  # , coord_xfer_twist=True)
-        linacc_sen_obj = dyn.compute_linacc(  # Not \dot{v} but \ddot{p} in Modern Robotics
-            pose_sen_obj, twist_sen_obj, dtwist_sen_obj)  # , coord_xfer_twist=True)
-
-        # Retrieve force and torque measurements
-        ft_sen = measurements[ft_sen_idx]
-        linacc_x_obj = measurements[linacc_x_idx]
-#
-        #pose_sen_x = pose_x_sen.inv()
-        _linaccl_sen_obj = pose_x_sen.inv().as_matrix() @ np.append(linacc_x_obj, 1)
-        linacc_sen_obj = _linaccl_sen_obj[:-1]
         # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 
-#        v_sen_obj, w_sen_obj = np.split(twist_sen_obj, 2)
-#        dv_sen_obj, dw_sen_obj = np.split(dtwist_sen_obj, 2)
-#        skewed_w_sen_obj = SO3.wedge(w_sen_obj)
-#        skewed_dw_sen_obj = SO3.wedge(dw_sen_obj)
-#        # 
-#        _linacc1_sen_obj = dv_sen_obj + skewed_w_sen_obj @ v_sen_obj
-#        _linacc2_sen_obj = skewed_dw_sen_obj @ pose_sen_obj.trans \
-#                         + skewed_w_sen_obj @ skewed_w_sen_obj @ pose_sen_obj.trans  # element-wise part
-#        _linacc_sen_obj = _linacc1_sen_obj + _linacc2_sen_obj
-#
-#        # Retrieve force and torque measurements
-#        total_mass = ft_sen[:3] / linacc_sen_obj  # linacc_sen_obj would be wrong...
-#        _total_mass = ft_sen[:3] / _linacc_sen_obj  # linacc_sen_obj would be wrong...
-#
+
+        twist_mi_obj = twists_li_l[-1]
+        dtwist_mi_obj = dtwists_li_l[-1]
+        # Compute the linear velocity the object follows from a twist wr2 {sen}
+        pose_sen_mi = pose_x_sen.inv().dot(pose_x_mi)
+        twist_sen_obj = pose_sen_mi.adjoint() @ twist_mi_obj
+        linvel_sen_obj = dyn.get_linear_velocity(twist_sen_obj, pose_sen_obj)
+
+        # Compute the linear acceleration the object follows from the twist and a dtwist wr2 {sen}
+        twist_sen_mi = twist_sen_obj
+        pose_sen_mi_dadjoint = differentiate_adjoint(pose_sen_mi.adjoint(),
+                                                     twist_sen_mi,
+                                                     )
+
+        dtwist_sen_obj = pose_sen_mi_dadjoint @ twist_mi_obj \
+                       + pose_sen_mi.adjoint() @ dtwist_mi_obj
+
+        linacc_sen_obj = dyn.get_linear_acceleration(twist_sen_obj,
+                                                     dtwist_sen_obj,
+                                                     pose_sen_obj,
+                                                     )
 
         if frame_count <= d.time * logger.fps:
-            # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 今使ってる検証用セクション ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 
-            #print(f"{measurements.shape=}")
-            twist_link6_link6 = twists[-1]  # 上だと _obj_obj だとしてるけど、こう考えたほうが正確
-            twist_link6plus_link6plus = twists[-1]  # もっというと、上だと _obj_obj だとしてるけど、こう考えたほうが正確
 
-
-   #         print(f"{pose_sen_link6.rot=}")
-
-
-            #twist_sen_link6 = pose_sen_lastlink.adjoint() @ twist_lastlink_lastlink
-
-            # obj と link 
-            #twist_sen_sen = twist_link6_link6
-
-            #print(f"{total_mass=}")
-            #print(f"{_total_mass=}")
         # ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 検証用コード追加ゾーン ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 
 
             # Writing a single frame of a dataset =============================
             logger.renderer.update_scene(d, logger.cam_id)
             bgr = logger.renderer.render()[:, :, [2, 1, 0]]
             # Make an alpha mask to remove the black background
-            alpha = np.where(
-                np.all(bgr == 0, axis=-1), 0, 255)[..., np.newaxis]
+            alpha = np.where(np.all(bgr == 0, axis=-1), 0, 255)[..., np.newaxis]
             file_name = f"{frame_count:04}.png"
             cv2.imwrite(str(logger.image_dir / file_name),
                         np.append(bgr, alpha, axis=2))  # image (bgr + alpha)
@@ -278,7 +245,7 @@ def simulate(m: MjModel,
 
             # Log velocity components relative to the sensor frame
             tgt_trajectory.append(tgt_traj)
-            trajectory.append(traj)
+            trajectory.append(act_traj)
             linaccs_sen_obj.append(linacc_sen_obj)
             fts_sen.append(ft_sen)
             time.append(d.time)
@@ -287,9 +254,6 @@ def simulate(m: MjModel,
             frame_count += 1
 
     logger.finish()  # video and dataset json generated
-
-#    qpos_meas, qvel_meas, qfrc_meas, ft_meas_sen, obj_vel_x, obj_acc_x = np.split(
-#        sensordata, [1*m.nu, 2*m.nu, 3*m.nu, 4*m.nu, 5*m.nu], axis=1)
 
     # Convert lists of logged data into ndarrays ==============================
     tgt_trajectory = np.array(tgt_trajectory)
@@ -353,7 +317,7 @@ if __name__ == "__main__":
         OmegaConf.save(cfg, cfg.write_config)
     except MissingMandatoryValue:
         pass
-    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< Load configuraion
 
     # Generate mujoco data structures and aux data
     m, d, target_object_aabb_scale, gt_mass_distr_file_path = generate_model_data(cfg)
@@ -373,11 +337,12 @@ if __name__ == "__main__":
         cfg.logger.dataset_dir
     except MissingMandatoryValue:
         cfg.logger.dataset_dir = Path.cwd() / "datasets" / cfg.target_name
-    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    # <<<<<<<<<<<<<<<<< Fill (potentially) missing fields of a logger configulation
 
     # Instantiate necessary classes
     logger = autoinstantiate(cfg.logger, m, d)
     planner = autoinstantiate(cfg.planner, m, d)
     controller = autoinstantiate(cfg.controller, m, d)
+    poses = Poses(m, d)
 
-    simulate(m, d, logger, planner, controller)
+    simulate(m, d, logger, planner, controller, poses)

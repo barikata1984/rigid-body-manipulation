@@ -49,15 +49,15 @@ def get_element_id(m: MjModel,
     return id
 
 def get_sensor_measurement_idx(m: MjModel,
-                               elem_type: Optional[str] = None,
                                name: Optional[str] = None,
                                id: Optional[int] = None,
                                ) -> list[int]:
 
+
     if id is None:
-        if elem_type is None or name is None:
-            raise ValueError("'elem_type' and 'name' have to be set when 'id' is None")
-        id = get_element_id(m, elem_type, name)
+        if name is None:
+            raise ValueError("'name' have to be set when 'id' is None")
+        id = get_element_id(m, "sensor", name)
 
     idx = np.arange(m.sensor_dim[id]) + m.sensor_dim[:id].sum()
     return idx.tolist()
