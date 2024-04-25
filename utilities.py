@@ -7,20 +7,20 @@ from mujoco._functions import mj_name2id
 from mujoco._structs import MjData, MjModel
 
 
-class Measurements:
+class Sensors:
     def __init__(self,
                  m: MjModel,
                  d: MjData,
                  ) -> None:
         self.m = m
-        self._measurements = d.sensordata
+        self._sensordata = d.sensordata
 
     def get(self,
             key,
             ):
 
         idx = get_sensor_measurement_idx(self.m, key)
-        return self._measurements[idx]
+        return self._sensordata[idx]
 
 
 def classify_dict_kargs(dict_kargs):

@@ -1,11 +1,7 @@
-from dataclasses import dataclass
-from typing import Sequence, Union
+from typing import Optional, Union
 
 import numpy as np
-from liegroups import SO3, SE3  # may be replaced with robotics toolbox for python
-from mujoco._enums import mjtObj
-from mujoco._functions import mj_name2id
-from mujoco._structs import MjModel, MjData
+from liegroups import SO3, SE3
 from numpy.typing import NDArray
 
 
@@ -24,8 +20,12 @@ def tr2se3(t,
 
 
 def compose(trans: NDArray,
-             rot: NDArray,
+             rot: Optional[NDArray] = None,
              ) -> Union[SE3, list[SE3]]:
+
+    if rot is None:
+        id_quat = [1, 0, 0, 0]
+        rot = np.array([id_quat for _ in trans])
 
     single_trans = False
     single_rot = False
@@ -50,9 +50,9 @@ def compose(trans: NDArray,
     return poses[0] if single_trans and single_rot else poses
 
 
-def homogenize(three_vec, forth_val=1):
+def homogenize(coord, forth_val=1):
     homog = forth_val * np.ones(4)
-    homog[:3] = three_vec
+    homog[:3] = coord
     return homog
 
 

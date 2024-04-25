@@ -19,20 +19,20 @@ class Poses:
         self.x_site = compose(d.site_xpos, d.site_xmat)
 
 
-    def a_(self,
-           name,
-           ) -> SE3:
+    def get_a_(self,
+               name,
+               ) -> SE3:
         return self.a_b[get_element_id(self.m, "body", name)]
 
-    def b_principalof(self,
-                      name,
-                      ) -> SE3:
+    def get_biof(self,
+                 name,
+                 ) -> SE3:
         return self.b_bi[get_element_id(self.m, "body", name)]
 
-    def x_(self,
-           elem_type,
-           name,
-           ) -> SE3:
+    def get_x_(self,
+               elem_type,
+               name,
+               ) -> SE3:
 
         if "body" == elem_type:
             return self.x_b[get_element_id(self.m, elem_type, name)]
