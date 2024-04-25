@@ -3,12 +3,12 @@ from dataclasses import dataclass
 from typing import Union
 
 import numpy as np
-from liegroups import SE3, SO3
+from liegroups import SE3
 from mujoco._functions import mjd_transitionFD
 from mujoco._structs import MjModel, MjData
 from numpy.typing import NDArray
 
-import transformations as tf
+from transformations import homogenize
 
 
 @dataclass
@@ -102,12 +102,12 @@ def inverse(traj: np.ndarray,
     for i, (h_p, us) in enumerate(zip(hposes_body_parent[1:], uscrews_bodyi)):
         poses.append(SE3.exp(-1 * us * traj[0, i]).dot(h_p))  # Eq. 8.50
         # Compute twist (Eq. 8.51 in Modern Robotics)
-        tw  = poses[-1].adjoint() @ twists[-1]
-        tw += us * traj[1, i]
+        tw = poses[-1].adjoint() @ twists[-1] \
+           + us * traj[1, i]
         # Compute the derivatife of twist (Eq. 8.52 in Modern Robotics)
-        dtw  = poses[-1].adjoint() @ dtwists[-1]
-        dtw += SE3.curlywedge(tw) @ us * traj[1, i]
-        dtw += us * traj[2, i]
+        dtw = poses[-1].adjoint() @ dtwists[-1] \
+            + SE3.curlywedge(tw) @ us * traj[1, i] \
+            + us * traj[2, i]
         # Add the twist and its derivative to their storage arrays
         twists.append(tw)
         dtwists.append(dtw)
@@ -118,9 +118,10 @@ def inverse(traj: np.ndarray,
     # Let m the # of joint/actuator axes, the backward iteration should be
     # performed from index m to 1. So, the range is set like below.
     for i in range(len(uscrews_bodyi), 0, -1):
-        w  = poses[i].adjoint().T @ wrench[-1]
-        w += simats_bodyi[i] @ dtwists[i]
-        w += -1 * SE3.curlywedge(twists[i]).T @ simats_bodyi[i] @ twists[i]
+        # Compute wrench (Eq. 8.53 in Modern Robotics)
+        w = poses[i].adjoint().T @ wrench[-1] \
+          + simats_bodyi[i] @ dtwists[i] \
+          + -1 * SE3.curlywedge(twists[i]).T @ simats_bodyi[i] @ twists[i]
         wrench.append(w)
 
     wrench.reverse()
@@ -129,19 +130,9 @@ def inverse(traj: np.ndarray,
     # or torque element of the wrench that each screw corresponds to. Therefore,
     # the hadamarrd product below extracts the control signals, which are the
     # magnitude of target force or torque signals, from wrench array
-    ctrl_mat = wrench[:-1] * uscrews_bodyi  # Eq. 8.53
+    ctrl_mat = wrench[:-1] * uscrews_bodyi  # Eq. 8.54
 
     return ctrl_mat.sum(axis=1), poses, twists, dtwists
-
-
-def compute_linvel(pose, twist, coord_xfer_twist=False):
-    if coord_xfer_twist:  #  if twist is not coordinate transfered beforehand
-        twist = pose.adjoint() @ twist
-
-    htrans = np.array([*pose.trans, 1])  # convert into homogeneous coordinates
-    hlinvel = SE3.wedge(twist) @ htrans
-
-    return hlinvel[:3]
 
 
 def coordinate_transform_dtwist(pose, twist, dtwist, coord_xfer_twist=False):
@@ -152,23 +143,21 @@ def coordinate_transform_dtwist(pose, twist, dtwist, coord_xfer_twist=False):
     return SE3.curlywedge(twist) @ twist + pose.adjoint() @ dtwist
 
 
-def compute_linacc(pose, twist, dtwist, coord_xfer_tdtwist=False):
-    if coord_xfer_tdtwist:  #  if twist is not coordinate transfered beforehand
-        twist = pose.adjoint() @ twist
-        dtwist = coordinate_transform_dtwist(pose, twist, dtwist, coord_xfer_twist=False)
-
-    htrans = np.array([*pose.trans, 1])
-    linvel = compute_linvel(pose, twist)
-
-    return (SE3.wedge(dtwist) @ htrans)[:3] + np.cross(twist[3:], linvel)
-
-
 def get_linear_velocity(twist, pose):
-    _linvel = SE3.wedge(twist) @ tf.homogenize(pose.trans)
+    """
+    Refer to Modern Robotics Chapt. 8.2.1 with homogeneous coordinate representation
+    """
+    _linvel = SE3.wedge(twist) @ homogenize(pose.trans)
     return _linvel[:3]
 
 
 def get_linear_acceleration(twist, dtwist, pose):
-    temp = SE3.wedge(dtwist) @ tf.homogenize(pose.trans)
-    return temp[:3] + SO3.wedge(twist[3:]) @ get_linear_velocity(twist, pose)
+    """
+    Refer to Modern Robotics Chapt. 8.2.1 with homogeneous coordinate representation
+    """
+    linvel = get_linear_velocity(twist, pose)
+    _linacc = SE3.wedge(dtwist) @ homogenize(pose.trans) \
+            + SE3.wedge(twist) @ homogenize(linvel, 0)
+
+    return _linacc[:3]
 

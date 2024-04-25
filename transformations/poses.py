@@ -22,27 +22,25 @@ class Poses:
     def a_(self,
            name,
            ) -> SE3:
-
         return self.a_b[get_element_id(self.m, "body", name)]
 
     def b_principalof(self,
                       name,
                       ) -> SE3:
-
         return self.b_bi[get_element_id(self.m, "body", name)]
 
     def x_(self,
+           elem_type,
            name,
-           type_,
            ) -> SE3:
 
-        if "body" == type_:
-            return self.x_b[get_element_id(self.m, type_, name)]
-        elif "pricipal" == type_:
+        if "body" == elem_type:
+            return self.x_b[get_element_id(self.m, elem_type, name)]
+        elif "pricipal" == elem_type:
             return self.x_bi[get_element_id(self.m, "body", name)]
-        elif "camera" == type_:
-            return self.x_cam[get_element_id(self.m, type_, name)]
-        elif "site" == type_:
-            return self.x_site[get_element_id(self.m, type_, name)]
+        elif "camera" == elem_type:
+            return self.x_cam[get_element_id(self.m, elem_type, name)]
+        elif "site" == elem_type:
+            return self.x_site[get_element_id(self.m, elem_type, name)]
         else:
-            raise ValueError(f"Pose retrievazl fo element type {type_} is not supported for now")
+            raise ValueError(f"Pose retrievazl fo element type {elem_type} is not supported for now")

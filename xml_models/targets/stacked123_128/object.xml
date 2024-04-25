@@ -12,6 +12,7 @@
   </worldbody>
 
   <sensor>
+    <accelerometer name="linacc_sen" site="ft_sensor"/>
     <force name="force" site="ft_sensor"/>
     <torque name="torque" site="ft_sensor"/>
   </sensor>

@@ -50,8 +50,7 @@
   </actuator>
 
   <sensor>
-    <!-- 6 x scalar -->
-    <actuatorfrc name="x" actuator="x"/>  <!-- type int: 15 -->
+    <actuatorfrc name="x" actuator="x"/>
     <actuatorfrc name="y" actuator="y"/>
     <actuatorfrc name="z" actuator="z"/>
     <actuatorfrc name="roll" actuator="roll"/>
@@ -60,8 +59,8 @@
     <!-- 4 x 3-vector -->
     <framelinvel name="linvel_x_obj" objtype="body" objname="target/object"/>  <!-- type int: 30 -->
     <frameangvel name="angvel_x_obj" objtype="body" objname="target/object"/>  <!-- type int: 31 -->
-    <!-- framelinacc name="linacc_x_obj" objtype="body" objname="target/object"/-->  <!-- type int: 32 -->
-    <framelinacc name="linacc_x_obj" objtype="site" objname="target/ft_sensor"/>  <!-- type int: 32 -->
+    <framelinacc name="linacc_x_obj" objtype="body" objname="target/object"/>  <!-- type int: 32 -->
+    <framelinacc name="linacc_x_sen" objtype="site" objname="target/ft_sensor"/>  <!-- type int: 32 -->
     <frameangacc name="angacc_x_obj" objtype="body" objname="target/object"/>  <!-- type int: 33 -->
   </sensor>
 
