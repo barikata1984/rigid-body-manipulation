@@ -4,7 +4,7 @@ from pathlib import Path
 import cv2
 import matplotlib as mpl
 import numpy as np
-from liegroups import SE3
+from liegroups import SE3, SO3
 from matplotlib import pyplot as plt
 from mujoco._functions import mj_differentiatePos, mj_step
 from mujoco._structs import MjModel, MjData, MjOption
@@ -75,15 +75,15 @@ def simulate(m: MjModel,
     sensors = Sensors(m, d)
 
     # Get ids and indices for the sake of convenience =============================
-    fl_id = get_element_id(m, "body", "link1")  # f(irst) l(ink)
-    ll_id = get_element_id(m, "body", "link6")  # l(ast) l(ink)
-    fl2ll_idx = slice(fl_id, ll_id + 1)
+    id_fl = get_element_id(m, "body", "link1")  # f(irst) l(ink)
+    id_ll = get_element_id(m, "body", "link6")  # l(ast) l(ink)
+    id_fl2ll = slice(id_fl, id_ll + 1)
+    id_x2ll = slice(0, id_ll + 1)
 
     # Join the spatial inertia matrices of bodies later than the last link into the
     # spatial inertia matrix of the link so that dyn.inverse() can consider the
     # bodies' inertia =============================================================
-    pose_x_mi = compose(d.subtree_com, d.ximat)[ll_id]
-    pose_x_lli = compose(d.xipos, d.ximat)[ll_id]
+    pose_x_mi = compose(d.subtree_com, d.ximat)[id_ll]
     pose_x_obj = poses.get_x_("body", "target/object")
     pose_obj_cam = pose_x_obj.inv().dot(poses.x_cam[logger.cam_id])
     # FT sensor pose rel. to the object
@@ -109,74 +109,55 @@ def simulate(m: MjModel,
     #print(f"{uscrews_lj=}")  # looks fine
 
     # Get poses_li_lj =============================================================
-    poses_l_lj = compose(m.jnt_pos)  # rot is identity (first~last)
-    poses_l_li = poses.b_bi[fl2ll_idx]  # (first~last)
-    poses_li_lj = [l_li.inv().dot(l_lj) for l_li, l_lj in zip(poses_l_li, poses_l_lj)]
-    #print(f"{poses_li_lj=}")  # looks worked fine
+    poses_l_lj = [SE3.identity()] + compose(m.jnt_pos)  # x~last == x + first~last
+    poses_li_lj = []
+    for pose_l_li, pose_l_lj in zip(poses.b_bi[id_x2ll], poses_l_lj):
+        poses_li_lj.append(pose_l_li.inv().dot(pose_l_lj))
 
-    # Get simats_lj_l including the merged link's simat_mj_m == simat_llj_m =======
+    #print(f"{len(poses_li_lj)=}")  # x~last, looks fine
+
+    # Transfer the reference frame where each link's spatial inertia matrix is de-
+    # fined from the body principal frame to the joint frame ======================
     simats_bi_b = dyn.get_spatial_inertia_matrix(m.body_mass, m.body_inertia)
-    simats_li_l = simats_bi_b[0:ll_id]  # x, ... link5
-    simats_lj_l = [np.zeros((6, 6))]  # for worldbody
-    print(f"{len(simats_li_l[fl2ll_idx])=}")  # looks fine
-    for pose_li_lj, simat_li_l in zip(poses_li_lj[fl2ll_idx], simats_li_l[fl2ll_idx]):
+    simats_lj_l = []
+    for pose_li_lj, simat_li_l in zip(poses_li_lj, simats_bi_b[id_x2ll]):  # x~last
         simats_lj_l.append(dyn.transfer_simat(pose_li_lj, simat_li_l))
+    simats_lj_l = np.array(simats_lj_l)
 
-    #print(f"{len(simats_lj_l)=}")  # 6
-    #    simat_mi_m = np.zeros((6, 6))
-#    for pose_x_bi, simat_bi_b in zip(poses.x_bi[ll_id:], simats_bi_b[ll_id:]):
-#        # "b" here is for {ll, attachment, object}
-#        pose_mi_bi = pose_x_lli.inv().dot(pose_x_bi)
-#        simat_mi_m += dyn.transfer_simat(pose_mi_bi, simats_bi_b[b])
-#    # simat_lli_ll excluded simat_mi_m included
-#    simats_li_l = np.vstack([simats_bi_b[:ll_id], np.expand_dims(simat_mi_m, 0)])
-#    mass = simat_mi_m[0, 0]
+    #print(f"{simats_lj_l.shape=}")  # x~last, looks fine
 
-    # Get simats_lj_l including the merged link's simat_mj_m == simat_llj_m =======
-    simat_mi_m = np.zeros((6, 6))
-    for b in range(ll_id, m.nbody):  # "b" here is for {ll, attachment, object}
-        pose_mi_bi = pose_x_mi.inv().dot(poses.x_bi[b])
-        simat_mi_m += dyn.transfer_simat(pose_mi_bi, simats_bi_b[b])
-    # simat_lli_ll excluded simat_mi_m included
-    simats_li_l = np.vstack([simats_bi_b[:ll_id], np.expand_dims(simat_mi_m, 0)])
-    mass = simat_mi_m[0, 0]
+    # Join the spatial inertia matrices of the bodies later than the last link to
+    # the link's spatial inertia matrix so that dyn.inverse() can consider the
+    # bodies' inertia =============================================================
+    pose_x_ll = poses.x_b[id_ll]
+    poses_ll_llj = poses_l_lj[id_ll]
+    pose_x_llj = pose_x_ll.dot(poses_ll_llj)
+    for pose_x_bi, simat_bi_b in zip(poses.x_bi[id_ll+1:], simats_bi_b[id_ll+1:]):
+        # "b" here is ∈ {attachment, object}
+        pose_llj_bi = pose_x_bi.inv().dot(pose_x_llj).inv()
+        simats_lj_l[id_ll] += dyn.transfer_simat(pose_llj_bi, simat_bi_b)
 
-    #print(f"{simats_li_l[-1]=}")  # looks working fine
+    #print(f"{simats_lj_l=}")  # looks fine
+    #print(f"{SO3.vee(simats_lj_l[-1, :3, 3:])/simats_lj_l[-1, 0, 0]=}")  # fine
 
-    # Get hhposes_ki_li ===========================================================
-    hpose_x_ll = compose(d.xpos, d.xmat)[ll_id]
-    hposes_l_li = poses.b_bi[:ll_id] + [hpose_x_ll.inv().dot(pose_x_mi)]
-    hposes_li_ki = [SE3.identity()]  # for worldbody
-    for k, hpose_k_l in enumerate(poses.a_b[fl2ll_idx]):  # num_iter. == num_links
-        hpose_ki_k = hposes_l_li[k].inv()
-        hpose_l_li = hposes_l_li[k+1]
-        hpose_ki_li = hpose_ki_k.dot(hpose_k_l.dot(hpose_l_li))
-        hposes_li_ki.append(hpose_ki_li.inv())
+    # Get link joints' home poses wr2 their parents' joint frame
+    hposes_lj_kj = [SE3.identity()]  # for worldbody
+    for k, hpose_k_l in enumerate(poses.a_b[id_fl2ll]):  # num_iter. == num_links
+        hpose_kj_k = poses_l_lj[k].inv()
+        hpose_l_lj = poses_l_lj[k+1]
+        hpose_kj_lj = hpose_kj_k.dot(hpose_k_l.dot(hpose_l_lj))
+        hposes_lj_kj.append(hpose_kj_lj.inv())
 
-    #print(f"{hposes_li_ki[-1]=}")  # looks working fine
-
-    # Get uscrews_li_lj ===========================================================
-    hposes_l_lj = compose(m.jnt_pos)  # outputs[*].rot is identity
-    uscrews_li_lj = []
-    for i, (p_l_li, p_l_lj) in enumerate(zip(hposes_l_li, hposes_l_lj)):
-        us_lj_lj = np.zeros(6)
-        if 2 == m.jnt_type[i]:  # slider joint
-            us_lj_lj[:3] += m.jnt_axis[i]
-        elif 3 == m.jnt_type[i]:  # hinge joint
-            us_lj_lj[3:] += m.jnt_axis[i]
-        else:
-            raise TypeError("Only slide or hinge joints, represented as 2 or 3 for an element of m.jnt_type, are supported.")
-
-        p_li_lj = p_l_li.inv().dot(p_l_lj)
-        uscrews_li_lj.append(p_li_lj.adjoint() @ us_lj_lj)
+    #print(f"{hposes_lj_kj=}")  # looks fine
 
     # Set some arguments of dyn.inverse() which dose not evolve along time ========
     gacc_x = -1 * np.array([*MjOption().gravity, 0, 0, 0])
     inverse = partial(dyn.inverse,
-                      hposes_body_parent=hposes_li_ki,
-                      simats_bodyi=simats_li_l,
-                      uscrews_bodyi=np.array(uscrews_li_lj),
-                      twist_0=np.zeros(6), dtwist_0=gacc_x.copy(),
+                      hposes_body_parent=hposes_lj_kj,
+                      simats_bodyi=simats_lj_l,
+                      uscrews_bodyi=np.array(uscrews_lj),
+                      twist_0=np.zeros(6),
+                      dtwist_0=gacc_x,
                       )
 
     # Prepare data containers =================================================
