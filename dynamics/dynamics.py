@@ -85,8 +85,8 @@ def transfer_simat(pose: Union[SE3, Sequence[SE3]],
 
 def inverse(traj: np.ndarray,
             hposes_body_parent,
-            simats_bodyi: np.ndarray,
-            uscrews_bodyi: np.ndarray,
+            simats_body: np.ndarray,
+            uscrews_body: np.ndarray,
             twist_0: np.ndarray,
             dtwist_0: np.ndarray,
             wrench_tip: np.ndarray = np.zeros(6),
@@ -99,7 +99,7 @@ def inverse(traj: np.ndarray,
     dtwists = [dtwist_0]  # \dot{\mathcal{V}}
 
     # Forward iterations
-    for i, (h_p, us) in enumerate(zip(hposes_body_parent[1:], uscrews_bodyi)):
+    for i, (h_p, us) in enumerate(zip(hposes_body_parent[1:], uscrews_body)):
         poses.append(SE3.exp(-1 * us * traj[0, i]).dot(h_p))  # Eq. 8.50
         # Compute twist (Eq. 8.51 in Modern Robotics)
         tw = poses[-1].adjoint() @ twists[-1] \
@@ -117,11 +117,11 @@ def inverse(traj: np.ndarray,
     poses.append(pose_tip_ee)
     # Let m the # of joint/actuator axes, the backward iteration should be
     # performed from index m to 1. So, the range is set like below.
-    for i in range(len(uscrews_bodyi), 0, -1):
+    for i in range(len(uscrews_body), 0, -1):
         # Compute wrench (Eq. 8.53 in Modern Robotics)
         w = poses[i].adjoint().T @ wrench[-1] \
-          + simats_bodyi[i] @ dtwists[i] \
-          + -1 * SE3.curlywedge(twists[i]).T @ simats_bodyi[i] @ twists[i]
+          + simats_body[i] @ dtwists[i] \
+          + -1 * SE3.curlywedge(twists[i]).T @ simats_body[i] @ twists[i]
         wrench.append(w)
 
     wrench.reverse()
@@ -130,7 +130,7 @@ def inverse(traj: np.ndarray,
     # or torque element of the wrench that each screw corresponds to. Therefore,
     # the hadamarrd product below extracts the control signals, which are the
     # magnitude of target force or torque signals, from wrench array
-    ctrl_mat = wrench[:-1] * uscrews_bodyi  # Eq. 8.54
+    ctrl_mat = wrench[:-1] * uscrews_body  # Eq. 8.54
 
     return ctrl_mat.sum(axis=1), poses, twists, dtwists
 

@@ -1,3 +1,4 @@
+from copy import copy
 from functools import partial
 from pathlib import Path
 
@@ -71,6 +72,7 @@ def simulate(m: MjModel,
              logger, planner, controller,  # TODO: annotate late... make a BaseModule or something and use Protocol or Generic, maybe...
              ):
 
+    # Instantiate register classes ================================================
     poses = Poses(m, d)
     sensors = Sensors(m, d)
 
@@ -90,6 +92,12 @@ def simulate(m: MjModel,
     pose_x_sen = poses.get_x_("site", "target/ft_sensor")
     pose_sen_obj = pose_x_sen.inv().dot(pose_x_obj)
     pose_sen_mi = pose_x_sen.inv().dot(pose_x_mi)  # confirmed static
+    pose_x_ll = poses.x_b[id_ll]  # dynamic
+    pose_ll_llj = poses.l_lj[id_ll]  # static
+    # NOTE: Variables below should be declared not here but whenever neccessary.
+    # Whether they are static or dynamic does not fit my way of thinking.
+    #pose_x_llj = pose_x_ll.dot(pose_ll_llj)  # static, should be dynamic tho
+    #pose_sen_llj = pose_x_sen.inv().dot(pose_x_llj)  # dynamic, should be static tho
 
     # Get unit screws wr2 link joints =============================================
     uscrews_lj = []
@@ -104,47 +112,31 @@ def simulate(m: MjModel,
                             "for an element of m.jnt_type, are supported.")
 
         uscrews_lj.append(us_lj)
-
     uscrews_lj = np.array(uscrews_lj)
-    #print(f"{uscrews_lj=}")  # looks fine
-
-    # Get poses_li_lj =============================================================
-    poses_l_lj = [SE3.identity()] + compose(m.jnt_pos)  # x~last == x + first~last
-    poses_li_lj = []
-    for pose_l_li, pose_l_lj in zip(poses.b_bi[id_x2ll], poses_l_lj):
-        poses_li_lj.append(pose_l_li.inv().dot(pose_l_lj))
-
-    #print(f"{len(poses_li_lj)=}")  # x~last, looks fine
 
     # Transfer the reference frame where each link's spatial inertia matrix is de-
     # fined from the body principal frame to the joint frame ======================
     simats_bi_b = dyn.get_spatial_inertia_matrix(m.body_mass, m.body_inertia)
     simats_lj_l = []
-    for pose_li_lj, simat_li_l in zip(poses_li_lj, simats_bi_b[id_x2ll]):  # x~last
-        simats_lj_l.append(dyn.transfer_simat(pose_li_lj, simat_li_l))
+    for pose_lj_li, simat_li_l in zip(poses.lj_li, simats_bi_b[id_x2ll]):  # x~last
+        simats_lj_l.append(dyn.transfer_simat(pose_lj_li, simat_li_l))
+
     simats_lj_l = np.array(simats_lj_l)
 
-    #print(f"{simats_lj_l.shape=}")  # x~last, looks fine
-
     # Join the spatial inertia matrices of the bodies later than the last link to
-    # the link's spatial inertia matrix so that dyn.inverse() can consider the
-    # bodies' inertia =============================================================
-    pose_x_ll = poses.x_b[id_ll]
-    poses_ll_llj = poses_l_lj[id_ll]
-    pose_x_llj = pose_x_ll.dot(poses_ll_llj)
+    # its spatial inertia matrix so that dyn.inverse() can consider the bodies'
+    # inertia =====================================================================
     for pose_x_bi, simat_bi_b in zip(poses.x_bi[id_ll+1:], simats_bi_b[id_ll+1:]):
         # "b" here is ∈ {attachment, object}
-        pose_llj_bi = pose_x_bi.inv().dot(pose_x_llj).inv()
-        simats_lj_l[id_ll] += dyn.transfer_simat(pose_llj_bi, simat_bi_b)
+        pose_bi_llj = pose_x_bi.inv().dot(pose_x_ll.dot(pose_ll_llj))
+        simats_lj_l[id_ll] += dyn.transfer_simat(pose_bi_llj.inv(), simat_bi_b)
 
-    #print(f"{simats_lj_l=}")  # looks fine
-    #print(f"{SO3.vee(simats_lj_l[-1, :3, 3:])/simats_lj_l[-1, 0, 0]=}")  # fine
-
-    # Get link joints' home poses wr2 their parents' joint frame
+    # Get link joints' home poses wr2 their parents' joint frame ==================
     hposes_lj_kj = [SE3.identity()]  # for worldbody
-    for k, hpose_k_l in enumerate(poses.a_b[id_fl2ll]):  # num_iter. == num_links
-        hpose_kj_k = poses_l_lj[k].inv()
-        hpose_l_lj = poses_l_lj[k+1]
+    for k in range(m.njnt):
+        hpose_kj_k = poses.l_lj[k].inv()
+        hpose_l_lj = poses.l_lj[k+1]
+        hpose_k_l = poses.a_b[k+1]
         hpose_kj_lj = hpose_kj_k.dot(hpose_k_l.dot(hpose_l_lj))
         hposes_lj_kj.append(hpose_kj_lj.inv())
 
@@ -154,8 +146,8 @@ def simulate(m: MjModel,
     gacc_x = -1 * np.array([*MjOption().gravity, 0, 0, 0])
     inverse = partial(dyn.inverse,
                       hposes_body_parent=hposes_lj_kj,
-                      simats_bodyi=simats_lj_l,
-                      uscrews_bodyi=np.array(uscrews_lj),
+                      simats_body=simats_lj_l,
+                      uscrews_body=np.array(uscrews_lj),
                       twist_0=np.zeros(6),
                       dtwist_0=gacc_x,
                       )
@@ -198,19 +190,19 @@ def simulate(m: MjModel,
         act_traj = np.stack((d.qpos, d.qvel, d.qacc))   # d.qSTH is the same as
                                                         # reading joint variable
                                                         # sensor measurements
-        _, _, twists_li_l, dtwists_li_l = inverse(act_traj)
+        _, _, twists_lj_l, dtwists_lj_l = inverse(act_traj)
 
         # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 
 
-        twist_mi = twists_li_l[-1]
-        twist_sen = pose_sen_mi.adjoint() @ twist_mi
-
-        dtwist_mi = dtwists_li_l[-1]
+        twist_mj = twists_lj_l[-1]
+        twist_sen = pose_sen_mi.adjoint() @ twist_mj
+#
+        dtwist_mi = dtwists_lj_l[-1]
         pose_sen_mi_dadjoint = differentiate_adjoint(twist_sen,
                                                      pose_sen_mi.adjoint(),
                                                      )
 
-        dtwist_sen = pose_sen_mi_dadjoint @ twist_mi \
+        dtwist_sen = pose_sen_mi_dadjoint @ twist_mj \
                    + pose_sen_mi.adjoint() @ dtwist_mi
 #
 #        linacc_sen_obj = dyn.get_linear_acceleration(twist_sen,
@@ -218,17 +210,28 @@ def simulate(m: MjModel,
 #                                                     pose_sen_obj,)
 
         if frame_count <= d.time * logger.fps:
+            # twist_llj -> twist_sen notameni pose_sen_llj wo motometai section
+            pose_x_llj = pose_x_ll.dot(pose_ll_llj)
+            pose_sen_llj = pose_x_sen.inv().dot(pose_x_llj)
+            twist_llj = twists_lj_l[id_ll]
+            twist_sen = pose_sen_llj.adjoint() @ twist_llj
+
+            #print(f"{twist_sen=}")
+
             # Attempt to compute linacc_x_obj from linacc_x_sen and something other
             # Step 1. recover trans_x_obj
             trans_x_obj = pose_x_sen.dot(homogenize(pose_sen_obj.trans))[:3]
             #print(f"{np.allclose(pose_x_obj.trans, trans_x_obj)=}")  # True confirmed
 
             # Step 2. recover linvel_x_obj
-            #print(f"{pose_x_sen=}")
+            linvel_x_obj = sensors.get("linvel_x_obj")
+            linvel_x_sen = sensors.get("linvel_x_sen")
+            print(f"{linvel_x_obj=}")
+            print(f"{linvel_x_sen=}")
 
-            twist_x = pose_x_mi.adjoint() @ twist_mi
-            dpose1_x_sen = SE3.wedge(twist_x) @ pose_x_sen.as_matrix()
-            dpose2_x_sen = pose_x_sen.dot(SE3.wedge(twist_sen))
+#            twist_x = pose_x_mi.adjoint() @ twist_mi
+#            dpose1_x_sen = SE3.wedge(twist_x) @ pose_x_sen.as_matrix()
+#            dpose2_x_sen = pose_x_sen.dot(SE3.wedge(twist_sen))
             #print(f"{np.allclose(dpose1_x_sen, dpose2_x_sen)=}")  # SHOULD BE THE SAME !!!!!!!
 
             # Temporal measure to set meaningful linacc_sen_obj
@@ -274,8 +277,6 @@ def simulate(m: MjModel,
                 )
 
             logger.transform["frames"].append(frame)
-
-            # Sampling for NeMD terminated while "frame_count" incremented
             frame_count += 1
 
     logger.finish()  # video and dataset json generated

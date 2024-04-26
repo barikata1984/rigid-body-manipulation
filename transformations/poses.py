@@ -17,7 +17,10 @@ class Poses:
         self.x_bi = compose(d.xipos, d.ximat)
         self.x_cam = compose(d.cam_xpos, d.cam_xmat)
         self.x_site = compose(d.site_xpos, d.site_xmat)
-
+        self.l_lj = [SE3.identity()] + compose(m.jnt_pos)  # x~last = x + first~last
+        self.lj_li = []
+        for l_lj, l_li in zip(self.l_lj, self.b_bi):  # num iter == len(self.l_lj)
+            self.lj_li.append(l_lj.inv().dot(l_li))
 
     def get_a_(self,
                name,

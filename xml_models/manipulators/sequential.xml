@@ -56,12 +56,18 @@
     <actuatorfrc name="roll" actuator="roll"/>
     <actuatorfrc name="pitch" actuator="pitch"/>
     <actuatorfrc name="yaw" actuator="yaw"/>
-    <!-- 4 x 3-vector -->
-    <framelinvel name="linvel_x_obj" objtype="body" objname="target/object"/>  <!-- type int: 30 -->
-    <frameangvel name="angvel_x_obj" objtype="body" objname="target/object"/>  <!-- type int: 31 -->
-    <framelinacc name="linacc_x_obj" objtype="body" objname="target/object"/>  <!-- type int: 32 -->
-    <framelinacc name="linacc_x_sen" objtype="site" objname="target/ft_sensor"/>  <!-- type int: 32 -->
-    <frameangacc name="angacc_x_obj" objtype="body" objname="target/object"/>  <!-- type int: 33 -->
+    <!-- type int: 30, 3-vector x 2 -->
+    <framelinvel name="linvel_x_obj" objtype="body" objname="target/object"/>
+    <framelinvel name="linvel_x_sen" objtype="site" objname="target/ft_sensor"/>
+    <!-- type int: 31, 3-vector x 2 -->
+    <frameangvel name="angvel_x_obj" objtype="body" objname="target/object"/>
+    <frameangvel name="angvel_x_sen" objtype="site" objname="target/ft_sensor"/>
+    <!-- type int: 32, 3-vector x 2 -->
+    <framelinacc name="linacc_x_obj" objtype="body" objname="target/object"/>
+    <framelinacc name="linacc_x_sen" objtype="site" objname="target/ft_sensor"/>
+    <!-- type int: 33, 3-vector x 2 -->
+    <frameangacc name="angacc_x_obj" objtype="body" objname="target/object"/>
+    <frameangacc name="angacc_x_sen" objtype="site" objname="target/ft_sensor"/>
   </sensor>
 
   <keyframe>
