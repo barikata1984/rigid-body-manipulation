@@ -1,0 +1,21 @@
+<mujoco model="deformable_sphere">
+	
+	<option timestep="0.01" solver="CG"/>
+	
+    <extension>
+        <plugin plugin="mujoco.elasticity.solid"/>
+    </extension>
+
+    <worldbody>
+		<geom size=".2 .2 .5" type="plane" />
+		<light pos="0 0 .6"/>
+		<camera name="closeup" pos="0 -.1 .07" xyaxes="1 0 0 0 1 2"/>
+		<body name="alma">
+			<flexcomp name="ball" type="gmsh" radius="0.25" pos="0 0 4" mass="1" file="valid_path.msh">
+				<edge equality="1"/>
+				<plugin plugin="mujoco.elasticity.solid"></plugin>
+				<contact selfcollide="0" condim="3"/>
+			</flexcomp>
+		</body>
+    </worldbody>
+</mujoco>

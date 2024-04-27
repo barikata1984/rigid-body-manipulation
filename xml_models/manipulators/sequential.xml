@@ -1,0 +1,80 @@
+<mujoco model="manipulator">
+  <size nuser_body="1"/>
+
+  <visual>
+    <global offwidth="1980" offheight="1080"/>
+  </visual>
+
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" width="512" height="512" rgb1=".1 .2 .3" rgb2=".2 .3 .4"/>
+    <material name="grid" texture="grid" texrepeat="1 1" texuniform="true" reflectance=".2"/>
+  </asset>
+
+  <worldbody>
+    <light name="top" pos="0 0 3"/>
+    <body name="link1" euler="0 90 0">  <!-- euler in deg -->
+      <joint name="x" type="slide" axis="0 0 1"/>
+      <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>  <!-- water in 1cm**3 space -->
+      <body name="link2" euler="-90 0 0">
+        <joint name="y" type="slide" axis="0 0 1"/>
+        <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
+        <body name="link3" euler="0 -90 0">
+          <joint name="z" type="slide" axis="0 0 1"/>
+          <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
+          <body name="link4" euler="90 0 0">
+            <joint name="roll" type="hinge" axis="0 0 1"/>
+            <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
+            <body name="link5" euler="0 90 0">
+              <joint name="pitch" type="hinge" axis="0 0 1"/>
+              <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
+              <body name="link6" euler="-90 0 0">
+                <joint name="yaw" type="hinge" axis="0 0 1"/>
+                <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
+                <site name="attachment"/>
+                <camera name="tracking" mode="track"/>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <motor name="x" joint="x"/>
+    <motor name="y" joint="y"/>
+    <motor name="z" joint="z"/>
+    <motor name="roll" joint="roll"/>
+    <motor name="pitch" joint="pitch"/>
+    <motor name="yaw" joint="yaw"/>
+  </actuator>
+
+  <sensor>
+    <actuatorfrc name="x" actuator="x"/>
+    <actuatorfrc name="y" actuator="y"/>
+    <actuatorfrc name="z" actuator="z"/>
+    <actuatorfrc name="roll" actuator="roll"/>
+    <actuatorfrc name="pitch" actuator="pitch"/>
+    <actuatorfrc name="yaw" actuator="yaw"/>
+    <!-- type int: 30, 3-vector x 2 -->
+    <framelinvel name="linvel_x_obj" objtype="xbody" objname="target/object"/>
+    <framelinvel name="linvel_x_obji" objtype="body" objname="target/object"/>
+    <framelinvel name="linvel_x_sen" objtype="site" objname="target/ft_sensor"/>
+    <!-- type int: 31, 3-vector x 2 -->
+    <frameangvel name="angvel_x_obj" objtype="xbody" objname="target/object"/>
+    <frameangvel name="angvel_x_obji" objtype="body" objname="target/object"/>
+    <frameangvel name="angvel_x_sen" objtype="site" objname="target/ft_sensor"/>
+    <!-- type int: 32, 3-vector x 2 -->
+    <framelinacc name="linacc_x_obj" objtype="xbody" objname="target/object"/>
+    <framelinacc name="linacc_x_obji" objtype="body" objname="target/object"/>
+    <framelinacc name="linacc_x_sen" objtype="site" objname="target/ft_sensor"/>
+    <!-- type int: 33, 3-vector x 2 -->
+    <frameangacc name="angacc_x_obj" objtype="xbody" objname="target/object"/>
+    <frameangacc name="angacc_x_obji" objtype="body" objname="target/object"/>
+    <frameangacc name="angacc_x_sen" objtype="site" objname="target/ft_sensor"/>
+  </sensor>
+
+  <keyframe>
+    <key name="initial_state" qpos="1 1 1 0 0 0"/>
+  </keyframe>
+</mujoco>
