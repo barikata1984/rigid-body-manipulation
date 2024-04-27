@@ -161,3 +161,20 @@ def get_linear_acceleration(twist, dtwist, pose):
 
     return _linacc[:3]
 
+
+class LinearComponent4Test:
+    """
+    Just to check the spatial math implementation
+    """
+
+    def __init__(self,
+                 twist_x,
+                 dtwist_x,
+                 pose_x_sen,
+                 pose_x_obj,
+                 ):
+        self.vel_x_obj = get_linear_velocity(twist_x, pose_x_obj)
+        self.vel_x_sen = get_linear_velocity(twist_x, pose_x_sen)
+        self.acc_x_obj = get_linear_acceleration(twist_x, dtwist_x, pose_x_obj)
+        self.acc_x_sen = get_linear_acceleration(twist_x, dtwist_x, pose_x_sen)
+        self.acc_sen_obj = get_linear_acceleration(twist_x, dtwist_x, pose_x_obj)

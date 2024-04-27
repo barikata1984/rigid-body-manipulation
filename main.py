@@ -9,14 +9,13 @@ from liegroups import SE3, SO3
 from matplotlib import pyplot as plt
 from mujoco._functions import mj_differentiatePos, mj_step
 from mujoco._structs import MjModel, MjData, MjOption
-from omegaconf import OmegaConf
-from omegaconf.errors import ConfigAttributeError, MissingMandatoryValue
+from omegaconf.errors import MissingMandatoryValue
 from tqdm import tqdm
 
 import dynamics as dyn
 import visualization as vis
-from core import SimulationConfig, generate_model_data, autoinstantiate
-from transformations import Poses, compose, differentiate_adjoint, homogenize
+from core import load_config, generate_model_data, autoinstantiate
+from transformations import Poses, compose, homogenize
 from utilities import Sensors, get_element_id
 
 
@@ -44,7 +43,7 @@ from utilities import Sensors, get_element_id
 #       a/ai/aj | body's parent itself or its body/principal/joint frame
 #       l/li/lj | link itself or its body/principal/joint frame
 #       k/ki/kj | link's parent itself or its body/principal/joint frame
-#       m/mi/mj | merged lastlink itself or its body/principal/joint frame
+#    ll/lli/llj | last link itself or its body/principal/joint frame
 #             x | world frame (x ∈ b)
 #             q | joint space
 #
@@ -55,7 +54,7 @@ from utilities import Sensors, get_element_id
 #
 # Bodies: x, link1 (firstlink), link2, ..., link6 or sth (lastlink), attachment, object
 #
-#                                          ┗━━ lastlink "m"erged with the later ones ━━┛
+#                                          ┗━ "l"ast"l"ink merged with the later ones ━┛
 #
 #        ┗━ Link namespace: "l"ink and its parent body (= prior to 'l', which is "k") ━┛
 #
@@ -85,13 +84,14 @@ def simulate(m: MjModel,
     # Join the spatial inertia matrices of bodies later than the last link into the
     # spatial inertia matrix of the link so that dyn.inverse() can consider the
     # bodies' inertia =============================================================
-    pose_x_mi = compose(d.subtree_com, d.ximat)[id_ll]
     pose_x_obj = poses.get_x_("body", "target/object")
+    pose_obj_obji = poses.get_b_biof("target/object")
+    pose_x_obji = pose_x_obj.dot(pose_obj_obji)
     pose_obj_cam = pose_x_obj.inv().dot(poses.x_cam[logger.cam_id])
     # FT sensor pose rel. to the object
     pose_x_sen = poses.get_x_("site", "target/ft_sensor")
     pose_sen_obj = pose_x_sen.inv().dot(pose_x_obj)
-    pose_sen_mi = pose_x_sen.inv().dot(pose_x_mi)  # confirmed static
+    pose_sen_obji = pose_x_sen.inv().dot(pose_x_obji)
     pose_x_ll = poses.x_b[id_ll]  # dynamic
     pose_ll_llj = poses.l_lj[id_ll]  # static
     # NOTE: Variables below should be declared not here but whenever neccessary.
@@ -131,6 +131,9 @@ def simulate(m: MjModel,
         pose_bi_llj = pose_x_bi.inv().dot(pose_x_ll.dot(pose_ll_llj))
         simats_lj_l[id_ll] += dyn.transfer_simat(pose_bi_llj.inv(), simat_bi_b)
 
+    mass = simats_lj_l[id_ll, 0, 0] - m.body_mass[id_ll]
+    print(f"{mass=}")
+
     # Get link joints' home poses wr2 their parents' joint frame ==================
     hposes_lj_kj = [SE3.identity()]  # for worldbody
     for k in range(m.njnt):
@@ -156,13 +159,14 @@ def simulate(m: MjModel,
     res_qpos = np.empty(m.nu)
     tgt_trajectory = []
     trajectory = []
-    linaccs_sen_obj = []
     fts_sen = []
     time = []
     frame_count = 0
 
     # For test
     frcs_sen = []
+    _frcs_sen = []
+    linacc_sen_obji = []
 
     # Main loop ===============================================================
     for step in tqdm(range(planner.n_steps), desc="Progress"):
@@ -194,52 +198,27 @@ def simulate(m: MjModel,
 
         # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 
 
-        twist_mj = twists_lj_l[-1]
-        twist_sen = pose_sen_mi.adjoint() @ twist_mj
-#
-        dtwist_mi = dtwists_lj_l[-1]
-        pose_sen_mi_dadjoint = differentiate_adjoint(twist_sen,
-                                                     pose_sen_mi.adjoint(),
-                                                     )
-
-        dtwist_sen = pose_sen_mi_dadjoint @ twist_mj \
-                   + pose_sen_mi.adjoint() @ dtwist_mi
-#
-#        linacc_sen_obj = dyn.get_linear_acceleration(twist_sen,
-#                                                     dtwist_sen,
-#                                                     pose_sen_obj,)
-
         if frame_count <= d.time * logger.fps:
-            # twist_llj -> twist_sen notameni pose_sen_llj wo motometai section
-            pose_x_llj = pose_x_ll.dot(pose_ll_llj)
-            pose_sen_llj = pose_x_sen.inv().dot(pose_x_llj)
-            twist_llj = twists_lj_l[id_ll]
-            twist_sen = pose_sen_llj.adjoint() @ twist_llj
-
-            #print(f"{twist_sen=}")
-
-            # Attempt to compute linacc_x_obj from linacc_x_sen and something other
-            # Step 1. recover trans_x_obj
-            trans_x_obj = pose_x_sen.dot(homogenize(pose_sen_obj.trans))[:3]
-            #print(f"{np.allclose(pose_x_obj.trans, trans_x_obj)=}")  # True confirmed
-
-            # Step 2. recover linvel_x_obj
-            linvel_x_obj = sensors.get("linvel_x_obj")
-            linvel_x_sen = sensors.get("linvel_x_sen")
-            print(f"{linvel_x_obj=}")
-            print(f"{linvel_x_sen=}")
-
-#            twist_x = pose_x_mi.adjoint() @ twist_mi
-#            dpose1_x_sen = SE3.wedge(twist_x) @ pose_x_sen.as_matrix()
-#            dpose2_x_sen = pose_x_sen.dot(SE3.wedge(twist_sen))
-            #print(f"{np.allclose(dpose1_x_sen, dpose2_x_sen)=}")  # SHOULD BE THE SAME !!!!!!!
-
-            # Temporal measure to set meaningful linacc_sen_obj
-            linacc_x_obj = sensors.get("linacc_x_obj")
-            linacc_sen_obj = pose_x_sen.inv().dot(homogenize(linacc_x_obj, 0))[:3]  # actually just rotated
-            linaccs_sen_obj.append(linacc_sen_obj)
 
         # ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 検証用コード追加ゾーン ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 
+
+            # Get (d)twist_sen =====================================================
+            pose_sen_llj = pose_x_sen.inv().dot(pose_x_ll.dot(pose_ll_llj))
+            twist_llj = twists_lj_l[id_ll]
+            twist_sen = pose_sen_llj.adjoint() @ twist_llj
+            # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+            dtwist_llj = dtwists_lj_l[id_ll]
+            pose_sen_llj_dadjoint = SE3.curlywedge(twist_sen) @ pose_sen_llj.adjoint()
+            dtwist_sen = pose_sen_llj_dadjoint @ twist_llj + pose_sen_llj.adjoint() @ dtwist_llj
+            # dtwist_sen -----------------------------------------------------------
+
+            # Compute linacc_sen_obj for the sake of verification ==================
+            # For trans_x_obj, linvel_x_sen, linvel_x_obj, linacc_x_sen, and linacc
+            # _x_obj, the values retrieved with my methods and muyjoco are verified
+            # almost the same although there are diviations potentially due to
+            # accumulated rounding error
+            linacc_sen_obji.append(
+                dyn.get_linear_acceleration(twist_sen, dtwist_sen, pose_sen_obji))
 
             # Log velocity components relative to the sensor frame
             tgt_trajectory.append(tgt_traj)
@@ -268,10 +247,9 @@ def simulate(m: MjModel,
 #                pose_obj_cam=pose_obj_cam.as_matrix().T.tolist(),
                 transform_matrix=pose_obj_cam.as_matrix().tolist(),
                 pose_sen_obj=pose_sen_obj.as_matrix().tolist(),
-                twist_sen_obj=twist_sen.tolist(),
-                dtwist_sen_obj=dtwist_sen.tolist(),
-#                obj_linacc_sen=obj_linacc_sen,
-                linacc_sen_obj=linaccs_sen_obj[-1].tolist(),
+                twist_sen=twist_sen.tolist(),
+                dtwist_sen=dtwist_sen.tolist(),
+                linacc_sen_obji=linacc_sen_obji[-1].tolist(),
                 ft_sen=fts_sen[-1].tolist(),
 #                aabb_scale=[aabb_scale],
                 )
@@ -284,8 +262,7 @@ def simulate(m: MjModel,
     # Convert lists of logged data into ndarrays ==============================
     tgt_trajectory = np.array(tgt_trajectory)
     trajectory = np.array(trajectory)
-    linaccs_sen_obj = np.array(linaccs_sen_obj)
-    #fts_sen = np.array(fts_sen)
+    linacc_sen_obji = np.array(linacc_sen_obji)
     frame_iter = np.arange(frame_count)
 
     # Visualize data ==========================================================
@@ -304,7 +281,7 @@ def simulate(m: MjModel,
     acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)
     acc_ft_fig.suptitle("linacc vs ft")
     fts_sen = np.array(fts_sen)
-    vis.ax_plot_lines(acc_ft_axes[0], frame_iter, linaccs_sen_obj, "linacc_sen_obj")
+    vis.ax_plot_lines(acc_ft_axes[0], frame_iter, linacc_sen_obji, "recovered_linacc_sen_obji")
     vis.ax_plot_lines(acc_ft_axes[1], frame_iter, fts_sen[:, :3], "frc_sen")
     vis.ax_plot_lines(acc_ft_axes[2], frame_iter, fts_sen[:, 3:], "trq_sen")
     for ax in acc_ft_axes:
@@ -321,43 +298,23 @@ def simulate(m: MjModel,
 #     vis.ax_plot_lines_w_tgt(
 #         ctrl_axes[2], time, sens_qfrc[:, 3:], tgt_ctrls[:, 3:], "q3-5 [N·m]")
 
-#    frc_fig, frc_axes = plt.subplots(3, 1, sharex="col", tight_layout=True)
-#    vis.ax_plot_lines(frc_axes[0], time, frc_x_sen, "frc_x_sen")
-#    vis.ax_plot_lines(frc_axes[1], time, frc_x_obj, "frc_x_obj")
-
 #    lin_fig, lin_axes = plt.subplots(2, 1, sharex="col", tight_layout=True)
-#    vis.ax_plot_lines(lin_axes[0], time, __linvel_sen_obj, "__linvel_sen_obj")
-#    vis.ax_plot_lines(lin_axes[1], time, _linvel_sen_obj, "_linvel_sen_obj")
+#    vis.ax_plot_lines(lin_axes[0], time, _linacc_sen_obji, "_linacc_sen_obji")
+#    vis.ax_plot_lines(lin_axes[1], time, linacc_sen_obji, "linacc_sen_obji")
 
     plt.show()
 
 
 if __name__ == "__main__":
-    # Load configuraion ===========================================================
-    cfg = OmegaConf.structured(SimulationConfig)
-    cli_cfg = OmegaConf.from_cli()
 
-    try:
-        yaml_cfg = OmegaConf.load(cli_cfg.read_config)
-    except ConfigAttributeError:  # if read_config not provided on cli, cli_cfg
-        yaml_cfg = {}             # does not have it as its attribute, so using
-                                  # this error rather than MissingMandatoryValue
-
-    cfg = OmegaConf.merge(cfg, yaml_cfg, cli_cfg)
-
-    try:
-        OmegaConf.save(cfg, cfg.write_config)
-    except MissingMandatoryValue:
-        pass
-
-    # Generate mujoco data structures and aux data ================================
-    m, d, target_object_aabb_scale, gt_mass_distr_file_path = generate_model_data(cfg)
+    cfg = load_config()  # reconciliation priority: 1. cli, 2. yaml, 3. coded
+    m, d, tgt_obj_aabb_scale, gt_mass_distr_file_path = generate_model_data(cfg)
 
     # Fill (potentially) missing fields of a logger configulation =================
     try:
         cfg.logger.target_object_aabb_scale
     except MissingMandatoryValue:
-        cfg.logger.target_object_aabb_scale = float(target_object_aabb_scale)
+        cfg.logger.target_object_aabb_scale = float(tgt_obj_aabb_scale)
 
     try:
         cfg.logger.gt_mass_distr_file_path

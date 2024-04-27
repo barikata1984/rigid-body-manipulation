@@ -5,14 +5,14 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, Union
 
-import numpy as np
 from dm_control import mjcf
 from mujoco._functions import mj_name2id, mj_resetDataKeyframe
-from mujoco._structs import MjData, MjModel, MjOption
+from mujoco._structs import MjData, MjModel
 from mujoco._enums import mjtObj
-from numpy.typing import NDArray
+from omegaconf import OmegaConf
 from omegaconf.dictconfig import DictConfig
 from omegaconf.listconfig import ListConfig
+from omegaconf.errors import ConfigAttributeError, MissingMandatoryValue
 
 # all the modules of the packages below are imported to enable autoinstantiate()
 from controllers import *
@@ -32,6 +32,26 @@ class SimulationConfig:
     controller: LinearQuadraticRegulatorConfig = LinearQuadraticRegulatorConfig()
     read_config: str = MISSING
     write_config: str = MISSING
+
+
+def load_config():
+    cfg = OmegaConf.structured(SimulationConfig)
+    cli_cfg = OmegaConf.from_cli()
+
+    try:
+        yaml_cfg = OmegaConf.load(cli_cfg.read_config)
+    except ConfigAttributeError:  # if read_config not provided on cli, cli_cfg
+        yaml_cfg = {}             # does not have it as its attribute, so using
+                                  # this error rather than MissingMandatoryValue
+
+    cfg = OmegaConf.merge(cfg, yaml_cfg, cli_cfg)
+
+    try:
+        OmegaConf.save(cfg, cfg.write_config)
+    except MissingMandatoryValue:
+        pass
+
+    return cfg
 
 
 def generate_model_data(cfg: Union[DictConfig, ListConfig],

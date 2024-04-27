@@ -27,7 +27,7 @@ class Poses:
                ) -> SE3:
         return self.a_b[get_element_id(self.m, "body", name)]
 
-    def get_biof(self,
+    def get_b_biof(self,
                  name,
                  ) -> SE3:
         return self.b_bi[get_element_id(self.m, "body", name)]

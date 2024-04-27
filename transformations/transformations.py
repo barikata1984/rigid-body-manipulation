@@ -54,7 +54,3 @@ def homogenize(coord, forth_val=1):
     homog = forth_val * np.ones(4)
     homog[:3] = coord
     return homog
-
-
-def differentiate_adjoint(twist, adjoint):
-    return SE3.curlywedge(twist) @ adjoint
