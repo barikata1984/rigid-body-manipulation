@@ -162,7 +162,7 @@ def get_linear_acceleration(twist, dtwist, pose):
     return _linacc[:3]
 
 
-class LinearComponent4Test:
+class LinearComponentForTest:
     """
     Just to check the spatial math implementation
     """
