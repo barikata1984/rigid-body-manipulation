@@ -75,16 +75,11 @@ def simulate(m: MjModel,
     poses = Poses(m, d)
     sensors = Sensors(m, d)
 
-<<<<<<< HEAD
-    out = cv2.VideoWriter(cam.output_file, cam.fourcc, t.fps, (cam.width, cam.height))
-    renderer = mj.Renderer(m, cam.height, cam.width)
-=======
     # Get ids and indices for the sake of convenience =============================
     id_fl = get_element_id(m, "body", "link1")  # f(irst) l(ink)
     id_ll = get_element_id(m, "body", "link6")  # l(ast) l(ink)
     id_fl2ll = slice(id_fl, id_ll + 1)
     id_x2ll = slice(0, id_ll + 1)
->>>>>>> dev-bj_impl
 
     # Join the spatial inertia matrices of bodies later than the last link into the
     # spatial inertia matrix of the link so that dyn.inverse() can consider the
@@ -104,70 +99,6 @@ def simulate(m: MjModel,
     #pose_x_llj = pose_x_ll.dot(pose_ll_llj)  # static, should be dynamic tho
     #pose_sen_llj = pose_x_sen.inv().dot(pose_x_llj)  # dynamic, should be static tho
 
-<<<<<<< HEAD
-    # {descriptor}_{reference}_{described}
-    #
-    #    descriptor | Definitin
-    # --------------+------------
-    #       (s)imat | (spatial) inertia matrix
-    #       (h)pose | (home) pose
-    #         momsi | moments of inertia
-    #      (u)screw | (unit) screw
-    #   (d/dd)twist | (first/second-order time derivative of) twist
-    #  (lin/ang)vel | (linear/angular) velocity
-    #  (lin/ang)acc | (linear/angular) acceleration
-    #          gacc | graviatational acceleration
-    # 's' may follow a descriptor to clarify that the variable multiple descriptors.
-    #
-    #     reference |
-    #     /descried | Definition
-    # --------------+-------------
-    #             x | world frame
-    #             b | body itself or its frame (refer to how the body frame is defined on the official documentation
-    #            bi | body's principal frame where the body's interia ellipsoid is defined
-    #          a/ai | parent itself or its frame/principal frame where the parent's interia ellipsoid is defined
-    #          c/ci | child itself or its frame/principal frame frame where the childl's interia ellipsoid is defined
-    #             q | joint space
-    #               | 
-
-
-    # Spatial inertia matrices of all the bodies incl. the links and the obj
-    simats_bi_b = dyn.compose_spatial_inertia_matrix(m.body_mass, m.body_inertia)
-    # Convert sinert_i to sinert_b rel2 the body frame
-    poses_b_bi = tf.posquat2SE3(m.body_ipos, m.body_iquat)
-    simats_b_b = dyn.transfer_sinert(poses_b_bi, simats_bi_b)
-
-    momsi_b_b = np.array([*simats_b_b[-1, 3:, 3:].diagonal(),
-                          *simats_b_b[-1, 3, 4:],
-                           simats_b_b[-1, 4, 5]])
-
-    print("Target object's inertial parameters wr2 its body frame ======\n"
-         f"    Mass:               {m.body_mass[-1]}\n"
-         f"    First moments:      {SO3.vee(simats_b_b[-1, 3:, :3])}\n"
-         f"    Moments of inertia: {momsi_b_b}\n")
-
-    # Configure SE3 of child frame rel2 parent frame (M_{i, i - 1} in MR)
-    hposes_a_b = tf.posquat2SE3(m.body_pos, m.body_quat)
-    # Configure SE3 of each body frame rel2 worldbody (M_{i} = M_{0, i} in MR)
-    hposes_x_b = [hposes_a_b[0].inv()]  # xb = 00, 01, ..., 06
-    for hp_a_b in hposes_a_b[1:]:
-        hposes_x_b.append(hposes_x_b[-1].dot(hp_a_b.inv()))
-
-    # Obtain unit screw rel2 each link = body (A_{i} in MR)
-    uscrew_b_b = np.zeros((m.body_jntnum.sum(), 6))  # bb = (11, 22, ..., 66)
-    for b, (jnt_type, ax) in enumerate(zip(m.jnt_type, m.jnt_axis), 0):
-        slicer = 3 * (jnt_type - 2)  # jnt_type: 2 for slide, 3 for hinge
-        uscrew_b_b[b, slicer:slicer + 3] = ax / linalg.norm(ax)
-
-    # Set up dynamics related variables =======================================
-    # (d)twist vectors for the worldbody to be used for inverse dynamics
-    twist_x_x = np.zeros(6)
-    gacc_x = np.zeros(6)
-    gacc_x[:3] = -mj.MjOption().gravity
-    dtwist_x_x = gacc_x.copy()
-    # gain matrix for linear quadratic regulator
-    K = dyn.compute_gain_matrix(m, d, ss)
-=======
     # Get unit screws wr2 link joints =============================================
     uscrews_lj = []
     for t, ax in zip(m.jnt_type, m.jnt_axis):
@@ -202,7 +133,6 @@ def simulate(m: MjModel,
 
     mass = simats_lj_l[id_ll, 0, 0] - m.body_mass[id_ll]
     print(f"{mass=}")
->>>>>>> dev-bj_impl
 
     # Get link joints' home poses wr2 their parents' joint frame ==================
     hposes_lj_kj = [SE3.identity()]  # for worldbody
@@ -227,60 +157,16 @@ def simulate(m: MjModel,
 
     # Prepare data containers =================================================
     res_qpos = np.empty(m.nu)
-<<<<<<< HEAD
-    # Control signals
-    ctrl = []
-    tgt_ctrl = []
-    # Scale sampled coordinates ∈ (-1, 1) in wisp to the dimensions of an axis-
-    # aligned bounding box of the object.
-    # NOTE: setting the longest edge of the bounding box is recommended because
-    # choosing a cuboid rather than a cube may affect the prediction result of
-    # NeMD, the auther haven't checked it yet tho
-    aabb_scale = 0.5
-    # Dictionary to be converted to a .json file to train a NeMD
-    transforms = dict(
-        date_time=datetime.now().strftime("%d/%m/%Y_%H:%M:%S"),
-        camera_angle_x=cam.fovx,
-#        aabb_scale=aabb_scale,
-        frames=list(),
-    )
-
-    # Make a directory in which the .json file is saved
-    obj_name = "uniform"  # "stacked"
-    dataset_dir = Path.cwd() / "data" / obj_name
-    obs_dir = dataset_dir / "images"
-    if not os.path.isdir(obs_dir):
-        os.makedirs(obs_dir, exist_ok=True)
-    # Others
-    sensordata = []
-=======
     tgt_trajectory = []
     trajectory = []
     fts_sen = []
->>>>>>> dev-bj_impl
     time = []
     frame_count = 0
 
-<<<<<<< HEAD
-    # =========================================================================
-    # Main loop
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    for step in tqdm(
-            range(t.n_steps),
-            desc="Progress of simulation"):
-        traj.append(plan(step))
-        tgt_ctrl.append(
-            dyn.inverse(
-                traj[-1], hposes_a_b, simats_b_b, uscrew_b_b, twist_x_x,
-                dtwist_x_x
-                )
-            )
-=======
     # For test
     frcs_sen = []
     _frcs_sen = []
     linacc_sen_obji = []
->>>>>>> dev-bj_impl
 
     # Main loop ===============================================================
     for step in tqdm(range(planner.n_steps), desc="Progress"):
@@ -348,51 +234,6 @@ def simulate(m: MjModel,
             logger.renderer.update_scene(d, logger.cam_id)
             bgr = logger.renderer.render()[:, :, [2, 1, 0]]
             # Make an alpha mask to remove the black background
-<<<<<<< HEAD
-            alpha = np.where(
-                np.all(bgr == 0, axis=-1), 0, 255)[..., np.newaxis]
-            file_name = f"{frame_count:04}"
-            cv2.imwrite(
-                str(obs_dir / file_name / ".png"),
-                np.append(bgr, alpha, axis=2))  # image (bgr + alpha)
-            # Write a video frame
-            out.write(bgr)
-
-            # Do some SE(3) math ==============================================
-            # Camera pose rel. to the object
-            obj_pose_x = tf.trzs2SE3(d.xpos[obj_id], d.xmat[obj_id])
-            cam_pose_x = tf.trzs2SE3(d.cam_xpos[cam.id], d.cam_xmat[cam.id])
-            cam_pose_obj = obj_pose_x.inv().dot(cam_pose_x)
-            # FT sensor pose rel. to the object
-            sen_pose_x = tf.trzs2SE3(d.site_xpos[sen_id], d.site_xmat[sen_id])
-            sen_pose_obj = obj_pose_x.inv().dot(sen_pose_x)
-            # Object linear acceleration rel. to the sensor
-
-            # Log velocities
-            obj_vel_x = sensordata[-1][4*m.nu:5*m.nu]
-            obj_linvel_sen.append(sen_pose_x.inv().rot.dot(obj_vel_x[:3]).tolist())
-            obj_angvel_sen.append(sen_pose_x.inv().rot.dot(obj_vel_x[3:]).tolist())
-
-            # Log accelerations
-            obj_acc_x = sensordata[-1][5*m.nu:6*m.nu]
-            obj_linacc_sen.append(sen_pose_x.inv().rot.dot(obj_acc_x[:3]).tolist())
-            obj_angacc_sen.append(sen_pose_x.inv().rot.dot(obj_acc_x[3:]).tolist())
-
-            # Sensor measurement
-            ft_meas_sen.append(sensordata[-1][3 * m.nu: 4 * m.nu].tolist())
-
-            # Log NeMD ingredients ============================================
-            frame = dict(
-                file_path=str(obs_dir / file_name),
-                cam_pose_obj=cam_pose_obj.as_matrix().tolist(),
-                obj_pose_sen=sen_pose_obj.inv().as_matrix().tolist(),
-                obj_linvel_sen=obj_linvel_sen[-1],
-                obj_angvel_sen=obj_angvel_sen[-1],
-                obj_linacc_sen=obj_linacc_sen[-1],
-                obj_angacc_sen=obj_angacc_sen[-1],
-                aabb_scale=[aabb_scale],
-                ft=ft_meas_sen[-1],
-=======
             alpha = np.where(np.all(bgr == 0, axis=-1), 0, 255)[..., np.newaxis]
             file_name = f"{frame_count:04}.png"
             cv2.imwrite(str(logger.image_dir / file_name),
@@ -411,24 +252,12 @@ def simulate(m: MjModel,
                 linacc_sen_obji=linacc_sen_obji[-1].tolist(),
                 ft_sen=fts_sen[-1].tolist(),
 #                aabb_scale=[aabb_scale],
->>>>>>> dev-bj_impl
                 )
 
             logger.transform["frames"].append(frame)
             frame_count += 1
 
-<<<<<<< HEAD
-    # VideoWriter released
-    out.release()
-
-#    qpos_meas, qvel_meas, qfrc_meas, ft_meas_sen, obj_vel_x, obj_acc_x = np.split(
-#        sensordata, [1*m.nu, 2*m.nu, 3*m.nu, 4*m.nu, 5*m.nu], axis=1)
-
-    with open(dataset_dir / "transform.json", "w") as f:
-        json.dump(transforms, f, indent=2)
-=======
     logger.finish()  # video and dataset json generated
->>>>>>> dev-bj_impl
 
     # Convert lists of logged data into ndarrays ==============================
     tgt_trajectory = np.array(tgt_trajectory)
