@@ -32,7 +32,7 @@ controller:
   state_space:
     epsilon: 1.0e-08
     centered: true
-  input_gains:
+  input_gain:
   - 1.0
   - 1.0
   - 1.0

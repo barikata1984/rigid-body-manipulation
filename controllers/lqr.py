@@ -14,7 +14,7 @@ from dynamics import StateSpaceConfig, StateSpace
 class LinearQuadraticRegulatorConfig:
     target_class: str = "LinearQuadraticRegulator"
     state_space: StateSpaceConfig = StateSpaceConfig()
-    input_gains: list[float] = MISSING
+    input_gain: list[float] = MISSING
 
 
 class LinearQuadraticRegulator:
@@ -26,14 +26,14 @@ class LinearQuadraticRegulator:
 
         # Fill a potentially missing field of a planner configuration
         try:
-            cfg.input_gains
+            cfg.input_gain
         except MissingMandatoryValue:
-            cfg.input_gains = np.ones(m.nu).tolist()  # awkward but omegaconf
+            cfg.input_gain = np.ones(m.nu).tolist()  # awkward but omegaconf
                                                       # does not support NDArray
 
         self.ss = StateSpace(cfg.state_space, m, d)
-        self.input_gains = cfg.input_gains
-        self.control_gain = self.update_control_gain(m, d)
+        self.input_gain = cfg.input_gain
+        self.gain_matrix = self.update_control_gain(m, d)
 
     def update_control_gain(self,
                             m: MjModel,
@@ -42,7 +42,7 @@ class LinearQuadraticRegulator:
         self.ss.update_matrices(m, d)
 
         Q = np.eye(self.ss.ns)  # Initial state cost matrix R = np.diag(self.input_gains)  # Input gain matrix
-        R = np.diag(self.input_gains)  # Input gain matrix
+        R = np.diag(self.input_gain)  # Input gain matrix
         # Compute the feedback gain matrix K
         P = linalg.solve_discrete_are(self.ss.A, self.ss.B, Q, R)
         K = linalg.pinv(R + self.ss.B.T @ P @ self.ss.B) @ self.ss.B.T @ P @ self.ss.A

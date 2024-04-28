@@ -135,14 +135,6 @@ def inverse(traj: np.ndarray,
     return ctrl_mat.sum(axis=1), poses, twists, dtwists
 
 
-def coordinate_transform_dtwist(pose, twist, dtwist, coord_xfer_twist=False):
-    if coord_xfer_twist:  #  if twist is not coordinate transfered beforehand
-        twist = pose.adjoint() @ twist
-
-    # curlywedge() computes lie brackets
-    return SE3.curlywedge(twist) @ twist + pose.adjoint() @ dtwist
-
-
 def get_linear_velocity(twist, pose):
     """
     Refer to Modern Robotics Chapt. 8.2.1 with homogeneous coordinate representation
@@ -164,7 +156,7 @@ def get_linear_acceleration(twist, dtwist, pose):
 
 class LinearComponentForTest:
     """
-    Just to check the spatial math implementation
+    Just for the sake of checking the spatial math implementation
     """
 
     def __init__(self,
