@@ -1,6 +1,6 @@
 <mujoco model="target">
   <custom>
-    <numeric name="aabb_scale" size="1" data="1.28"/>
+    <numeric name="aabb_scale" size="1" data=".64"/>
   </custom>
 
   <worldbody>

@@ -1,18 +1,19 @@
 <mujoco model="target">
   <custom>
-    <numeric name="aabb_scale" size="1" data="1.28"/>
+    <numeric name="aabb_scale" size="1" data=".64"/>
   </custom>
 
   <worldbody>
+    <site name="ft_sensor"/>
     <body name="object">
       <geom name="geom" type="box" density="1000" size=".16 .32 .64" rgba="1 0 0 1"/>
-      <site name="ft_sensor"/>
     </body>
   </worldbody>
 
   <sensor>
-    <force name="frc" site="ft_sensor"/>
-    <torque name="trq" site="ft_sensor"/>
+    <accelerometer name="linacc_sen" site="ft_sensor"/>
+    <force name="force" site="ft_sensor"/>
+    <torque name="torque" site="ft_sensor"/>
   </sensor>
 
 </mujoco>

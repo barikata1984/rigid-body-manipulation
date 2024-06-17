@@ -1,7 +1,8 @@
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from math import pi
-from typing import Any
+from typing import Any, Union
 
 import numpy as np
 from mujoco._structs import MjData, MjModel, MjOption
@@ -16,12 +17,11 @@ class JointPositionPlannerConfig:
     target_class: str = "JointPositionPlanner"
     duration: float = MISSING
     timestep: float = -1
-    displacement: list[float] = field(default_factory=lambda: [0.2, 0.4, 0.6,
-                                                               1.0 * pi,
-                                                               0.3 * pi,
-                                                               1.5 * pi])
     pos_offset: list[float] = MISSING
-
+    displacements: list[Union [float, str]] = field(default_factory=lambda: [0.2, 0.4, 0.6,
+                                                                             1.0 * pi,
+                                                                             0.3 * pi,
+                                                                             1.5 * pi])
 
 class JointPositionPlanner:
     def __init__(self,
@@ -40,7 +40,19 @@ class JointPositionPlanner:
         self.duration = cfg.duration
         self.timestep = MjOption().timestep if cfg.timestep <= 0 else cfg.timestep
         self.n_steps = int(self.duration / self.timestep)
-        self.plan = traj_5th_spline(cfg.displacement, cfg.pos_offset,
+
+        displacements = []
+        for _disp in cfg.displacements:
+            disp = _disp.__repr__().strip("'")  # not sure this is the best solution...
+            try:
+                disp = float(disp)
+            except ValueError as e:
+                disp = self.safe_eval(self.replace_pi(disp))
+
+            displacements.append(disp)
+
+        self.displacements = displacements
+        self.plan = traj_5th_spline(self.displacements, cfg.pos_offset,
                                     self.timestep, self.n_steps)
 
         #print("Simulation time setup =======================================\n"
@@ -57,6 +69,18 @@ class JointPositionPlanner:
 
         #return pln.traj_5th_spline(start_qpos, goal_qpos, t.timestep, t.n_steps)
 
+
+    def safe_eval(self, expr):
+      """Evaluates a mathematical expression if it contains only allowed characters."""
+      allowed_chars = "0123456789.+*/-() "
+      if all(c in allowed_chars for c in expr):
+        return eval(expr)
+      else:
+        raise ValueError("Invalid characters in expression.")
+
+    def replace_pi(self, text):
+      """Replaces occurrences of "pi" with its numerical value in a string."""
+      return re.sub(r"\bpi\b", str(pi), text)
 
 
 def traj_5th_spline(displacement: ArrayLike,

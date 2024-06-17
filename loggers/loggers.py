@@ -44,6 +44,10 @@ class Logger:
         self.dataset_dir = Path(cfg.dataset_dir)
         self.image_dir = self.dataset_dir / "images"
         self.renderer = Renderer(m, self.fig_height, self.fig_width)
+
+        os.makedirs(self.image_dir, exist_ok=True)  # not sure but should be called before
+                                                    # the videowriter is instantiated
+
         self.videowriter = cv2.VideoWriter(
             str(self.dataset_dir / cfg.videoname),
             cv2.VideoWriter_fourcc(*cfg.videcodec),
@@ -59,9 +63,9 @@ class Logger:
             frames=[],  # list(),
         )
 
-        os.makedirs(self.image_dir, exist_ok=True)
 
     def finish(self):
+        print(f"{self.transform['frames'][0]['file_path']=}")
         self.videowriter.release()
         with open(self.dataset_dir / "transform.json", "w") as f:
             json.dump(self.transform, f, indent=2)

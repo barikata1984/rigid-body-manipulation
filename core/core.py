@@ -1,6 +1,7 @@
 import inspect
 import sys
 from dataclasses import dataclass
+from math import sqrt
 from os import PathLike
 from pathlib import Path
 from typing import Any, Union
@@ -73,7 +74,7 @@ def generate_model_data(cfg: Union[DictConfig, ListConfig],
 
     # Relocate the track cam according to the target object's aabb scale
     target_object_aabb_scale = target_object.find("numeric", "aabb_scale").data[0]
-    track_cam_pos = [0, 0, 2*target_object_aabb_scale]
+    track_cam_pos = [0, 0, 3*target_object_aabb_scale]
     track_cam = manipulator.find('camera', cfg.logger.track_cam_name)
     track_cam.pos = track_cam_pos
 

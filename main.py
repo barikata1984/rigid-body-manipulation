@@ -86,7 +86,6 @@ def simulate(m: MjModel,
     pose_x_obj = poses.get_x_("body", "target/object")
     pose_obj_obji = poses.get_b_biof("target/object")
     pose_x_obji = pose_x_obj.dot(pose_obj_obji)
-    pose_obj_cam = pose_x_obj.inv().dot(poses.x_cam[logger.cam_id])
     # FT sensor pose rel. to the object
     pose_x_sen = poses.get_x_("site", "target/ft_sensor")
     pose_sen_obj = pose_x_sen.inv().dot(pose_x_obj)
@@ -131,7 +130,7 @@ def simulate(m: MjModel,
         simats_lj_l[id_ll] += dyn.transfer_simat(pose_bi_llj.inv(), simat_bi_b)
 
     mass = simats_lj_l[id_ll, 0, 0] - m.body_mass[id_ll]
-    #print(f"{mass=}")
+    print(f"{mass=}")
 
     # Get link joints' home poses wr2 their parents' joint frame ==================
     hposes_lj_kj = [SE3.identity()]  # for worldbody
@@ -234,6 +233,9 @@ def simulate(m: MjModel,
             logger.videowriter.write(bgr)
 
             # Log NeMD ingredients ============================================
+            # Items which need to be computed at every frame recoding
+            pose_obj_cam = pose_x_obj.inv().dot(poses.x_cam[logger.cam_id])
+            
             frame = dict(
                 file_path=str(logger.image_dir / file_name),
 #                pose_obj_cam=pose_obj_cam.as_matrix().T.tolist(),
@@ -315,9 +317,10 @@ if __name__ == "__main__":
         cfg.logger.gt_mass_distr_file_path = gt_mass_distr_file_path
 
     try:
-        cfg.logger.dataset_dir
+        dataset_dir = cfg.logger.dataset_dir
     except MissingMandatoryValue:
-        cfg.logger.dataset_dir = Path.cwd() / "datasets" / cfg.target_name
+        dataset_dir = cfg.target_name
+    cfg.logger.dataset_dir = Path.cwd() / "datasets" / dataset_dir
 
     # Instantiate necessary classes ===============================================
     logger = autoinstantiate(cfg.logger, m, d)

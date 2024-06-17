@@ -14,7 +14,7 @@
     <light name="top" pos="0 0 3"/>
     <body name="link1" euler="0 90 0">  <!-- euler in deg -->
       <joint name="x" type="slide" axis="0 0 1"/>
-      <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>  <!-- water in 1cm**3 space -->
+      <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>  <!-- mimicking mass of water in a 1 cm^3 cube as a dummy -->
       <body name="link2" euler="-90 0 0">
         <joint name="y" type="slide" axis="0 0 1"/>
         <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
@@ -31,7 +31,7 @@
                 <joint name="yaw" type="hinge" axis="0 0 1"/>
                 <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
                 <site name="attachment"/>
-                <camera name="tracking" mode="track"/>
+                <camera name="tracking" mode="track"/>  <!-- "pos" is set in generate_model_data() in core.py -->
               </body>
             </body>
           </body>

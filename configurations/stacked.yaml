@@ -9,7 +9,7 @@ logger:
   track_cam_name: tracking
   fig_height: 800
   fig_width: 800
-  fps: 60
+  fps: 30
   videoname: output.mp4
   videcodec: mp4v
   dataset_dir: ???
@@ -17,15 +17,15 @@ logger:
   gt_mass_distr_file_path: ???
 planner:
   target_class: JointPositionPlanner
-  duration: 2.0
+  duration: 4.0
   timestep: -1.0
-  displacement:
+  displacements:
   - 0.2
-  - 0.4
+  - 1.4
   - 0.6
   - 3.141592653589793
-  - 0.9424777960769379
-  - 4.71238898038469
+  - 0.0
+  - 18.8495559215
   pos_offset: ???
 controller:
   target_class: LinearQuadraticRegulator
@@ -39,5 +39,3 @@ controller:
   - 1.0
   - 1.0
   - 1.0
-read_config: ./configurations/stacked.yaml
-write_config: ./configurations/stacked.yaml
