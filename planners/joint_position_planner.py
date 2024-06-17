@@ -46,7 +46,7 @@ class JointPositionPlanner:
             disp = _disp.__repr__().strip("'")  # not sure this is the best solution...
             try:
                 disp = float(disp)
-            except ValueError as e:
+            except ValueError:
                 disp = self.safe_eval(self.replace_pi(disp))
 
             displacements.append(disp)
