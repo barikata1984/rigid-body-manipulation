@@ -6,6 +6,7 @@ from pathlib import Path
 
 import cv2
 import json
+import numpy as np
 from mujoco._structs import MjData, MjModel
 from mujoco.renderer import Renderer
 from omegaconf import MISSING
@@ -23,16 +24,16 @@ class LoggerConfig:
     videoname: str = "output.mp4"
     videcodec: str = "mp4v"
     dataset_dir: str = MISSING
-    target_object_aabb_scale: float = MISSING
-    gt_mass_distr_file_path: str = MISSING
+    aabb_scale: float = MISSING
+    #gt_mass_distr_file_path: str = MISSING
 
 
 class Logger:
     def __init__(self,
-                cfg: LoggerConfig,
-                m: MjModel,
-                d: MjData,
-                ) -> None:
+                 cfg: LoggerConfig,
+                 m: MjModel,
+                 d: MjData,
+                 ) -> None:
         self.cam_name = cfg.track_cam_name
         self.cam_id = get_element_id(m, "camera", self.cam_name)
         self.fig_height = cfg.fig_height
@@ -55,24 +56,59 @@ class Logger:
             (self.fig_width, self.fig_height),
         )
 
+        #_aabb_scale = get_aabb_scale(m)
+
+        #if _aabb_scale != cfg.aabb_scale:
+        #    raise ValueError(f"aabb_scale ({_aabb_scale}) retrieved from an MjModel "
+        #                     f"instance differs from aabb_scale ({cfg.aabb_scale}) "
+        #                      "stored in 'ground_truth.csv'. Review your code.")
+
         self.transform = dict(
             date_time=datetime.now().strftime("%d/%m/%Y_%H:%M:%S"),
             camera_angle_x=self.cam_fovx,
-            aabb_scale=cfg.target_object_aabb_scale,
-            gt_mass_distr_file_path=cfg.gt_mass_distr_file_path,
+            aabb_scale=cfg.aabb_scale,
+            #cfg.target_object_aabb_scale,
+            #gt_mass_distr_file_path=cfg.gt_mass_distr_file_path,
             frames=[],  # list(),
         )
 
-
     def finish(self):
-        print(f"{self.transform['frames'][0]['file_path']=}")
         self.videowriter.release()
         with open(self.dataset_dir / "transform.json", "w") as f:
             json.dump(self.transform, f, indent=2)
 
+
+def get_aabb_scale(m: MjModel,
+                   ):
+    max_point = None;
+    min_point = None;
+
+    for pos, aabb in zip(m.geom_pos, m.geom_aabb):
+        local_center, xyz_scale = np.split(aabb, 2)
+        print(f"{local_center=}")
+        print(f"{xyz_scale=}")
+        for i in (-1, 1):
+            for j in (-1, 1):
+                for k in (-1, 1):
+                    point = xyz_scale * np.array([i, j, k]) + pos + local_center
+
+                    if max_point is None or np.all(max_point <= point):
+                        max_point = point
+
+                    if min_point is None or np.all(point <= min_point):
+                        min_point = point
+
+    if max_point is None or min_point is None:
+        raise TypeError("'max_point' or 'min_point' is None. Review your code.")
+
+    aabb_scale = np.abs(max_point - min_point).max() / 2
+
+    return aabb_scale
+
+
 #        print("Tracking camera setup =======================================\n"
 #             f"    Tracking camera id:         {self.id}\n"
 #             f"    Image size (w x h [px]):    {self.width} x {self.height}\n"
-#             f"    Focus [px]:                 {self.focus}\n"
+#             f"    Focus [px]:                 {self.focus}\in"
 #             f"    FoV (h, v [deg]):           {deg(self.fovx)}, {deg(self.fovy)}\n"
 #             f"    Output file:                {self.output_file}")

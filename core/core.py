@@ -1,11 +1,10 @@
 import inspect
 import sys
 from dataclasses import dataclass
-from math import sqrt
-from os import PathLike
 from pathlib import Path
 from typing import Any, Union
 
+import pandas as pd
 from dm_control import mjcf
 from mujoco._functions import mj_name2id, mj_resetDataKeyframe
 from mujoco._structs import MjData, MjModel
@@ -14,6 +13,8 @@ from omegaconf import OmegaConf
 from omegaconf.dictconfig import DictConfig
 from omegaconf.listconfig import ListConfig
 from omegaconf.errors import ConfigAttributeError, MissingMandatoryValue
+from transforms3d.euler import euler2mat
+from transforms3d.quaternions import mat2quat, quat2mat
 
 # all the modules of the packages below are imported to enable autoinstantiate()
 from controllers import *
@@ -55,42 +56,207 @@ def load_config():
     return cfg
 
 
-def generate_model_data(cfg: Union[DictConfig, ListConfig],
-                        ) -> tuple[MjModel, MjData, float, PathLike]:
-    # Load the .xml of a manipulator
-    xml_dir = Path.cwd() / "xml_models"
-    manipulator_path = xml_dir / "manipulators" / f"{cfg.manipulator_name}.xml"
-    manipulator = mjcf.from_path(manipulator_path)
+def get_target_object_gt(target_object_aux_path):
+    # Recover the object's diaginertia and its orientation manually =======
+    target_object_aux = pd.read_csv(target_object_aux_path,
+                          nrows=1,  # num data rows after the header
+                          ).loc[0]
 
-    # Load the .xml of a target object and its ground truth mass distribution .npy
+    aabb_scale = target_object_aux["aabb_scale"]
+
+    # Orientaion of the object's body frame w.r.t its inertia frame
+    s_rx, s_ry, s_rz = target_object_aux["rx":"rz"]
+    rot_obji_obj= euler2mat(s_rx, s_ry, s_rz, "sxyz")  # "S"tatic "XYZ" euler
+    iquat = mat2quat(rot_obji_obj.T)
+
+    # Get the mass and the center of mass of the target object w.r.t its body frame
+    mass = target_object_aux["total_mass"]
+    com = target_object_aux["cx":"cz"]
+
+    # Object's moments of inertia w.r.t the body frame. <- statement
+    ixx, iyy, izz, ixy, iyz, izx = target_object_aux["ixx":"izx"]
+    imat_obj_obji = np.array([[ixx, ixy, izx],
+                              [ixy, iyy, iyz],
+                              [izx, iyz, izz]])
+
+    diaginertia_tensor = rot_obji_obj @ imat_obj_obji @ rot_obji_obj.T
+    diaginertia = np.diag(diaginertia_tensor)
+
+    fullinertia = [ixx, iyy, izz, ixy, izx, iyz]
+
+    return dict(aabb_scale=aabb_scale, mass=mass, com=com, iquat=iquat,
+                diaginertia=diaginertia, fullinertia=fullinertia)
+
+
+def show_comparison(m,
+                    mkey,
+                    target_object_gt):
+
+    print(f"{mkey=}")
+
+    mj_mass = m.body_mass[get_element_id(m, "body", mkey)]
+    mj_diaginertia = m.body_inertia[get_element_id(m, "body", mkey)]
+    mj_iquat = m.body_iquat[get_element_id(m, "body", mkey)]
+
+    # Show the result =====================================================
+    total_mass = target_object_gt["mass"]
+    diaginertia = target_object_gt["diaginertia"]
+    quat_obj_obji = target_object_gt["iquat"]
+    print("Mass and diaginertia")
+    print(pd.DataFrame({"cad-gt": [total_mass,
+                                   *diaginertia,
+                                   *quat_obj_obji,
+                                   ],
+                        "mujoco": [mj_mass,
+                                   *mj_diaginertia,
+                                   mj_iquat,
+                                   ]
+                        },
+                        index=["total_mass",
+                               "pixx", "piyy", "pizz",
+                               "real", "i", "j", "k",
+                               ]
+                       ).transpose()
+          )
+
+    mj_rot_body_obji = quat2mat(mj_iquat)
+    mj_diaginertia_tensor = np.diag(mj_diaginertia)
+    mj_imat_obj_obji = mj_rot_body_obji @ mj_diaginertia_tensor @ mj_rot_body_obji.T
+
+    rot_obj_obji = quat2mat(quat_obj_obji)
+    imat_obj_obji = rot_obj_obji @ np.diag(diaginertia) @ rot_obj_obji.T
+    print(f"rot_obj_obji:\n{rot_obj_obji}")
+    print(f"imat_obj_obji:\n{imat_obj_obji}")
+    print(f"mj_imat_obj_obji:\n{mj_imat_obj_obji}")
+    print(f"isclose?\n{np.isclose(imat_obj_obji, mj_imat_obj_obji)}")
+
+
+def spawn_target_object(target_object_path,
+                        target_object_aux_path,
+                        set_fullinertia=True,
+                        compare_cad_mujoco=True,
+                        ):
+    # Recover the object's diaginertia and its orientation manually =======
+
+    target_object_gt = get_target_object_gt(target_object_aux_path)
+
+    # Orientaion of the object's body frame w.r.t its inertia frame
+    quat_obj_obji = target_object_gt["iquat"]  # mat2quat(rot_obji_obj.T)
+    rot_obji_obj= quat2mat(quat_obj_obji)
+
+    # Get the mass and the center of mass of the target object w.r.t its body frame
+    target_object_mass = target_object_gt["mass"]
+    pos_obj_obji = target_object_gt["com"]
+
+    # Object's moments of inertia w.r.t the body frame. <- statement
+    fullinertia = target_object_gt["fullinertia"]
+    ixx, iyy, izz, ixy, izx, iyz = fullinertia
+    imat_obj_obji = np.array([[ixx, ixy, izx],
+                              [ixy, iyy, iyz],
+                              [izx, iyz, izz]])
+
+    diaginertia_tensor = rot_obji_obj @ imat_obj_obji @ rot_obji_obj.T
+    manual_diaginertia = np.diag(diaginertia_tensor)
+
+    print(f"{target_object_gt['aabb_scale']=}")
+    # Get mass and diaginertia computed by mujoco =========================
+    target_object = mjcf.from_path(target_object_path)
+    target_object.custom.add("numeric",
+                             name="aabb_scale",
+                             data=str(target_object_gt["aabb_scale"]),
+                             )
+
+    # Get asset files
+    assets = {}
+    meshes = []
+    for each_mesh in iter(target_object.asset.mesh):
+        file = each_mesh.get_attributes()['file']
+        assets[file.prefix+file.extension] = file.contents
+        meshes.append(file.prefix)
+
+    for elem_texture in iter(target_object.asset.texture):
+        file = elem_texture.get_attributes()['file']
+        assets[file.prefix+file.extension] = file.contents
+
+    target_object_body = target_object.find("body", "object")
+    if set_fullinertia:
+        print("======== Set 'fullinertia' to the target object. ========")
+        target_object_body.add("inertial",
+                               pos=pos_obj_obji,
+                               mass=target_object_mass,
+                               fullinertia=fullinertia,
+                               )
+
+    else:
+        print("==== Set 'density' to the target object's each geom. ====")
+        component_mass_densities = pd.read_csv(target_object_aux_path,
+                                             skiprows=2,  # after the header and data
+                                             )
+
+        assert len(component_mass_densities) == len(meshes), \
+               RuntimeError("Number of components does not match with the " \
+                            "number of aux data. Review the XML and CSV file")
+
+        for idx, mesh in zip(reversed(component_mass_densities.index),
+                             reversed(meshes),
+                             ):
+            density = component_mass_densities.loc[idx, "mass_density"]
+            target_object_body.insert("geom", 0,
+                                      type="mesh",
+                                      mesh=mesh,
+                                      density=density,
+                                      )
+
+        # Use only the inserted geom for inertia computation
+        inertiagrouprange = " ".join(str(i) for i in [0, len(component_mass_densities)-1])
+        target_object.compiler.inertiagrouprange = inertiagrouprange
+
+    if compare_cad_mujoco:
+        m = MjModel.from_xml_string(target_object.to_xml_string(), assets=assets)
+        show_comparison(m, "object", target_object_gt)
+
+    return target_object, assets
+
+
+def generate_model_data(
+        cfg: Union[DictConfig, ListConfig],
+    ) -> tuple[MjModel, MjData, float]:  # , PathLike]:
+    # Get the ground truth data output by a CAD application ========================
+    xml_dir = Path.cwd() / "xml_models"
     target_dir = xml_dir / "targets" / cfg.target_name
     target_object_path = target_dir / "object.xml"
-    target_object = mjcf.from_path(target_object_path)
-    gt_mass_distr_path = target_dir / "gt_mass_distr.npy"
+    target_object_aux_path = target_dir / "object_aux.csv"
+    target_object, assets = spawn_target_object(target_object_path,
+                                                target_object_aux_path,
+                                                compare_cad_mujoco=False,
+                                                )
 
-    # Attache the object to obtain the complete model tree
+    # Load the .xml of a manipulator and attache the target object
+    manipulator_path = xml_dir / "manipulators" / f"{cfg.manipulator_name}.xml"
+    manipulator = mjcf.from_path(manipulator_path)
     attachement_site = manipulator.find("site", "attachment")
     attachement_site.attach(target_object)
 
-    # Relocate the track cam according to the target object's aabb scale
-    target_object_aabb_scale = target_object.find("numeric", "aabb_scale").data[0]
-    track_cam_pos = [0, 0, 3*target_object_aabb_scale]
+    # Set camera position
+    aabb_scale = manipulator.custom.numeric['target/aabb_scale'].data[0]
+    track_cam_pos = [0, 0, 3 * aabb_scale]
     track_cam = manipulator.find('camera', cfg.logger.track_cam_name)
     track_cam.pos = track_cam_pos
 
     # Spawn a mujoco model and a mujoco data
-    m = MjModel.from_xml_string(manipulator.to_xml_string())
+    m = MjModel.from_xml_string(manipulator.to_xml_string(), assets=assets)
     d = MjData(m)
 
-    #print(f"{manipulator.to_xml_string()}")
+    print(f"{type(manipulator.to_xml_string())=}")
+    with open("test.xml", "w") as my_file:
+        my_file.write(manipulator.to_xml_string())
 
-    # Reset the manipulator's configuration if reset_keyframe specified.
-    # If reset_keyframe does not match any keyframe inside the .xml files,
-    # nothing happens.
+    #show_comparison(m, "target/object", cad_gt)
+
     mj_resetDataKeyframe(m, d,
-                         mj_name2id(m, mjtObj.mjOBJ_KEY, cfg.reset_keyframe))
+                         get_element_id(m, "keyframe", cfg.reset_keyframe))
 
-    return m, d, target_object_aabb_scale, gt_mass_distr_path
+    return m, d, aabb_scale
 
     #print("Configure manipulator and object ============================")
     #xml_file = config.xml.system_file
@@ -127,6 +293,8 @@ def get_element_id(m, elem_type, name):
         obj_enum = mjtObj.mjOBJ_SENSOR
     elif "site"== elem_type:
         obj_enum = mjtObj.mjOBJ_SITE
+    elif "keyframe"== elem_type:
+        obj_enum = mjtObj.mjOBJ_KEY
     else:
         raise ValueError(f"'{elem_type}' is not supported for now. Use mj_name2id and check the value of an ID instead.")
 

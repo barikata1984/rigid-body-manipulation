@@ -55,32 +55,47 @@ def _get_simat(mass: float,
 def get_spatial_inertia_matrix(mass,
                                diagonal_inertia,
                                ):
-    assert len(mass) == len(diagonal_inertia), "Lenght of 'mass' of the bodies and that of 'diagonal_inertia' vectors must match."
+    assert len(mass) == len(diagonal_inertia), \
+           "Lenght of 'mass' of the bodies and that of 'diagonal_inertia' vectors must match."
     return np.array([_get_simat(m, di) for m, di in zip(mass, diagonal_inertia)])
 
 
 def transfer_simat(pose: Union[SE3, Sequence[SE3]],
                    simat: NDArray,
                    ) -> NDArray:
+    """Transfer the frame to which a spatial inertia tensor is desribed.
+
+    Assuming, a sparial inertia tensor (\mathfrak{g}_a)is defined with
+    reference to a frame {a}, this method converts the frame to which
+    the tensor is described to another frame {b} given an input pose
+    representing the configuration of {b} with respect to {a} (T_{ab})
+    
+    Args: single pose of set of poses
+    l
+    """
+
     single_pose = False
     single_simat = False
 
-    # Add a batch dimension to handle a set of single pose and simat
+    # Add a batch dimension to handle a single pose as a pose set
     if isinstance(pose, SE3):
         # poses is an instance of liegroups.numpy.se3.SE3Matrix if this block hit
         single_pose = True
         pose = [pose]
 
+    # Add a batch dimension to handle a single simat as a simat set
     if 2 == simat.ndim:
         single_simat = True
         simat = np.expand_dims(simat, 0)
 
-    assert len(pose) == len(simat), "The numbers of spatial inertia tensors and SE3 instances do not match."
+    assert len(pose) == len(simat), \
+           ValueError("The numbers of spatial inertia tensors and SE3 instances do not match.")
 
-    adjoint = [p.inv().adjoint() for p in pose]
-    transfered = np.array([adj.T @ sim @ adj for adj, sim in zip(adjoint, simat)])
+    adjoint = [p.inv().adjoint() for p in pose]  # 
+    # Ad is assumed to be described
+    transfered = np.array([Ad.T @ sim @ Ad for Ad, sim in zip(adjoint, simat)])  # Eq. 8.42 in MR
 
-    return transfered[0] if single_pose and single_simat else transfered
+    return transfered[0] if single_pose or single_simat else transfered
 
 
 def inverse(traj: np.ndarray,
@@ -126,7 +141,7 @@ def inverse(traj: np.ndarray,
 
     wrench.reverse()
 
-    # A uscrew is a set of one-hot vectors, where the hot flag indicates the force
+    # An uscrew is a set of one-hot vectors, where the hot flag indicates the force
     # or torque element of the wrench that each screw corresponds to. Therefore,
     # the hadamarrd product below extracts the control signals, which are the
     # magnitude of target force or torque signals, from wrench array

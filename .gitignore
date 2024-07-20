@@ -2,7 +2,7 @@
 MUJOCO_LOG.TXT
 datasets/
 file_stashed/
-**/ground_truth.csv/
+**/ground_truth.csv
 
 # Below was provided by GitHub as a standard template for Python project
 # Byte-compiled / optimized / DLL files

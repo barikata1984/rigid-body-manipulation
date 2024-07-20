@@ -13,9 +13,9 @@ from tqdm import tqdm
 
 import dynamics as dyn
 import visualization as vis
-from core import load_config, generate_model_data, autoinstantiate
+from core import load_config, generate_model_data, autoinstantiate, get_element_id
 from transformations import Poses
-from utilities import Sensors, get_element_id
+from utilities import Sensors
 
 
 # Naming convention of spatial and dynamics variables:
@@ -87,13 +87,12 @@ def simulate(m: MjModel,
     pose_obj_obji = poses.get_b_biof("target/object")
     pose_x_obji = pose_x_obj.dot(pose_obj_obji)
     # FT sensor pose rel. to the object
-    pose_x_sen = poses.get_x_("site", "target/ft_sensor")
+    pose_x_sen = poses.get_x_("site", "ft_sensor")
     pose_sen_obj = pose_x_sen.inv().dot(pose_x_obj)
     pose_sen_obji = pose_x_sen.inv().dot(pose_x_obji)
     pose_x_ll = poses.x_b[id_ll]  # dynamic
     pose_ll_llj = poses.l_lj[id_ll]  # static
     # NOTE: Variables below should be declared not here but whenever neccessary.
-    # Whether they are static or dynamic does not fit my way of thinking.
     #pose_x_llj = pose_x_ll.dot(pose_ll_llj)  # static, should be dynamic tho
     #pose_sen_llj = pose_x_sen.inv().dot(pose_x_llj)  # dynamic, should be static tho
 
@@ -114,7 +113,11 @@ def simulate(m: MjModel,
 
     # Transfer the reference frame where each link's spatial inertia matrix is de-
     # fined from the body principal frame to the joint frame ======================
-    simats_bi_b = dyn.get_spatial_inertia_matrix(m.body_mass, m.body_inertia)
+    # 下のメソッドが出力するのはボディの慣性座標系で記述された空間慣性テンソル 
+    simats_bi_b = dyn.get_spatial_inertia_matrix(m.body_mass,
+                                                 m.body_inertia,
+                                                 )
+
     simats_lj_l = []
     for pose_lj_li, simat_li_l in zip(poses.lj_li, simats_bi_b[id_x2ll]):  # x~last
         simats_lj_l.append(dyn.transfer_simat(pose_lj_li, simat_li_l))
@@ -124,13 +127,18 @@ def simulate(m: MjModel,
     # Join the spatial inertia matrices of the bodies later than the last link to
     # its spatial inertia matrix so that dyn.inverse() can consider the bodies'
     # inertia =====================================================================
+    print(f"{simats_lj_l[id_ll]=}")
     for pose_x_bi, simat_bi_b in zip(poses.x_bi[id_ll+1:], simats_bi_b[id_ll+1:]):
         # "b" here is ∈ {attachment, object}
-        pose_bi_llj = pose_x_bi.inv().dot(pose_x_ll.dot(pose_ll_llj))
-        simats_lj_l[id_ll] += dyn.transfer_simat(pose_bi_llj.inv(), simat_bi_b)
+        pose_x_llj = pose_x_ll.dot(pose_ll_llj)
+        pose_bi_llj = pose_x_bi.inv().dot(pose_x_llj)
+        simat_llj_b = dyn.transfer_simat(pose_bi_llj.inv(), simat_bi_b)
+  
+        print(f"{simat_llj_b=}")
+
+        simats_lj_l[id_ll] += simat_llj_b
 
     mass = simats_lj_l[id_ll, 0, 0] - m.body_mass[id_ll]
-    print(f"{mass=}")
 
     # Get link joints' home poses wr2 their parents' joint frame ==================
     hposes_lj_kj = [SE3.identity()]  # for worldbody
@@ -202,8 +210,8 @@ def simulate(m: MjModel,
             trajectory.append(act_traj)
 
             # force-torque
-            fts_sen.append(np.concatenate([sensors.get("target/force"),
-                                           sensors.get("target/torque")]))
+            fts_sen.append(np.concatenate([sensors.get("force"),
+                                           sensors.get("torque")]))
 
             # Get (d)twist_sen, and linacc_sen_obj for the sake of verification
             pose_sen_llj = pose_x_sen.inv().dot(pose_x_ll.dot(pose_ll_llj))
@@ -235,7 +243,7 @@ def simulate(m: MjModel,
             # Log NeMD ingredients ============================================
             # Items which need to be computed at every frame recoding
             pose_obj_cam = pose_x_obj.inv().dot(poses.x_cam[logger.cam_id])
-            
+
             frame = dict(
                 file_path=str(logger.image_dir / file_name),
 #                pose_obj_cam=pose_obj_cam.as_matrix().T.tolist(),
@@ -303,18 +311,15 @@ def simulate(m: MjModel,
 if __name__ == "__main__":
 
     cfg = load_config()  # priority: 1. cli, 2. yaml, 3. coded
-    m, d, tgt_obj_aabb_scale, gt_mass_distr_file_path = generate_model_data(cfg)
+    m, d, aabb_scale = generate_model_data(cfg)
+
+    print(f"{m.name_numericadr=}")
 
     # Fill (potentially) missing fields of a logger configulation =================
     try:
-        cfg.logger.target_object_aabb_scale
+        cfg.logger.aabb_scale
     except MissingMandatoryValue:
-        cfg.logger.target_object_aabb_scale = float(tgt_obj_aabb_scale)
-
-    try:
-        cfg.logger.gt_mass_distr_file_path
-    except MissingMandatoryValue:
-        cfg.logger.gt_mass_distr_file_path = gt_mass_distr_file_path
+        cfg.logger.aabb_scale = float(aabb_scale)
 
     try:
         dataset_dir = cfg.logger.dataset_dir
