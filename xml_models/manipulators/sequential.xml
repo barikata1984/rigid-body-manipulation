@@ -1,37 +1,35 @@
 <mujoco model="manipulator">
-  <size nuser_body="1"/>
-
   <visual>
     <global offwidth="1980" offheight="1080"/>
   </visual>
 
-  <asset>
+  <!-- asset>
     <texture name="grid" type="2d" builtin="checker" width="512" height="512" rgb1=".1 .2 .3" rgb2=".2 .3 .4"/>
     <material name="grid" texture="grid" texrepeat="1 1" texuniform="true" reflectance=".2"/>
-  </asset>
+  </asset -->
 
   <worldbody>
     <light name="top" pos="0 0 3"/>
     <body name="link1" euler="0 90 0">  <!-- euler in deg -->
       <joint name="x" type="slide" axis="0 0 1"/>
-      <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>  <!-- mimicking mass of water in a 1 cm^3 cube as a dummy -->
+      <inertial pos="0 0 0" mass="8." diaginertia=".05333333 .05333333 .05333333"/>  <!-- balancing load mimicking the water block whose size is 2x2x2 [m] -->
       <body name="link2" euler="-90 0 0">
         <joint name="y" type="slide" axis="0 0 1"/>
-        <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
+        <inertial pos="0 0 0" mass="8." diaginertia=".05333333 .05333333 .05333333"/>
         <body name="link3" euler="0 -90 0">
           <joint name="z" type="slide" axis="0 0 1"/>
-          <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
+          <inertial pos="0 0 0" mass="8." diaginertia=".05333333 .05333333 .05333333"/>
           <body name="link4" euler="90 0 0">
             <joint name="roll" type="hinge" axis="0 0 1"/>
-            <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
+            <inertial pos="0 0 0" mass="8." diaginertia=".05333333 .05333333 .05333333"/>
             <body name="link5" euler="0 90 0">
               <joint name="pitch" type="hinge" axis="0 0 1"/>
-              <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
+              <inertial pos="0 0 0" mass="8." diaginertia=".05333333 .05333333 .05333333"/>
               <body name="link6" euler="-90 0 0">
                 <joint name="yaw" type="hinge" axis="0 0 1"/>
-                <inertial pos="0 0 0" mass="0.001" diaginertia=".000000017 .000000017 .000000017"/>
-                <site name="ft_sensor"/>
-                <site name="attachment"/>
+                <inertial pos="0 0 0" mass="8." diaginertia=".05333333 .05333333 .05333333"/>
+                <!-- site name="ft_sensor" rgba="0 0 0 0"/ -->
+                <site name="attachment" euler="0 0 180" rgba="0 0 0 0"/>  <!-- make it invisible -->
                 <camera name="tracking" mode="track"/>  <!-- "pos" is set in generate_model_data() in core.py -->
               </body>
             </body>
@@ -60,23 +58,23 @@
     <!-- type int: 30, 3-vector x 2 -->
     <framelinvel name="linvel_x_obj" objtype="xbody" objname="target/object"/>
     <framelinvel name="linvel_x_obji" objtype="body" objname="target/object"/>
-    <framelinvel name="linvel_x_sen" objtype="site" objname="ft_sensor"/>
+    <framelinvel name="linvel_x_sen" objtype="site" objname="target/ft_sensor"/>
     <!-- type int: 31, 3-vector x 2 -->
     <frameangvel name="angvel_x_obj" objtype="xbody" objname="target/object"/>
     <frameangvel name="angvel_x_obji" objtype="body" objname="target/object"/>
-    <frameangvel name="angvel_x_sen" objtype="site" objname="ft_sensor"/>
+    <frameangvel name="angvel_x_sen" objtype="site" objname="target/ft_sensor"/>
     <!-- type int: 32, 3-vector x 2 -->
     <framelinacc name="linacc_x_obj" objtype="xbody" objname="target/object"/>
     <framelinacc name="linacc_x_obji" objtype="body" objname="target/object"/>
-    <framelinacc name="linacc_x_sen" objtype="site" objname="ft_sensor"/>
+    <framelinacc name="linacc_x_sen" objtype="site" objname="target/ft_sensor"/>
     <!-- type int: 33, 3-vector x 2 -->
     <frameangacc name="angacc_x_obj" objtype="xbody" objname="target/object"/>
     <frameangacc name="angacc_x_obji" objtype="body" objname="target/object"/>
-    <frameangacc name="angacc_x_sen" objtype="site" objname="ft_sensor"/>
+    <frameangacc name="angacc_x_sen" objtype="site" objname="target/ft_sensor"/>
 
-    <accelerometer name="linacc_sen" site="ft_sensor"/>
-    <force name="force" site="ft_sensor"/>
-    <torque name="torque" site="ft_sensor"/>
+    <accelerometer name="linacc_sen" site="target/ft_sensor"/>
+    <force name="force" site="target/ft_sensor"/>
+    <torque name="torque" site="target/ft_sensor"/>
   </sensor>
 
   <keyframe>

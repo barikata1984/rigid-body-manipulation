@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Union
 
 import numpy as np
-from liegroups import SE3
+from liegroups import SE3, SO3
 from mujoco._functions import mjd_transitionFD
 from mujoco._structs import MjModel, MjData
 from numpy.typing import NDArray
@@ -69,9 +69,6 @@ def transfer_simat(pose: Union[SE3, Sequence[SE3]],
     reference to a frame {a}, this method converts the frame to which
     the tensor is described to another frame {b} given an input pose
     representing the configuration of {b} with respect to {a} (T_{ab})
-    
-    Args: single pose of set of poses
-    l
     """
 
     single_pose = False
@@ -150,38 +147,103 @@ def inverse(traj: np.ndarray,
     return ctrl_mat.sum(axis=1), poses, twists, dtwists
 
 
-def get_linear_velocity(twist, pose):
+def extract_linvel_frame_transferred(twist, pose):
     """
-    Refer to Modern Robotics Chapt. 8.2.1 with homogeneous coordinate representation
+    Given a twist and the pose to a target coordinate frame w.r.t the reference
+    frame of the twist, extract the linear velocity whose reference framae is
+    converted to the target frame.
+
+    Refer to Chap. 8.2.1 in Modern Robotics (Lynch and Park, 2017) and check the
+    second paragraph.
+
+    Parameters
+    ----------
+    twist: NDArray
+        Twist vector
+    pose: NDArray
+        Pose of the target coordinate frame w.r.t the reference frame of the twist
     """
     _linvel = SE3.wedge(twist) @ homogenize(pose.trans)
     return _linvel[:3]
 
 
-def get_linear_acceleration(twist, dtwist, pose):
+def extract_linacc_frame_transferred(
+        twist: NDArray,
+        dtwist: NDArray,
+        pose: NDArray,
+) -> NDArray:
     """
-    Refer to Modern Robotics Chapt. 8.2.1 with homogeneous coordinate representation
+    Given a twist, its time-derivative, and the pose to a target coordinate frame
+    w.r.t the reference frame of the twist, extract the linear acceleration whose
+    reference framae is converted to the target frame.
+
+    Refer to Chap. 8.2.1 in Modern Robotics (Lynch and Park, 2017) and check the
+    second paragraph.
+
+
+    Parameters
+    ----------
+    twist: NDArray
+        Twist vector
+    dtwist: NDArray
+        Time-derivative of the twist
+    pose: NDArray
+        Pose of the target coordinate frame w.r.t the reference frame of the twist
     """
-    linvel = get_linear_velocity(twist, pose)
+    linvel = extract_linvel_frame_transferred(twist, pose)
     _linacc = SE3.wedge(dtwist) @ homogenize(pose.trans) \
-            + SE3.wedge(twist) @ homogenize(linvel, 0)
+            + SE3.wedge(twist) @ homogenize(linvel, forth_val=0)
 
     return _linacc[:3]
 
 
-class LinearComponentForTest:
-    """
-    Just for the sake of checking the spatial math implementation
-    """
+def bullet(
+        vec3: NDArray,
+) -> NDArray:
 
-    def __init__(self,
-                 twist_x,
-                 dtwist_x,
-                 pose_x_sen,
-                 pose_x_obj,
-                 ):
-        self.vel_x_obj = get_linear_velocity(twist_x, pose_x_obj)
-        self.vel_x_sen = get_linear_velocity(twist_x, pose_x_sen)
-        self.acc_x_obj = get_linear_acceleration(twist_x, dtwist_x, pose_x_obj)
-        self.acc_x_sen = get_linear_acceleration(twist_x, dtwist_x, pose_x_sen)
-        self.acc_sen_obj = get_linear_acceleration(twist_x, dtwist_x, pose_x_obj)
+    x, y, z = vec3
+
+    return np.block([[x, 0, 0],  # ixx
+                     [0, y, 0],  # iyy
+                     [0, 0, z],  # izz
+                     [y, x, 0],  # ixy
+                     [0, z, y],  # iyz
+                     [z, 0, x],  # izx
+                     ]).T
+
+
+def get_regressor_matrix(
+    twist: NDArray,
+    dtwist: NDArray,
+) -> NDArray:
+
+    v, w = np.split(twist, 2)
+    dv, dw = np.split(dtwist, 2)
+
+#    x = np.expand_dims(dv + wedge_w @ v, axis=1)
+#    X = wedge_dw + wedge_w @ wedge_w
+#    Y = bullet_dw + wedge_w @ bullet_w
+#
+#    #print(f"{Y.shape=}")
+#
+#    #regressor = np.block([[x, X, np.zeros((3, 6))],
+#    #                      [np.zeros((3, 1)), SO3.wedge(-x[:, -1]), Y],
+#    #                      ])
+#    regressor = np.block([x, X])
+
+    #
+
+    wedge_w = SO3.wedge(w)
+    wedge_dw = SO3.wedge(dw)
+    bullet_w = bullet(w)
+    bullet_dw = bullet(dw)
+
+    _x = dv + wedge_w @ v
+    x = np.expand_dims(_x, axis=1)
+    wedge_x = SO3.wedge(_x)
+    X = wedge_dw + wedge_w @ wedge_w
+    Y = bullet_dw + wedge_w @ bullet_w
+    regressor = np.block([[x, X, np.zeros((3, 6))],
+                          [np.zeros((3, 1)), -wedge_x, Y]])
+
+    return regressor

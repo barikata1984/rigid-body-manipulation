@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from math import atan2, radians, tan
 from pathlib import Path
 
@@ -70,40 +70,13 @@ class Logger:
             #cfg.target_object_aabb_scale,
             #gt_mass_distr_file_path=cfg.gt_mass_distr_file_path,
             frames=[],  # list(),
+            lst_sq=None
         )
 
     def finish(self):
         self.videowriter.release()
         with open(self.dataset_dir / "transform.json", "w") as f:
             json.dump(self.transform, f, indent=2)
-
-
-def get_aabb_scale(m: MjModel,
-                   ):
-    max_point = None;
-    min_point = None;
-
-    for pos, aabb in zip(m.geom_pos, m.geom_aabb):
-        local_center, xyz_scale = np.split(aabb, 2)
-        print(f"{local_center=}")
-        print(f"{xyz_scale=}")
-        for i in (-1, 1):
-            for j in (-1, 1):
-                for k in (-1, 1):
-                    point = xyz_scale * np.array([i, j, k]) + pos + local_center
-
-                    if max_point is None or np.all(max_point <= point):
-                        max_point = point
-
-                    if min_point is None or np.all(point <= min_point):
-                        min_point = point
-
-    if max_point is None or min_point is None:
-        raise TypeError("'max_point' or 'min_point' is None. Review your code.")
-
-    aabb_scale = np.abs(max_point - min_point).max() / 2
-
-    return aabb_scale
 
 
 #        print("Tracking camera setup =======================================\n"

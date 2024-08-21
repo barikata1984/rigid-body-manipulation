@@ -1,0 +1,39 @@
+manipulator_name: sequential
+target_name: ???
+reset_keyframe: initial_state
+state_space:
+  epsilon: 1.0e-08
+  centered: true
+logger:
+  target_class: Logger
+  track_cam_name: tracking
+  fig_height: 800
+  fig_width: 800
+  fps: 30
+  videoname: output.mp4
+  videcodec: mp4v
+  dataset_dir: ???
+planner:
+  target_class: JointPositionPlanner
+  duration: 4.0
+  timestep: -1.0
+  displacements:
+  - 0.2
+  - 1.4
+  - 0.6
+  - 3.141592653589793
+  - 0.0
+  - 18.8495559215
+  pos_offset: ???
+controller:
+  target_class: LinearQuadraticRegulator
+  state_space:
+    epsilon: 1.0e-08
+    centered: true
+  input_gain:
+  - 10.0
+  - 10.0
+  - 10.0
+  - 10000.0
+  - 10000.0
+  - 10000.0

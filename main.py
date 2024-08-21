@@ -1,9 +1,11 @@
 from functools import partial
 from pathlib import Path
+from shutil import copy
 
 import cv2
 import matplotlib as mpl
 import numpy as np
+import pandas as pd
 from liegroups import SE3
 from matplotlib import pyplot as plt
 from mujoco._functions import mj_differentiatePos, mj_step
@@ -87,7 +89,7 @@ def simulate(m: MjModel,
     pose_obj_obji = poses.get_b_biof("target/object")
     pose_x_obji = pose_x_obj.dot(pose_obj_obji)
     # FT sensor pose rel. to the object
-    pose_x_sen = poses.get_x_("site", "ft_sensor")
+    pose_x_sen = poses.get_x_("site", "target/ft_sensor")
     pose_sen_obj = pose_x_sen.inv().dot(pose_x_obj)
     pose_sen_obji = pose_x_sen.inv().dot(pose_x_obji)
     pose_x_ll = poses.x_b[id_ll]  # dynamic
@@ -127,18 +129,16 @@ def simulate(m: MjModel,
     # Join the spatial inertia matrices of the bodies later than the last link to
     # its spatial inertia matrix so that dyn.inverse() can consider the bodies'
     # inertia =====================================================================
-    print(f"{simats_lj_l[id_ll]=}")
+
+    simat_sen_obj = np.zeros((6, 6))
+
     for pose_x_bi, simat_bi_b in zip(poses.x_bi[id_ll+1:], simats_bi_b[id_ll+1:]):
         # "b" here is ∈ {attachment, object}
         pose_x_llj = pose_x_ll.dot(pose_ll_llj)
         pose_bi_llj = pose_x_bi.inv().dot(pose_x_llj)
         simat_llj_b = dyn.transfer_simat(pose_bi_llj.inv(), simat_bi_b)
-  
-        print(f"{simat_llj_b=}")
-
+        simat_sen_obj += simat_llj_b
         simats_lj_l[id_ll] += simat_llj_b
-
-    mass = simats_lj_l[id_ll, 0, 0] - m.body_mass[id_ll]
 
     # Get link joints' home poses wr2 their parents' joint frame ==================
     hposes_lj_kj = [SE3.identity()]  # for worldbody
@@ -148,8 +148,6 @@ def simulate(m: MjModel,
         hpose_k_l = poses.a_b[k+1]
         hpose_kj_lj = hpose_kj_k.dot(hpose_k_l.dot(hpose_l_lj))
         hposes_lj_kj.append(hpose_kj_lj.inv())
-
-    #print(f"{hposes_lj_kj=}")  # looks fine
 
     # Set some arguments of dyn.inverse() which dose not evolve along time ========
     gacc_x = -1 * np.array([*MjOption().gravity, 0, 0, 0])
@@ -170,6 +168,8 @@ def simulate(m: MjModel,
     linacc_sen_obji = []
     predicted_mass = []
     frame_count = 0
+
+    regressors = []
 
     # Main loop ===============================================================
     for step in tqdm(range(planner.n_steps), desc="Progress"):
@@ -197,21 +197,19 @@ def simulate(m: MjModel,
         act_traj = np.stack((d.qpos, d.qvel, d.qacc))   # d.qSTH is the same as
                                                         # reading joint variable
                                                         # sensor measurements
+
         _, _, twists_lj_l, dtwists_lj_l = inverse(act_traj)
 
-        # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓
-
         if frame_count <= d.time * logger.fps:
-
-        # ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 検証用コード追加ゾーン ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑
-
             time.append(d.time)
             tgt_trajectory.append(tgt_traj)
             trajectory.append(act_traj)
 
             # force-torque
-            fts_sen.append(np.concatenate([sensors.get("force"),
-                                           sensors.get("torque")]))
+            force = sensors.get("force")
+            torque = sensors.get("torque")
+            wrench = np.concatenate([force, torque], axis=None)
+            fts_sen.append(wrench)
 
             # Get (d)twist_sen, and linacc_sen_obj for the sake of verification
             pose_sen_llj = pose_x_sen.inv().dot(pose_x_ll.dot(pose_ll_llj))
@@ -224,10 +222,17 @@ def simulate(m: MjModel,
                        + pose_sen_llj.adjoint() @ dtwist_llj
             # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
             linacc_sen_obji.append(
-                dyn.get_linear_acceleration(twist_sen, dtwist_sen, pose_sen_obji))
+                dyn.extract_linacc_frame_transferred(twist_sen,
+                                                     dtwist_sen,
+                                                     pose_sen_obji)
+            )
 
-            predicted_mass.append(np.median(fts_sen[-1][:3]/linacc_sen_obji[-1]))
-            #print(f"{predicted_mass[-1]=}")
+            # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓
+
+            # ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 検証用コード追加ゾーン ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑
+
+            regressor = dyn.get_regressor_matrix(twist_sen, dtwist_sen)
+            regressors.append(regressor)
 
             # Writing a single frame of a dataset =============================
             logger.renderer.update_scene(d, logger.cam_id)
@@ -260,14 +265,35 @@ def simulate(m: MjModel,
             logger.transform["frames"].append(frame)
             frame_count += 1
 
-    logger.finish()  # video and dataset json generated
-
     # Convert lists of logged data into ndarrays ==============================
     tgt_trajectory = np.array(tgt_trajectory)
     trajectory = np.array(trajectory)
     linacc_sen_obji = np.array(linacc_sen_obji)
     frame_iter = np.arange(frame_count)
     fts_sen = np.array(fts_sen)
+    regressors = np.array(regressors)
+
+    index = ["total_mass",
+             "mx", "my", "mz",
+             "ixx", "iyy", "izz", "ixy", "iyz", "izx",
+             ]
+
+    solution = np.linalg.lstsq(regressors.reshape(-1, 10),
+                               fts_sen.reshape(-1),
+                               rcond=None,
+                               )
+
+    identified = solution[0]
+    residuals = solution[1][0]
+    print(pd.DataFrame({"lst-sq": identified,
+                        },
+                        index=index,
+                       ).transpose()
+          )
+    print(f"residuals {residuals}")
+
+    logger.transform["lst_sq"] = dict(zip(index, identified))
+    logger.finish()  # video and dataset json generated
 
     # Visualize data ==========================================================
     # Object linear acceleration and ft sensor measurements rel. to {sensor}
@@ -283,12 +309,22 @@ def simulate(m: MjModel,
 
     # Object linear acceleration and ft sensor measurements rel. to {sensor}
     acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)
-    acc_ft_fig.suptitle("linacc vs ft")
     vis.ax_plot_lines(acc_ft_axes[0], frame_iter, linacc_sen_obji, "recovered_linacc_sen_obji")
     vis.ax_plot_lines(acc_ft_axes[1], frame_iter, fts_sen[:, :3], "frc_sen")
     vis.ax_plot_lines(acc_ft_axes[2], frame_iter, fts_sen[:, 3:], "trq_sen")
     for ax in acc_ft_axes:
         ax.hlines(0.0, frame_iter[0], frame_iter[-1], ls="dashed", alpha=0.5)
+
+#    @dataclass
+#    class Plot:
+#        fig: mpl.figure.Figure
+#        ax: mpl.axes.Axes
+#
+#    mass_plot = Plot(*plt.subplots(1, 1, sharex="col", tight_layout=True))
+#    mass_plot.fig.suptitle("regressed mass")
+#    mass_plot.ax.plot(solutions[:, 0])
+    #mass_plot.ax.plot(np.linalg.norm(fts_sen[:, :3]/twists_sen[:, :3], axis=1))
+
 
     # Joint forces and torques
 #     ctrl_fig, ctrl_axes = plt.subplots(3, 1, sharex="col", tight_layout=True)
@@ -310,22 +346,34 @@ def simulate(m: MjModel,
 
 if __name__ == "__main__":
 
-    cfg = load_config()  # priority: 1. cli, 2. yaml, 3. coded
-    m, d, aabb_scale = generate_model_data(cfg)
-
-    print(f"{m.name_numericadr=}")
+    cfg = load_config()  # priority: cli > cli-specified .yaml > base.yaml > hard-coded
+    m, d = generate_model_data(cfg)
 
     # Fill (potentially) missing fields of a logger configulation =================
     try:
         cfg.logger.aabb_scale
     except MissingMandatoryValue:
+        target_object_id = get_element_id(m, 'numeric', 'target/aabb_scale')
+        aabb_scale = m.numeric_data[target_object_id]
         cfg.logger.aabb_scale = float(aabb_scale)
 
     try:
-        dataset_dir = cfg.logger.dataset_dir
+        dir = cfg.logger.dataset_dir
     except MissingMandatoryValue:
-        dataset_dir = cfg.target_name
-    cfg.logger.dataset_dir = Path.cwd() / "datasets" / dataset_dir
+        dir = cfg.target_name
+
+    dataset_dir = Path.cwd() / "datasets" / dir
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+    cfg.logger.dataset_dir = dataset_dir
+
+    # Copy the ground truth mass distribution file to the dataset file ============
+    target_gt = Path.cwd() / "xml_models" / "targets" / dir / "ground_truth.csv"
+    dataset_gt = dataset_dir / "ground_truth.csv"
+    if dataset_gt.is_file():
+        print("'ground_truth.csv' is not copied to the dataset dir since the file "
+              "with the same name already existsd.")
+    else:
+        copy(target_gt, dataset_gt)
 
     # Instantiate necessary classes ===============================================
     logger = autoinstantiate(cfg.logger, m, d)
