@@ -1,6 +1,7 @@
 *.mp4
 MUJOCO_LOG.TXT
 datasets/
+datasets_no_noise/
 file_stashed/
 **/ground_truth.csv
 **/_object*
