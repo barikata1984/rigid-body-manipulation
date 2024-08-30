@@ -1,12 +1,11 @@
 import os
 from datetime import datetime
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from math import atan2, radians, tan
 from pathlib import Path
 
 import cv2
 import json
-import numpy as np
 from mujoco._structs import MjData, MjModel
 from mujoco.renderer import Renderer
 from omegaconf import MISSING
@@ -70,7 +69,7 @@ class Logger:
             #cfg.target_object_aabb_scale,
             #gt_mass_distr_file_path=cfg.gt_mass_distr_file_path,
             frames=[],  # list(),
-            lst_sq=None
+            lstsq=None
         )
 
     def finish(self):

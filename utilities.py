@@ -1,26 +1,7 @@
 from collections.abc import Iterable
-from typing import Optional
 
-import numpy as np
 from mujoco._enums import mjtObj
 from mujoco._functions import mj_name2id
-from mujoco._structs import MjData, MjModel
-
-
-class Sensors:
-    def __init__(self,
-                 m: MjModel,
-                 d: MjData,
-                 ) -> None:
-        self.m = m
-        self._sensordata = d.sensordata
-
-    def get(self,
-            key,
-            ):
-
-        idx = get_sensor_measurement_idx(self.m, key)
-        return self._sensordata[idx]
 
 
 def classify_dict_kargs(dict_kargs):
@@ -38,10 +19,7 @@ def classify_dict_kargs(dict_kargs):
     return arr_like, others
 
 
-def get_element_id(m: MjModel,
-                   elem_type: str,
-                   name: str,
-                   ) -> int:
+def get_element_id(m, elem_type, name):
     obj_enum = None
 
     if "body"== elem_type:
@@ -54,6 +32,10 @@ def get_element_id(m: MjModel,
         obj_enum = mjtObj.mjOBJ_SENSOR
     elif "site"== elem_type:
         obj_enum = mjtObj.mjOBJ_SITE
+    elif "keyframe"== elem_type:
+        obj_enum = mjtObj.mjOBJ_KEY
+    elif "numeric"== elem_type:
+        obj_enum = mjtObj.mjOBJ_NUMERIC
     else:
         raise ValueError(f"'{elem_type}' is not supported for now. Use mj_name2id and check the value of an ID instead.")
 
@@ -64,16 +46,3 @@ def get_element_id(m: MjModel,
 
     return id
 
-def get_sensor_measurement_idx(m: MjModel,
-                               name: Optional[str] = None,
-                               id: Optional[int] = None,
-                               ) -> list[int]:
-
-
-    if id is None:
-        if name is None:
-            raise ValueError("'name' have to be set when 'id' is None")
-        id = get_element_id(m, "sensor", name)
-
-    idx = np.arange(m.sensor_dim[id]) + m.sensor_dim[:id].sum()
-    return idx.tolist()

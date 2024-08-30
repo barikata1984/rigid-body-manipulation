@@ -7,9 +7,9 @@ from typing import Any, Union
 
 import pandas as pd
 from dm_control import mjcf
-from mujoco._functions import mj_name2id, mj_resetDataKeyframe
+from numpy.typing import NDArray
+from mujoco._functions import mj_resetDataKeyframe
 from mujoco._structs import MjData, MjModel
-from mujoco._enums import mjtObj
 from omegaconf import OmegaConf
 from omegaconf.dictconfig import DictConfig
 from omegaconf.listconfig import ListConfig
@@ -18,6 +18,7 @@ from transforms3d.euler import euler2mat
 from transforms3d.quaternions import mat2quat, quat2mat
 
 # all the modules of the packages below are imported to enable autoinstantiate()
+import dynamics as dyn
 from controllers import *
 from dynamics import *
 from loggers import *
@@ -80,22 +81,26 @@ def show_comparison(
     mj = [mj_mass, *(mj_mass*mj_com)]
 
     if "diaginertia" == mode:
-        diaginertia = target_object_gt["diaginertia"]
-        quat_obj_obji = target_object_gt["iquat"]
+        index += ["pixx", "piyy", "pizz",
+                  "real", "i", "j", "k",
+                  ]
 
-        index += ["pixx", "piyy", "pizz", "real", "i", "j", "k"]
-        cad_gt += [*diaginertia, *quat_obj_obji]
-        mj += [*mj_diaginertia, *mj_iquat]
+        cad_gt += [*target_object_gt["diaginertia"],
+                   *target_object_gt["iquat"],
+                   ]
+
+        mj += [*mj_diaginertia,
+               *mj_iquat,
+               ]
+
     elif "fullinertia" == mode:
-        fullinertia = target_object_gt["fullinertia"]
         mj_irot = quat2mat(mj_iquat)
         mj_fi = mj_irot @ np.diag(mj_diaginertia) @ mj_irot.T
-        mj_fullinertia = np.array([mj_fi[0, 0], mj_fi[1, 1], mj_fi[2, 2],
-                                   mj_fi[0, 1], mj_fi[1, 2], mj_fi[2, 0]])
 
         index += ["ixx", "iyy", "izz", "ixy", "iyz", "izx"]
-        cad_gt += [*fullinertia]
-        mj += [*mj_fullinertia]
+        cad_gt += [*target_object_gt["fullinertia"]]
+        mj += [mj_fi[0, 0], mj_fi[1, 1], mj_fi[2, 2], mj_fi[0, 1], mj_fi[1, 2], mj_fi[2, 0]]
+
     else:
         raise ValueError(f"'mode' argument has to be either 'diaginertia' or 'fullinertia'. \
                            '{mode}' is invalid.")
@@ -108,7 +113,7 @@ def show_comparison(
           )
 
 
-def get_target_object_gt(target_object_cad_gt_path):
+def get_target_object_ground_truth(target_object_cad_gt_path):
     # Recover the object's diaginertia and its orientation manually =======
     target_object_aux = pd.read_csv(target_object_cad_gt_path,
                           nrows=1,  # num data rows after the header
@@ -117,28 +122,39 @@ def get_target_object_gt(target_object_cad_gt_path):
     aabb_scale = target_object_aux["aabb_scale"]
 
     # Orientaion of the object's body frame w.r.t its inertia frame
-    s_rx, s_ry, s_rz = target_object_aux["rx":"rz"]
+    s_rx, s_ry, s_rz = target_object_aux["rx":"rz"].to_numpy()
     rot_obji_obj= euler2mat(s_rx, s_ry, s_rz, "sxyz")  # "S"tatic "XYZ" euler
     iquat = mat2quat(rot_obji_obj.T)
 
     # Get the mass and the center of mass of the target object w.r.t its body frame
     mass = target_object_aux["total_mass"]
-    com = target_object_aux["cx":"cz"]
+    pos_aabb_obji = target_object_aux["cx":"cz"].to_numpy()  # CoM
 
-    # Object's moments of inertia w.r.t the body frame. <- statement
-    ixx, iyy, izz, ixy, iyz, izx = target_object_aux["ixx":"izx"]
-    imat_obj_obji = np.array([[ixx, ixy, izx],
-                              [ixy, iyy, iyz],
-                              [izx, iyz, izz]])
+    # Get the object's moments of inertia w.r.t the frame whose origin is the 
+    # object's com and its orientation is aligned with the object's aabb frame
+    ixx, iyy, izz, ixy, iyz, izx = target_object_aux["ixx":"izx"].to_numpy()
+    fullinertia = [ixx, iyy, izz, ixy, iyz, izx]  # list[float]
+    _fullinertia = np.array([[ixx, ixy, izx],
+                             [ixy, iyy, iyz],
+                             [izx, iyz, izz]])
 
-    diaginertia_tensor = rot_obji_obj @ imat_obj_obji @ rot_obji_obj.T
-    #print(f"diaginertia_tensor:\n{diaginertia_tensor}")
-    diaginertia = np.diag(diaginertia_tensor)
+    # Get the principal inertia tensor of the object
+    _diaginertia = rot_obji_obj @ _fullinertia @ rot_obji_obj.T
+    diaginertia = np.diag(_diaginertia).tolist()
 
-    fullinertia = [ixx, iyy, izz, ixy, iyz, izx]
+    # Get the inertia tensor w.r.t the object's aabb frame
+    pose_aabb_obji = SE3(SO3.identity(), pos_aabb_obji)
+    _globalinertia = dyn.coordinate_transfer_imat(pose_aabb_obji,
+                                                  _fullinertia,
+                                                  mass,
+                                                  )
 
-    return dict(aabb_scale=aabb_scale, mass=mass, com=com, iquat=iquat,
-                diaginertia=diaginertia, fullinertia=fullinertia)
+    globalinertia = [_globalinertia[0, 0], _globalinertia[1, 1], _globalinertia[2, 2],
+                     _globalinertia[0, 1], _globalinertia[1, 2], _globalinertia[0, 1]]
+
+    return dict(aabb_scale=aabb_scale, mass=mass, com=pos_aabb_obji, iquat=iquat,
+                diaginertia=diaginertia, fullinertia=fullinertia,
+                globalinertia=globalinertia)
 
 
 def spawn_target_object(target_object_path,
@@ -147,13 +163,13 @@ def spawn_target_object(target_object_path,
                         compare_cad_mujoco=True,
                         ):
     # Recover the object's diaginertia and its orientation manually =======
-    target_object_gt = get_target_object_gt(target_object_cad_gt_path)
+    ground_truth = get_target_object_ground_truth(target_object_cad_gt_path)
     # Get mass and diaginertia computed by mujoco =========================
     target_object = mjcf.from_path(target_object_path)
-    numeric = dict(name="aabb_scale",
-                   data=str(target_object_gt["aabb_scale"]),
-                   )
-    target_object.custom.add("numeric", **numeric)
+    target_object.custom.add("numeric", 
+                             name="aabb_scale",
+                             data=str(ground_truth["aabb_scale"]),
+                             )
 
     headlight = target_object.visual.headlight
     headlight.ambient=".5 .5 .5"
@@ -186,21 +202,20 @@ def spawn_target_object(target_object_path,
                             )
 
     if target_object.worldbody.find('site', 'ft_sensor') is None:
-        target_object.worldbody.add("site", name="ft_sensor")
-
+        target_object.worldbody.add("site", name="ft_sensor", euler="0 0 180")
     target_object_body = target_object.find("body", "object")
 
-    inertial = dict(pos=target_object_gt["com"],
-                    mass=target_object_gt["mass"],
+    inertial = dict(pos=ground_truth["com"],
+                    mass=ground_truth["mass"],
                     )
 
     if "diaginertia" == inertia_setting:
         logging.info("======== Set 'diaginertia' to the target object. ========")
-        inertial["quat"] = target_object_gt["iquat"]
-        inertial["diaginertia"] = target_object_gt["diaginertia"]
+        inertial["quat"] = ground_truth["iquat"]
+        inertial["diaginertia"] = ground_truth["diaginertia"]
     elif "fullinertia" == inertia_setting:
         logging.info("======== Set 'fullinertia' to the target object. ========")
-        ixx, iyy, izz, ixy, iyz, izx = target_object_gt["fullinertia"]
+        ixx, iyy, izz, ixy, iyz, izx = ground_truth["fullinertia"]
         inertial["fullinertia"] = [ixx, iyy, izz, ixy, iyz, izx]
     elif False and "density" == inertia_setting:  # NOTE: disabled for now
         print("==== Set 'density' to the target object's each geom. ====")
@@ -230,25 +245,23 @@ def spawn_target_object(target_object_path,
 
     if compare_cad_mujoco:
         m = MjModel.from_xml_string(target_object.to_xml_string(), assets=assets)
-        show_comparison(m, "object", target_object_gt)
+        show_comparison(m, "object", ground_truth)
 
-    return target_object, assets, target_object_gt
+    return target_object, assets, ground_truth
 
 
 def generate_model_data(
         cfg: Union[DictConfig, ListConfig],
-    ) -> tuple[MjModel, MjData]:  # , PathLike]:
+    ) -> tuple[MjModel, MjData, dict[str, Union[float, list[float]]]]:
     # Get the ground truth data output by a CAD application ========================
     xml_dir = Path.cwd() / "xml_models"
     target_dir = xml_dir / "targets" / cfg.target_name
     target_object_path = target_dir / "object.xml"
     target_object_cad_gt_path = target_dir / "object_cad_gt.csv"
-    target_object, assets, cad_gt = spawn_target_object(target_object_path,
-                                                        target_object_cad_gt_path,
-                                                        compare_cad_mujoco=False,
-                                                        )
+    target_object, assets, ground_truth = spawn_target_object(
+        target_object_path, target_object_cad_gt_path, compare_cad_mujoco=False)
 
-    # Load the .xml of a manipulator and attache the target object
+    # Load the .xml of a manipulator and attach the target object to it
     manipulator_path = xml_dir / "manipulators" / f"{cfg.manipulator_name}.xml"
     manipulator = mjcf.from_path(manipulator_path)
     attachement_site = manipulator.find("site", "attachment")
@@ -264,12 +277,15 @@ def generate_model_data(
     m = MjModel.from_xml_string(manipulator.to_xml_string(), assets=assets)
     d = MjData(m)
 
-    show_comparison(m, "target/object", cad_gt, mode="fullinertia")
+    show_comparison(m, "target/object", ground_truth, mode="diaginertia")
 
     mj_resetDataKeyframe(m, d,
                          get_element_id(m, "keyframe", cfg.reset_keyframe))
 
-    return m, d
+    print(f"{type(ground_truth)=}")
+
+
+    return m, d, ground_truth
 
     #print("Configure manipulator and object ============================")
     #xml_file = config.xml.system_file
@@ -291,32 +307,4 @@ def autoinstantiate(cfg: DictConfig,
     for name, _class in inspect.getmembers(sys.modules[__name__], inspect.isclass):
         if cfg.target_class == name:
             return _class(cfg, m, d, *args, **kwargs)
-
-
-def get_element_id(m, elem_type, name):
-    obj_enum = None
-
-    if "body"== elem_type:
-        obj_enum = mjtObj.mjOBJ_BODY
-    elif "camera"== elem_type:
-        obj_enum = mjtObj.mjOBJ_CAMERA
-    elif "joint"== elem_type:
-        obj_enum = mjtObj.mjOBJ_JOINT
-    elif "sensor"== elem_type:
-        obj_enum = mjtObj.mjOBJ_SENSOR
-    elif "site"== elem_type:
-        obj_enum = mjtObj.mjOBJ_SITE
-    elif "keyframe"== elem_type:
-        obj_enum = mjtObj.mjOBJ_KEY
-    elif "numeric"== elem_type:
-        obj_enum = mjtObj.mjOBJ_NUMERIC
-    else:
-        raise ValueError(f"'{elem_type}' is not supported for now. Use mj_name2id and check the value of an ID instead.")
-
-    id = mj_name2id(m, obj_enum, name)
-
-    if -1 == id:
-        raise ValueError(f"ID for '{name}' not found. Check the manipulator .xml or the object .xml")
-
-    return id
 

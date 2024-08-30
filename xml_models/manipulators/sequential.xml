@@ -29,7 +29,7 @@
                 <joint name="yaw" type="hinge" axis="0 0 1"/>
                 <inertial pos="0 0 0" mass="8." diaginertia=".05333333 .05333333 .05333333"/>
                 <!-- site name="ft_sensor" rgba="0 0 0 0"/ -->
-                <site name="attachment" euler="0 0 180" rgba="0 0 0 0"/>  <!-- make it invisible -->
+                <site name="attachment" rgba="0 0 0 0"/>  <!-- make it invisible -->
                 <camera name="tracking" mode="track"/>  <!-- "pos" is set in generate_model_data() in core.py -->
               </body>
             </body>

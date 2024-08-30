@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Union
 
 import numpy as np
-from liegroups import SE3, SO3
+from liegroups.numpy import SE3, SO3
 from mujoco._functions import mjd_transitionFD
 from mujoco._structs import MjModel, MjData
 from numpy.typing import NDArray
@@ -147,7 +147,11 @@ def inverse(traj: np.ndarray,
     return ctrl_mat.sum(axis=1), poses, twists, dtwists
 
 
-def extract_linvel_frame_transferred(twist, pose):
+def extract_linvel_frame_transferred(
+        twist: NDArray,
+        pose: SE3,
+        homogeneous: bool = False,
+    ) -> NDArray:
     """
     Given a twist and the pose to a target coordinate frame w.r.t the reference
     frame of the twist, extract the linear velocity whose reference framae is
@@ -160,18 +164,20 @@ def extract_linvel_frame_transferred(twist, pose):
     ----------
     twist: NDArray
         Twist vector
-    pose: NDArray
+    pose: SE3(Matrix)
         Pose of the target coordinate frame w.r.t the reference frame of the twist
     """
     _linvel = SE3.wedge(twist) @ homogenize(pose.trans)
-    return _linvel[:3]
+
+    return _linvel if homogeneous else _linvel[:3]
 
 
 def extract_linacc_frame_transferred(
         twist: NDArray,
         dtwist: NDArray,
-        pose: NDArray,
-) -> NDArray:
+        pose: SE3,
+        homogeneous: bool = False,
+    ) -> NDArray:
     """
     Given a twist, its time-derivative, and the pose to a target coordinate frame
     w.r.t the reference frame of the twist, extract the linear acceleration whose
@@ -187,29 +193,14 @@ def extract_linacc_frame_transferred(
         Twist vector
     dtwist: NDArray
         Time-derivative of the twist
-    pose: NDArray
+    pose: SE3(Matrix)
         Pose of the target coordinate frame w.r.t the reference frame of the twist
     """
-    linvel = extract_linvel_frame_transferred(twist, pose)
+    _linvel = extract_linvel_frame_transferred(twist, pose, homogeneous=True)
     _linacc = SE3.wedge(dtwist) @ homogenize(pose.trans) \
-            + SE3.wedge(twist) @ homogenize(linvel, forth_val=0)
+            + SE3.wedge(twist) @ _linvel
 
-    return _linacc[:3]
-
-
-def bullet(
-        vec3: NDArray,
-) -> NDArray:
-
-    x, y, z = vec3
-
-    return np.block([[x, 0, 0],  # ixx
-                     [0, y, 0],  # iyy
-                     [0, 0, z],  # izz
-                     [y, x, 0],  # ixy
-                     [0, z, y],  # iyz
-                     [z, 0, x],  # izx
-                     ]).T
+    return _linacc if homogeneous else _linacc[:3]
 
 
 def get_regressor_matrix(
@@ -217,33 +208,49 @@ def get_regressor_matrix(
     dtwist: NDArray,
 ) -> NDArray:
 
+    def bullet(
+            vec3: NDArray,
+    ) -> NDArray:
+        x, y, z = vec3
+        return np.block([[x, 0, 0],  # ixx
+                         [0, y, 0],  # iyy
+                         [0, 0, z],  # izz
+                         [y, x, 0],  # ixy
+                         [0, z, y],  # iyz
+                         [z, 0, x],  # izx
+                         ]).T
+
     v, w = np.split(twist, 2)
     dv, dw = np.split(dtwist, 2)
-
-#    x = np.expand_dims(dv + wedge_w @ v, axis=1)
-#    X = wedge_dw + wedge_w @ wedge_w
-#    Y = bullet_dw + wedge_w @ bullet_w
-#
-#    #print(f"{Y.shape=}")
-#
-#    #regressor = np.block([[x, X, np.zeros((3, 6))],
-#    #                      [np.zeros((3, 1)), SO3.wedge(-x[:, -1]), Y],
-#    #                      ])
-#    regressor = np.block([x, X])
-
-    #
 
     wedge_w = SO3.wedge(w)
     wedge_dw = SO3.wedge(dw)
     bullet_w = bullet(w)
     bullet_dw = bullet(dw)
 
-    _x = dv + wedge_w @ v
-    x = np.expand_dims(_x, axis=1)
-    wedge_x = SO3.wedge(_x)
+    x = dv + wedge_w @ v
+    #x = np.expand_dims(_x, axis=1)
+    wedge_x = SO3.wedge(x)
     X = wedge_dw + wedge_w @ wedge_w
     Y = bullet_dw + wedge_w @ bullet_w
-    regressor = np.block([[x, X, np.zeros((3, 6))],
+    regressor = np.block([[x.reshape((-1, 1)), X, np.zeros((3, 6))],
                           [np.zeros((3, 1)), -wedge_x, Y]])
 
     return regressor
+
+
+def coordinate_transfer_imat(pose_target_current, imat_current, mass):
+    rot = pose_target_current.rot.as_matrix()
+    trans = np.expand_dims(pose_target_current.trans, axis=1)
+    imat = rot @ imat_current @ rot.T \
+         + mass * (trans.T @ trans * np.eye(3) - trans @ trans.T)
+
+    return imat
+
+
+def coordinate_transfer_simat(pose_target_current, simat_current):
+    simat = pose_target_current.adjoint() \
+          @ simat_current \
+          @ pose_target_current.adjoint().T
+
+    return simat
