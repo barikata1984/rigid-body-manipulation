@@ -1,6 +1,5 @@
 from functools import partial
 
-import cv2
 import matplotlib as mpl
 import numpy as np
 from liegroups import SE3
@@ -89,8 +88,8 @@ def simulate(m: MjModel,
     pose_x_ll = poses.x_b[id_ll]  # dynamic
     pose_ll_llj = poses.l_lj[id_ll]  # static
     # NOTE: Variables below should be declared not here but whenever neccessary.
-    #pose_x_llj = pose_x_ll.dot(pose_ll_llj)  # static, should be dynamic tho
-    #pose_sen_llj = pose_x_sen.inv().dot(pose_x_llj)  # dynamic, should be static tho
+    # pose_x_llj = pose_x_ll.dot(pose_ll_llj)  # static, should be dynamic tho
+    # pose_sen_llj = pose_x_sen.inv().dot(pose_x_llj)  # dynamic, should be static tho
 
     # Get unit screws wr2 link joints =============================================
     uscrews_lj = []
@@ -153,6 +152,11 @@ def simulate(m: MjModel,
                       dtwist_0=gacc_x,
                       )
 
+
+    # Set a random number generator ===========================================
+    rng = np.random.default_rng()
+    rng.standard_normal(10)  
+
     # Prepare data containers =================================================
     res_qpos = np.empty(m.nu)
     tgt_trajectory = []
@@ -161,7 +165,6 @@ def simulate(m: MjModel,
     time = []
     linacc_sen_obji = []
     frame_count = 0
-
     regressors = []
 
     # Main loop ===============================================================
@@ -169,28 +172,21 @@ def simulate(m: MjModel,
         # Compute actuator controls and evolute the simulatoin
         tgt_traj = planner.plan(step)
         tgt_ctrl, _, _, _= inverse(tgt_traj)
-        # Residual of state
-        mj_differentiatePos(# Use this func to differenciate quat properly
-            m,  # MjModel
-            res_qpos,  # data container for the residual of qpos
-            m.nu,  # idx of a joint up to which res_qpos are calculated
-            d.qpos,  # current qpos
-            tgt_traj[0],                 # target qpos or next qpos to calkculate dqvel
-        )
 
-        res_state = np.concatenate((res_qpos, tgt_traj[1] - d.qvel))
-        # Compute and set control, or actuator inputs
-        d.ctrl = tgt_ctrl - controller.gain_matrix @ res_state
+        # Get current sensor measurements of joint variables by calling d.q***
+        qpos, qvel, qacc = d.qpos, d.qvel, d.qacc
 
-        mj_step(m, d) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< Evolve the simulation
+        perturb_joint_variables = False  # True
+        if perturb_joint_variables:
+            # Perturb the joint variables
+            pos_std = 0.0001
+            vel_std = 0.001
+            acc_std = 0.01
+            qpos += pos_std * rng.standard_normal(qpos.shape)
+            qvel += vel_std * rng.standard_normal(qvel.shape)
+            qacc += acc_std * rng.standard_normal(qacc.shape)
 
-        # Compute (d)twists using dyn.inverse() again to validate the method by
-        # comparing derived acceleration and force/torque with their sensor
-        # measurements later
-        act_traj = np.stack((d.qpos, d.qvel, d.qacc))   # d.qSTH is the same as
-                                                        # reading joint variable
-                                                        # sensor measurements
-
+        act_traj = np.stack((qpos, qvel, qacc))
         _, _, twists_lj_l, dtwists_lj_l = inverse(act_traj)
 
         if frame_count <= d.time * logger.fps:
@@ -198,13 +194,7 @@ def simulate(m: MjModel,
             tgt_trajectory.append(tgt_traj)
             trajectory.append(act_traj)
 
-            # force-torque
-            force = sensors.get("force")
-            torque = sensors.get("torque")
-            wrench = np.concatenate([force, torque], axis=None)
-            fts_sen.append(wrench)
-
-            # Get (d)twist_sen, and linacc_sen_obj for the sake of verification
+            # Get (d)twist_sen, and linacc_sen_obj for later verification
             pose_sen_llj = pose_x_sen.inv().dot(pose_x_ll.dot(pose_ll_llj))
             twist_llj = twists_lj_l[id_ll]
             twist_sen = pose_sen_llj.adjoint() @ twist_llj
@@ -214,36 +204,52 @@ def simulate(m: MjModel,
             dtwist_sen = pose_sen_llj_dadjoint @ twist_llj \
                        + pose_sen_llj.adjoint() @ dtwist_llj
             # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+            perturb_sensor_twist = True  # False
+            if perturb_sensor_twist:
+                v_std = 1.0 * 1e-1
+                w_std = 1.0 * 1e-3
+                dv_std = 1.0 * 1e-0
+                dw_std = 1.0 * 1e-2
+
+                v_noise = v_std * rng.standard_normal(3)
+                w_noise = w_std * rng.standard_normal(3)
+                dv_noise = dv_std * rng.standard_normal(3)
+                dw_noise = dw_std * rng.standard_normal(3)
+
+                twist_sen += np.concatenate((v_noise, w_noise))
+                dtwist_sen += np.concatenate((dv_noise, dw_noise))
+
             linacc_sen_obji.append(
                 dyn.extract_linacc_frame_transferred(twist_sen,
                                                      dtwist_sen,
                                                      pose_sen_obji)
             )
 
-            # ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ 検証用コード追加ゾーン ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓
-            # ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ 検証用コード追加ゾーン ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑ ↑
+            # Get force-torque measurements
+            force = sensors.get("force")
+            torque = sensors.get("torque")
+            wrench = np.concatenate([force, torque], axis=None)
+
+            perturb_wrench = True  # False
+            if perturb_wrench:
+                f_std = 1.0 * 1e-1
+                t_std = 1.0 * 1e-3
+                f_noise = f_std * rng.standard_normal(3)
+                t_noise = t_std * rng.standard_normal(3)
+                wrench += np.concatenate((f_noise, t_noise))
+
+            fts_sen.append(wrench)
+
             regressor = dyn.get_regressor_matrix(twist_sen, dtwist_sen)
             regressors.append(regressor)
 
             # Writing a single frame of a dataset =============================
-            logger.renderer.update_scene(d, logger.cam_id)
-            bgr = logger.renderer.render()[:, :, [2, 1, 0]]
-            # Make an alpha mask to remove the black background
-            alpha = np.where(np.all(bgr == 0, axis=-1), 0, 255)[..., np.newaxis]
             file_name = f"{frame_count:04}.png"
-            cv2.imwrite(str(logger.image_dir / file_name),
-                        np.append(bgr, alpha, axis=2))  # image (bgr + alpha)
-            # Write a video frame
-            logger.videowriter.write(bgr)
+            logger.render(d, file_name)  # logger.cam_id is selected internally
 
             # Log NeMD ingredients ============================================
             # Items which need to be computed at every frame recoding
             pose_obj_cam = pose_x_obj.inv().dot(poses.x_cam[logger.cam_id])
-
-            # perturb
-            perturbed_twist_sen = twist_sen
-            perturbed_dtwist_sen = dtwist_sen
-            pertured_ft_sen = fts_sen[-1]
 
             frame = dict(
                 file_path=str(logger.image_dir / file_name),
@@ -260,6 +266,22 @@ def simulate(m: MjModel,
 
             logger.transform["frames"].append(frame)
             frame_count += 1
+
+        # Get residual of state
+        mj_differentiatePos(# Use this func to differenciate quat properly
+            m,  # MjModel
+            res_qpos,  # data container for the residual of qpos
+            m.nu,  # idx of a joint up to which res_qpos are calculated
+            qpos,  # current qpos
+            tgt_traj[0],                 # target qpos or next qpos to calkculate dqvel
+        )
+
+        #res_state = np.concatenate((res_qpos, tgt_traj[1] - d.qvel))
+        res_state = np.concatenate((res_qpos, tgt_traj[1] - qvel))
+        # Compute and set control, or actuator inputs
+        d.ctrl = tgt_ctrl - controller.gain_matrix @ res_state
+
+        mj_step(m, d) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< Evolve the simulation
 
     # Convert lists of logged data into ndarrays ==============================
     tgt_trajectory = np.array(tgt_trajectory)
@@ -291,9 +313,9 @@ def simulate(m: MjModel,
 
     # Object linear acceleration and ft sensor measurements rel. to {sensor}
     acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)
-    vis.ax_plot_lines(acc_ft_axes[0], frame_iter, linacc_sen_obji, "recovered_linacc_sen_obji")
-    vis.ax_plot_lines(acc_ft_axes[1], frame_iter, fts_sen[:, :3], "frc_sen")
-    vis.ax_plot_lines(acc_ft_axes[2], frame_iter, fts_sen[:, 3:], "trq_sen")
+    vis.ax_plot_lines(acc_ft_axes[0], frame_iter, linacc_sen_obji, "recovered_linacc_sen_obji [m/s/s]")
+    vis.ax_plot_lines(acc_ft_axes[1], frame_iter, fts_sen[:, :3], "frc_sen [N]")
+    vis.ax_plot_lines(acc_ft_axes[2], frame_iter, fts_sen[:, 3:], "trq_sen [N*m]")
     for ax in acc_ft_axes:
         ax.hlines(0.0, frame_iter[0], frame_iter[-1], ls="dashed", alpha=0.5)
 

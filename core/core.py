@@ -282,9 +282,6 @@ def generate_model_data(
     mj_resetDataKeyframe(m, d,
                          get_element_id(m, "keyframe", cfg.reset_keyframe))
 
-    print(f"{type(ground_truth)=}")
-
-
     return m, d, ground_truth
 
     #print("Configure manipulator and object ============================")

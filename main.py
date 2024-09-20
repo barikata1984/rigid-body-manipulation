@@ -26,7 +26,7 @@ if __name__ == "__main__":
     except MissingMandatoryValue:
         dir = cfg.target_name
 
-    dataset_dir = Path.cwd() / "datasets_no_noise" / dir
+    dataset_dir = Path.cwd() / "datasets" / dir
     dataset_dir.mkdir(parents=True, exist_ok=True)
     cfg.logger.dataset_dir = dataset_dir
 
@@ -48,7 +48,7 @@ if __name__ == "__main__":
 
     # Show inertial params identified with the least squares method
     lstsq = result["lstsq"].tolist()
-    globaliparams = [gt["mass"], *gt["com"], *gt["globalinertia"]]
+    globaliparams = [gt["mass"], *gt["com"], *gt["globalinertia"]]  # type: ignore
     indices = ["run_name", 
                "total_mass",
                "mx", "my", "mz",
@@ -56,7 +56,7 @@ if __name__ == "__main__":
                ]
     comparison = pd.DataFrame([["global_gt", *globaliparams],
                                ["lst-sq", *lstsq]],
-                              columns=indices,
+                              columns=indices,  # type: ignore
                               )
 
     print(f"comparison:\n{comparison}")

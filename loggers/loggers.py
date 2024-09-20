@@ -6,6 +6,7 @@ from pathlib import Path
 
 import cv2
 import json
+import numpy as np
 from mujoco._structs import MjData, MjModel
 from mujoco.renderer import Renderer
 from omegaconf import MISSING
@@ -71,6 +72,20 @@ class Logger:
             frames=[],  # list(),
             lstsq=None
         )
+
+    def render(self, d, file_name, cam_id=None):
+        if cam_id is None:
+            cam_id = self.cam_id
+
+        self.renderer.update_scene(d, cam_id)
+        bgr = self.renderer.render()[:, :, [2, 1, 0]]
+        # Make an alpha mask to remove the white background
+        alpha = np.where(np.all(bgr == 0, axis=-1), 0, 255)[..., np.newaxis]
+        cv2.imwrite(str(self.image_dir / file_name),
+                    np.append(bgr, alpha, axis=2))  # image (bgr + alpha)
+        # Write a video frame
+        self.videowriter.write(bgr)
+
 
     def finish(self):
         self.videowriter.release()
