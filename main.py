@@ -1,6 +1,7 @@
 from pathlib import Path
 from shutil import copy
 
+import numpy as np
 import pandas as pd
 from omegaconf.errors import MissingMandatoryValue
 
@@ -47,15 +48,27 @@ if __name__ == "__main__":
     result = simulate(m, d, logger, planner, controller)  # main process
 
     # Show inertial params identified with the least squares method
-    lstsq = result["lstsq"].tolist()
-    globaliparams = [gt["mass"], *gt["com"], *gt["globalinertia"]]  # type: ignore
+    gt_total_mass = gt["mass"]
+    gt_f_moms = gt_total_mass * gt["com"]  # type: ignore
+    gt_moms_i = gt["globalinertia"]
+    globaliparams = [gt_total_mass, *gt_f_moms, *gt_moms_i, 0]  # np.nan]  # type: ignore
+
+    lstsq = result["lstsq"]
+    score = lstsq[0]
+    score += np.abs(lstsq[1:4] - gt_f_moms).sum() / cfg.logger.aabb_scale
+    score += np.abs(lstsq[4:10] - gt_moms_i).sum() / cfg.logger.aabb_scale**2
+    score /= gt_total_mass
+    lstsq = lstsq.tolist() + [score]
+
     indices = ["run_name", 
                "total_mass",
                "mx", "my", "mz",
                "ixx", "iyy", "izz", "ixy", "iyz", "izx",
+               "score",
                ]
+
     comparison = pd.DataFrame([["global_gt", *globaliparams],
-                               ["lst-sq", *lstsq]],
+                               ["lstsq", *lstsq]],
                               columns=indices,  # type: ignore
                               )
 
