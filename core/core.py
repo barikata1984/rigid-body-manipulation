@@ -274,7 +274,7 @@ def generate_model_data(
     track_cam.pos = track_cam_pos
 
     # Spawn a mujoco model and a mujoco data
-    m = MjModel.from_xml_string(manipulator.to_xml_string(), assets=assets)
+    m = MjModel.from_xml_string(manipulator.to_xml_string(filename_with_hash=False), assets=assets)
     d = MjData(m)
 
     show_comparison(m, "target/object", ground_truth, mode="diaginertia")
