@@ -232,8 +232,8 @@ def simulate(m: MjModel,
 
             perturb_wrench = True  # False
             if perturb_wrench:
-                f_std = 1.0 * 1e-1
-                t_std = 1.0 * 1e-3
+                f_std = 1.0 * 1e-0
+                t_std = 1.0 * 1e-2
                 f_noise = f_std * rng.standard_normal(3)
                 t_noise = t_std * rng.standard_normal(3)
                 wrench += np.concatenate((f_noise, t_noise))
