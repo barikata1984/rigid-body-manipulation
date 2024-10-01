@@ -1,12 +1,12 @@
-###### Requirements without Version Specifiers ######`
 attrdict
-scipy
+git+https://github.com/utiasSTARS/liegroups.git@refs/pull/10/head
+git+https://github.com/google-deepmind/dm_control.git@refs/pull/496/head
 mujoco
 matplotlib
-transforms3d
+omegaconf
 opencv-python
-git+https://github.com/utiasSTARS/liegroups.git
+pandas
+scipy
 toml
 tqdm
-
-###### Requirements with Version Specifiers ######
+transforms3d
