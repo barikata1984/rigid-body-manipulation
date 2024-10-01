@@ -54,7 +54,7 @@ if __name__ == "__main__":
     globaliparams = [gt_total_mass, *gt_f_moms, *gt_moms_i, 0]  # np.nan]  # type: ignore
 
     lstsq = result["lstsq"]
-    score = lstsq[0]
+    score = np.abs(lstsq[0] - gt_total_mass)
     score += np.abs(lstsq[1:4] - gt_f_moms).sum() / cfg.logger.aabb_scale
     score += np.abs(lstsq[4:10] - gt_moms_i).sum() / cfg.logger.aabb_scale**2
     score /= gt_total_mass
