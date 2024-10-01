@@ -58,9 +58,10 @@ if __name__ == "__main__":
     score += np.abs(lstsq[1:4] - gt_f_moms).sum() / cfg.logger.aabb_scale
     score += np.abs(lstsq[4:10] - gt_moms_i).sum() / cfg.logger.aabb_scale**2
     score /= gt_total_mass
+    score /= 10
     lstsq = lstsq.tolist() + [score]
 
-    indices = ["run_name", 
+    indices = ["run_name",
                "total_mass",
                "mx", "my", "mz",
                "ixx", "iyy", "izz", "ixy", "iyz", "izx",

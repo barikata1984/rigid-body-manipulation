@@ -150,7 +150,7 @@ def get_target_object_ground_truth(target_object_cad_gt_path):
                                                   )
 
     globalinertia = [_globalinertia[0, 0], _globalinertia[1, 1], _globalinertia[2, 2],
-                     _globalinertia[0, 1], _globalinertia[1, 2], _globalinertia[0, 1]]
+                     _globalinertia[0, 1], _globalinertia[1, 2], _globalinertia[2, 0]]
 
     return dict(aabb_scale=aabb_scale, mass=mass, com=pos_aabb_obji, iquat=iquat,
                 diaginertia=diaginertia, fullinertia=fullinertia,
