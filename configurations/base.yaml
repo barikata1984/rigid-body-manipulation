@@ -9,7 +9,7 @@ logger:
   track_cam_name: tracking
   fig_height: 800
   fig_width: 800
-  fps: 30
+  fps: 60
   videoname: output.mp4
   videcodec: mp4v
   dataset_dir: ???

@@ -155,7 +155,7 @@ def simulate(m: MjModel,
 
     # Set a random number generator ===========================================
     rng = np.random.default_rng()
-    rng.standard_normal(10)  
+    rng.standard_normal(10)
 
     # Prepare data containers =================================================
     res_qpos = np.empty(m.nu)
@@ -166,8 +166,11 @@ def simulate(m: MjModel,
     linacc_sen_obji = []
     frame_count = 0
     regressors = []
+    frames = []
 
-    # Main loop ===============================================================
+    # =========================================================================
+    # Main loop
+    # =========================================================================
     for step in tqdm(range(planner.n_steps), desc="Progress"):
         # Compute actuator controls and evolute the simulatoin
         tgt_traj = planner.plan(step)
@@ -204,7 +207,7 @@ def simulate(m: MjModel,
             dtwist_sen = pose_sen_llj_dadjoint @ twist_llj \
                        + pose_sen_llj.adjoint() @ dtwist_llj
             # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-            perturb_sensor_twist = True  # False
+            perturb_sensor_twist = False
             if perturb_sensor_twist:
                 v_std = 1.0 * 1e-1
                 w_std = 1.0 * 1e-3
@@ -233,7 +236,7 @@ def simulate(m: MjModel,
             perturb_wrench = True  # False
             if perturb_wrench:
                 f_std = 1.0 * 1e-0
-                t_std = 1.0 * 1e-2
+                t_std = 1.0 * 1e-1
                 f_noise = f_std * rng.standard_normal(3)
                 t_noise = t_std * rng.standard_normal(3)
                 wrench += np.concatenate((f_noise, t_noise))
@@ -252,7 +255,7 @@ def simulate(m: MjModel,
             pose_obj_cam = pose_x_obj.inv().dot(poses.x_cam[logger.cam_id])
 
             frame = dict(
-                file_path=str(logger.image_dir / file_name),
+                file_path=str(logger.complete_image_dir / file_name),
 #                pose_obj_cam=pose_obj_cam.as_matrix().T.tolist(),
                 transform_matrix=pose_obj_cam.as_matrix().tolist(),
                 pose_sen_obj=pose_sen_obj.as_matrix().tolist(),
@@ -264,7 +267,8 @@ def simulate(m: MjModel,
 #                aabb_scale=[aabb_scale],
                 )
 
-            logger.transform["frames"].append(frame)
+            #logger.transform["frames"].append(frame)
+            frames.append(frame)
             frame_count += 1
 
         # Get residual of state
@@ -347,4 +351,4 @@ def simulate(m: MjModel,
 
     plt.show()
 
-    return dict(lstsq=identified, residuals=residuals)
+    return dict(frames=frames, lstsq=identified, residuals=residuals, regressors=regressors)

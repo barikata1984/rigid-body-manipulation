@@ -1,5 +1,6 @@
 from collections.abc import Iterable
 
+import numpy as np
 from mujoco._enums import mjtObj
 from mujoco._functions import mj_name2id
 
@@ -45,4 +46,29 @@ def get_element_id(m, elem_type, name):
         raise ValueError(f"ID for '{name}' not found. Check the manipulator .xml or the object .xml")
 
     return id
+
+
+def split_iterables(frames, train_ratio=0.7, seed=0):
+    """
+    Splits the indices of a list into training and testing sets.
+
+    Args:
+        data_list: The list of dictionaries.
+        train_ratio: The proportion of data to use for training (default 0.7).
+
+    Returns:
+        A tuple containing two lists: train_indices and test_indices.
+    """
+    n = len(frames)
+    num_train = int(n * train_ratio)
+
+    # Get shuffled indices for the whole dataset
+    rng = random.default_rng(seed)
+    all_indices = list(range(n))
+    rng.shuffle(all_indices)
+
+    train_frames = frames[all_indices[:num_train]]
+    test_frames = frames[all_indices[num_train:]]
+
+    return dict(train=train_frames, test=test_frames)
 
