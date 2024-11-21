@@ -80,7 +80,7 @@ class Logger:
         # Write a video frame
         self.videowriter.write(bgr)
 
-    def _split(self, data, valid_ratio=0.15, test_ratio=0.15, seed=0):
+    def _split(self, data, valid_ratio=0.1, test_ratio=0.1, seed=0):
         """
         Splits the indices of a list into training and testing sets.
 
