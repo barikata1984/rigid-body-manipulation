@@ -1,1 +1,33 @@
-https://grabcad.com/library/sledgehammer-10
+\begin{document}
+\begin{table}
+    \centering
+    \caption{lala}
+\newcommand{\dummy}{\rule[-1em]{0pt}{3em}}
+\begin{tabular}{|c|c|c|c|c|c|c|c|c|c|}
+        \hline  
+    \multicolumn{3}{|c|}{Test}& \multicolumn{1}{c|}{Test}& \multicolumn{6}{c|}{Test}\\  
+    \hline
+       \rotatebox[origin=c]{90}{Long word} & \rotatebox[origin=c]{90}{Long word} & \rotatebox[origin=c]{90}{Long word}&
+    Long word &\rotatebox[origin=c]{90}{Long word}&\rotatebox[origin=c]{90}{Long word}&
+    \rotatebox[origin=c]{90}{Long word}&\rotatebox[origin=c]{90}{Long word}& \rotatebox[origin=c]{90}{Long word}&
+    \rotatebox[origin=c]{90}{Long word}\\
+    \hline
+
+        これ → \multirow{8}{*}[-3em]{\rotatebox[origin=c]{90}{Word}} ← これ &\multirow{5}{*}[-1em]{\rotatebox[origin=c]{90}{Word}}&\multirow{4}{*}{\rotatebox[origin=c]{90}{Word}}    &Long Text Text&X&X&X&$<10$& &Long Text Text\\\cline{4-10k}
+                                                                                    &&&Long Text Text    &  &X& &$10-100$&X&Long Text Text\\\cline{4-10}
+                                                                                    &&&Long Text Text&  &X& &$10-100$&X&Long Text Text\\\cline{4-10}
+                                                                                    &&&Long Text Text&&X&X&$>200$&&Long Text Text\\\cline{3-10}
+\dummy                                                                              &&\rotatebox[origin=c]{90}{Word}&Word&X&&X&$>100$&&Long Text Text\\\cline{2-10}
+\dummy        &\multirow{2}{*}[-1em]{\rotatebox[origin=c]{90}{Word}}&\multirow{2}{*}[1em]{\rotatebox[origin=c]{90}{Long Word}}&Long Text Text&X& & &$10-100$&X&Long Text Text\\\cline{4-10}
+\dummy                                                                              &&&Long Text Text&&X&&$>200$&&Long Text Text\\\cline{2-10}
+\dummy        &\rotatebox[origin=c]{90}{Word}&\rotatebox[origin=c]{90}{Long Word}&Long Text Text&X&X&X&10-100&X&Word\\
+        \hline
+        \multirow{4}{*}{\rotatebox[origin=c]{90}{Word}}&\multirow{4}{*}{\rotatebox[origin=c]{90}{Word}}&\multirow{4}{*}{\rotatebox[origin=c]{90}{Wo}}  &Long Text Text      &X& &X&$<10$&X&Long Text Text\\\cline{4-10}
+                                                                                &&&Long Text Text&X& &X&$10-100$&X&Long Text Text\\\cline{4-10}       
+                                                                                &&&Long Text Text&X& &(X)&$<1$&&Long Text Text\\\cline{4-10}
+                                                                                &&&Long Text Text&X& &X&$10-100$&X&Long Text Text\\
+        \hline  
+\end{tabular}
+\end{table}
+
+\end{document}https://grabcad.com/library/sledgehammer-10
