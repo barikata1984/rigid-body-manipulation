@@ -64,10 +64,11 @@ mpl.rcParams['axes.xmargin'] = 0
 np.set_printoptions(precision=5, suppress=True)
 
 
-def simulate(m: MjModel,
-             d: MjData,
-             logger, planner, controller,  # TODO: annotate late... make a BaseModule or something and use Protocol or Generic, maybe...
-             ):
+def simulate(
+        m: MjModel,
+        d: MjData,
+        logger, planner, controller,  # TODO: annotate late... make a BaseModule or something and use Protocol or Generic, maybe...
+        ):
 
     # Instantiate register classes ================================================
     poses = Poses(m, d)

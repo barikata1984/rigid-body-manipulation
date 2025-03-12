@@ -1,0 +1,44 @@
+[project]
+name = "rigid-body-manipulation"
+version = "0.1"
+requires-python = ">= 3.9"
+dependencies = [
+    "numpy",
+    "scipy",
+    "pandas",
+    "matplotlib",
+    "mujoco",
+    "dm_control",
+    "tqdm",
+    "omegaconf",
+    "transforms3d",
+    "liegroups @ git+https://github.com/utiasSTARS/liegroups.git@refs/pull/10/head",
+    "tyro",
+    "ruff",
+]
+
+[tool.ruff]
+line-length = 119 # 行の最大文字数
+select = [ # 有効にするルール
+    "E",    # pycodestyle のエラー
+    "W",    # pycodestyle の警告
+    "F",    # pyflakes のエラー
+    "I",    # isort のエラー
+    "C",    # mccabe の複雑性
+    "B",    # flake8-bugbear のバグ
+    "UP",   # pyupgrade
+    "Q",    # ruff特有のルール
+]
+ignore = [ # 無視するルール
+    "E501", # 行が長すぎる (line-length で管理)
+    "B950", # line-length と black の互換性
+]
+#exclude = [ # 除外するファイル/ディレクトリ
+#    ".venv",
+#    "tests",
+#    "docs",
+#]
+target-version = "py312" # ターゲットの Python バージョン
+#src = ["src", "."] # ソースディレクトリ
+fix = true # 自動修正を有効にする
+unsafe-fixes = true # 安全でない修正も有効にする

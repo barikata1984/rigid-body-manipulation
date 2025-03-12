@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Union
 
 import pandas as pd
+import tyro
 from dm_control import mjcf
 from numpy.typing import NDArray
 from mujoco._functions import mj_resetDataKeyframe
@@ -39,6 +40,7 @@ class SimulationConfig:
 
 
 def load_config():
+    _cfg = tyro.cli(SimulationConfig)
     cfg = OmegaConf.structured(SimulationConfig)
     base_cfg = OmegaConf.load(cfg.read_config)
     OmegaConf.structured(SimulationConfig)
@@ -219,9 +221,10 @@ def spawn_target_object(target_object_path,
         inertial["fullinertia"] = [ixx, iyy, izz, ixy, iyz, izx]
     elif False and "density" == inertia_setting:  # NOTE: disabled for now
         print("==== Set 'density' to the target object's each geom. ====")
-        component_mass_densities = pd.read_csv(target_object_cad_gt_path,
-                                               skiprows=2,  # after the header and data
-                                               )
+        component_mass_densities = pd.read_csv(
+            target_object_cad_gt_path,
+            skiprows=2,  # after the header and data
+            )
 
         assert len(component_mass_densities) == len(meshes), \
                RuntimeError("Number of components does not match with the " \
