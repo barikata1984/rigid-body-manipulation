@@ -6,7 +6,9 @@ from liegroups import SE3
 from matplotlib import pyplot as plt
 from mujoco._functions import mj_differentiatePos, mj_step
 from mujoco._structs import MjModel, MjData, MjOption
+from numpy import linalg as nla
 from tqdm import tqdm
+
 
 import dynamics as dyn
 import visualization as vis
@@ -168,6 +170,14 @@ def simulate(m: MjModel,
     regressors = []
     frames = []
 
+    file_paths = []
+    transform_matrices = []
+    poses_sen_obj = []
+    poses_sen_obji = []
+    twists_sen = []
+    dtwists_sen = []
+    linaccs_sen_obji = []
+
     # =========================================================================
     # Main loop
     # =========================================================================
@@ -178,16 +188,6 @@ def simulate(m: MjModel,
 
         # Get current sensor measurements of joint variables by calling d.q***
         qpos, qvel, qacc = d.qpos, d.qvel, d.qacc
-
-        perturb_joint_variables = False  # True
-        if perturb_joint_variables:
-            # Perturb the joint variables
-            pos_std = 0.0001
-            vel_std = 0.001
-            acc_std = 0.01
-            qpos += pos_std * rng.standard_normal(qpos.shape)
-            qvel += vel_std * rng.standard_normal(qvel.shape)
-            qacc += acc_std * rng.standard_normal(qacc.shape)
 
         act_traj = np.stack((qpos, qvel, qacc))
         _, _, twists_lj_l, dtwists_lj_l = inverse(act_traj)
@@ -207,40 +207,16 @@ def simulate(m: MjModel,
             dtwist_sen = pose_sen_llj_dadjoint @ twist_llj \
                        + pose_sen_llj.adjoint() @ dtwist_llj
             # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-            perturb_sensor_twist = False
-            if perturb_sensor_twist:
-                v_std = 1.0 * 1e-1
-                w_std = 1.0 * 1e-3
-                dv_std = 1.0 * 1e-0
-                dw_std = 1.0 * 1e-2
 
-                v_noise = v_std * rng.standard_normal(3)
-                w_noise = w_std * rng.standard_normal(3)
-                dv_noise = dv_std * rng.standard_normal(3)
-                dw_noise = dw_std * rng.standard_normal(3)
-
-                twist_sen += np.concatenate((v_noise, w_noise))
-                dtwist_sen += np.concatenate((dv_noise, dw_noise))
-
-            linacc_sen_obji.append(
-                dyn.extract_linacc_frame_transferred(twist_sen,
-                                                     dtwist_sen,
-                                                     pose_sen_obji)
-            )
+            linacc_sen_obji = dyn.extract_linacc_frame_transferred(twist_sen,
+                                                                   dtwist_sen,
+                                                                   pose_sen_obji)
+            linaccs_sen_obji.append(linacc_sen_obji)
 
             # Get force-torque measurements
             force = sensors.get("force")
             torque = sensors.get("torque")
             wrench = np.concatenate([force, torque], axis=None)
-
-            perturb_wrench = True  # False
-            if perturb_wrench:
-                f_std = 1.0 * 1e-0
-                t_std = 1.0 * 1e-1
-                f_noise = f_std * rng.standard_normal(3)
-                t_noise = t_std * rng.standard_normal(3)
-                wrench += np.concatenate((f_noise, t_noise))
-
             fts_sen.append(wrench)
 
             regressor = dyn.get_regressor_matrix(twist_sen, dtwist_sen)
@@ -254,21 +230,26 @@ def simulate(m: MjModel,
             # Items which need to be computed at every frame recoding
             pose_obj_cam = pose_x_obj.inv().dot(poses.x_cam[logger.cam_id])
 
-            frame = dict(
-                file_path=str(logger.complete_image_dir / file_name),
-#                pose_obj_cam=pose_obj_cam.as_matrix().T.tolist(),
-                transform_matrix=pose_obj_cam.as_matrix().tolist(),
-                pose_sen_obj=pose_sen_obj.as_matrix().tolist(),
-                pose_sen_obji=pose_sen_obji.as_matrix().tolist(),
-                twist_sen=twist_sen.tolist(),
-                dtwist_sen=dtwist_sen.tolist(),
-                ft_sen=fts_sen[-1].tolist(),
-                linacc_sen_obji=linacc_sen_obji[-1].tolist(),
-#                aabb_scale=[aabb_scale],
-                )
+            file_paths.append(str(logger.complete_image_dir / file_name))
+            transform_matrices.append(pose_obj_cam.as_matrix().tolist())
+            poses_sen_obj.append(pose_sen_obj.as_matrix().tolist())
+            poses_sen_obji.append(pose_sen_obji.as_matrix().tolist())
+            twists_sen.append(twist_sen.tolist())
+            dtwists_sen.append(dtwist_sen.tolist())
 
-            #logger.transform["frames"].append(frame)
-            frames.append(frame)
+#            frame = dict(
+#                file_path=str(logger.complete_image_dir / file_name),
+#                transform_matrix=pose_obj_cam.as_matrix().tolist(),
+#                pose_sen_obj=pose_sen_obj.as_matrix().tolist(),
+#                pose_sen_obji=pose_sen_obji.as_matrix().tolist(),
+#                twist_sen=twist_sen.tolist(),
+#                dtwist_sen=dtwist_sen.tolist(),
+#                ft_sen=fts_sen[-1].tolist(),
+#                linacc_sen_obji=linaccs_sen_obji[-1].tolist(),
+#                )
+#
+#            #logger.transform["frames"].append(frame)
+#            frames.append(frame)
             frame_count += 1
 
         # Get residual of state
@@ -287,21 +268,41 @@ def simulate(m: MjModel,
 
         mj_step(m, d) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< Evolve the simulation
 
-    # Convert lists of logged data into ndarrays ==============================
+    # Post process data =======================================================
+    # Cast data into ndarrays for concise conslicing
     tgt_trajectory = np.array(tgt_trajectory)
     trajectory = np.array(trajectory)
-    linacc_sen_obji = np.array(linacc_sen_obji)
     frame_iter = np.arange(frame_count)
     fts_sen = np.array(fts_sen)
     regressors = np.array(regressors)
 
-    solution = np.linalg.lstsq(regressors.reshape(-1, 10),
-                               fts_sen[:, :].reshape(-1),
-                               rcond=None,
-                               )
+    # Perturb wrench ==========================================================
+    error_rate = 0.05
+    seed = 0
+    rng = np.random.default_rng(seed)
 
-    identified = solution[0]
-    residuals = solution[1]
+    perturb_wrench = True  # False
+    if perturb_wrench:
+        fs_std = error_rate * nla.norm(fts_sen[..., :3], axis=1).max()
+        ts_std = error_rate * nla.norm(fts_sen[..., 3:], axis=1).max()
+        fts_sen[..., :3] += fs_std * rng.standard_normal((frame_count, 3))
+        fts_sen[..., 3:] += ts_std * rng.standard_normal((frame_count, 3))
+
+    # Compose frames =========================================================
+    frames = []
+    data_containers = [file_paths, transform_matrices, poses_sen_obj,
+                       twists_sen, dtwists_sen, fts_sen]
+    for fpath, tf, pose, t, dt, ft in zip(*data_containers):
+        frame = dict(
+            file_path=fpath,
+            transform_matrix=tf,
+            pose_sen_obj=pose,
+            twist_sen=t,
+            dtwist_sen=dt,
+            ft_sen=ft.tolist(),
+        )
+
+        frames.append(frame)
 
     # Visualize data ==========================================================
     # Object linear acceleration and ft sensor measurements rel. to {sensor}
@@ -317,38 +318,12 @@ def simulate(m: MjModel,
 
     # Object linear acceleration and ft sensor measurements rel. to {sensor}
     acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)
-    vis.ax_plot_lines(acc_ft_axes[0], frame_iter, linacc_sen_obji, "recovered_linacc_sen_obji [m/s/s]")
+    vis.ax_plot_lines(acc_ft_axes[0], frame_iter, linaccs_sen_obji, "recovered_linacc_sen_obji [m/s/s]")
     vis.ax_plot_lines(acc_ft_axes[1], frame_iter, fts_sen[:, :3], "frc_sen [N]")
     vis.ax_plot_lines(acc_ft_axes[2], frame_iter, fts_sen[:, 3:], "trq_sen [N*m]")
     for ax in acc_ft_axes:
         ax.hlines(0.0, frame_iter[0], frame_iter[-1], ls="dashed", alpha=0.5)
 
-#    @dataclass
-#    class Plot:
-#        fig: mpl.figure.Figure
-#        ax: mpl.axes.Axes
-#
-#    mass_plot = Plot(*plt.subplots(1, 1, sharex="col", tight_layout=True))
-#    mass_plot.fig.suptitle("regressed mass")
-#    mass_plot.ax.plot(solutions[:, 0])
-    #mass_plot.ax.plot(np.linalg.norm(fts_sen[:, :3]/twists_sen[:, :3], axis=1))
-
-
-    # Joint forces and torques
-#     ctrl_fig, ctrl_axes = plt.subplots(3, 1, sharex="col", tight_layout=True)
-#     ctrl_fig.suptitle("act_qfrc VS tgt_ctrls")
-#     ctrl_axes[0].set(ylabel="q0-1 [N]")
-#     ctrl_axes[1].set(ylabel="q2 [N]")
-#     ctrl_axes[2].set(xlabel="time [s]")
-#     vis.axes_plot_frc(
-#         ctrl_axes[:2], time, sens_qfrc[:, :3], tgt_ctrls[:, :3])
-#     vis.ax_plot_lines_w_tgt(
-#         ctrl_axes[2], time, sens_qfrc[:, 3:], tgt_ctrls[:, 3:], "q3-5 [N·m]")
-
-#    lin_fig, lin_axes = plt.subplots(2, 1, sharex="col", tight_layout=True)
-#    vis.ax_plot_lines(lin_axes[0], time, _linacc_sen_obji, "_linacc_sen_obji")
-#    vis.ax_plot_lines(lin_axes[1], time, linacc_sen_obji, "linacc_sen_obji")
-
     plt.show()
 
-    return dict(frames=frames, lstsq=identified, residuals=residuals, regressors=regressors)
+    return dict(frames=frames, regressors=regressors)

@@ -202,7 +202,7 @@ def spawn_target_object(target_object_path,
                             )
 
     if target_object.worldbody.find('site', 'ft_sensor') is None:
-        target_object.worldbody.add("site", name="ft_sensor", euler="0 0 180")
+        target_object.worldbody.add("site", name="ft_sensor", euler="0 0 180", rgba="0 0 0 0")
     target_object_body = target_object.find("body", "object")
 
     inertial = dict(pos=ground_truth["com"],
@@ -264,8 +264,10 @@ def generate_model_data(
     # Load the .xml of a manipulator and attach the target object to it
     manipulator_path = xml_dir / "manipulators" / f"{cfg.manipulator_name}.xml"
     manipulator = mjcf.from_path(manipulator_path)
-    attachement_site = manipulator.find("site", "attachment")
-    attachement_site.attach(target_object)
+    attachment_site = manipulator.find("site", "attachment")
+    attachment_site.attach(target_object)
+
+    #import pdb; pdb.set_trace()
 
     # Set camera position
     aabb_scale = manipulator.custom.numeric["target/aabb_scale"].data[0]

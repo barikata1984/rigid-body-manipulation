@@ -54,7 +54,7 @@ if __name__ == "__main__":
     except MissingMandatoryValue:
         dir = cfg.target_name
 
-    dataset_dir = Path.cwd() / "datasets" / f"TEST_{dir}"  # SETTING DATASET DIR NAME
+    dataset_dir = Path.cwd() / "datasets" / f"{dir}"  # SETTING DATASET DIR NAME
     dataset_dir.mkdir(parents=True, exist_ok=True)
     cfg.logger.dataset_dir = dataset_dir
 
