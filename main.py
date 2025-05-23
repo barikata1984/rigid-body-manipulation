@@ -2,10 +2,10 @@ from pathlib import Path
 from shutil import copy
 
 import numpy as np
-import pandas as pd
 from omegaconf.errors import MissingMandatoryValue
 
-from core import load_config, generate_model_data, autoinstantiate, get_element_id, simulate
+from core import autoinstantiate, generate_model_data, load_config, simulate
+from utilities import get_element_id
 
 
 class Scorer:
@@ -24,19 +24,21 @@ class Scorer:
 
     def calculate(self, estimate):
         aabb_scale = cfg.logger.aabb_scale
-        score  = self._get_partial_score(estimate[0], self.gt_total_mass,
-                                   scale=self.gt_total_mass*np.power(aabb_scale, 0))  # eliminate [kg]
-        score += self._get_partial_score(estimate[1:4], self.gt_f_moms,
-                                   scale=self.gt_total_mass*np.power(aabb_scale, 1))  # eliminate [kg*m]
-        score += self._get_partial_score(estimate[4:10], self.gt_moms_i,
-                                   scale=self.gt_total_mass*np.power(aabb_scale, 2))  # eliminate [kg*m^2]
+        score = self._get_partial_score(
+            estimate[0], self.gt_total_mass, scale=self.gt_total_mass * np.power(aabb_scale, 0)
+        )  # eliminate [kg]
+        score += self._get_partial_score(
+            estimate[1:4], self.gt_f_moms, scale=self.gt_total_mass * np.power(aabb_scale, 1)
+        )  # eliminate [kg*m]
+        score += self._get_partial_score(
+            estimate[4:10], self.gt_moms_i, scale=self.gt_total_mass * np.power(aabb_scale, 2)
+        )  # eliminate [kg*m^2]
         score /= 10
 
         return score
 
 
 if __name__ == "__main__":
-
     cfg = load_config()  # priority: cli > cli-specified .yaml > base.yaml > hard-coded
     m, d, gt = generate_model_data(cfg)
     globalinertia = gt["globalinertia"]
@@ -45,7 +47,7 @@ if __name__ == "__main__":
     try:
         cfg.logger.aabb_scale
     except MissingMandatoryValue:
-        target_object_id = get_element_id(m, 'numeric', 'target/aabb_scale')
+        target_object_id = get_element_id(m, "numeric", "target/aabb_scale")
         aabb_scale = m.numeric_data[target_object_id]
         cfg.logger.aabb_scale = float(aabb_scale)
 
@@ -62,8 +64,7 @@ if __name__ == "__main__":
     target_gt = Path.cwd() / "xml_models" / "targets" / dir / "ground_truth.csv"
     dataset_gt = dataset_dir / "ground_truth.csv"
     if dataset_gt.is_file():
-        print("'ground_truth.csv' is not copied to the dataset dir since the file "
-              "with the same name already existsd.")
+        print("'ground_truth.csv' is not copied to the dataset dir since the file with the same name already existsd.")
     else:
         copy(target_gt, dataset_gt)
 
@@ -81,6 +82,5 @@ if __name__ == "__main__":
     scorer = Scorer(gt_total_mass, gt_f_moms, gt_moms_i)
 
     # Log the identified inertial params and their ground truth
-    #logger.transform["globalinertia"] = comparison.to_json()
+    # logger.transform["globalinertia"] = comparison.to_json()
     logger.finish(result["frames"], result["regressors"], scorer)  # video and dataset json generated
-

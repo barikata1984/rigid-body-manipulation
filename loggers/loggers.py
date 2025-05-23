@@ -1,20 +1,19 @@
+import json
 import os
 import shutil
-from datetime import datetime
 from dataclasses import dataclass
+from datetime import datetime
 from math import atan2, radians, tan
 from operator import itemgetter
 from pathlib import Path
 
 import cv2
-import json
 import numpy as np
-import pandas as pd
 from mujoco._structs import MjData, MjModel
 from mujoco.renderer import Renderer
 from omegaconf import MISSING
 
-#from main import Scorer
+# from main import Scorer
 from utilities import get_element_id
 
 
@@ -29,21 +28,22 @@ class LoggerConfig:
     videcodec: str = "mp4v"
     dataset_dir: str = MISSING
     aabb_scale: float = MISSING
-    #gt_mass_distr_file_path: str = MISSING
+    # gt_mass_distr_file_path: str = MISSING
 
 
 class Logger:
-    def __init__(self,
-                 cfg: LoggerConfig,
-                 m: MjModel,
-                 d: MjData,
-                 ) -> None:
+    def __init__(
+        self,
+        cfg: LoggerConfig,
+        m: MjModel,
+        d: MjData,
+    ) -> None:
         self.cam_name = cfg.track_cam_name
         self.cam_id = get_element_id(m, "camera", self.cam_name)
         self.fig_height = cfg.fig_height
         self.fig_width = cfg.fig_width
         self.cam_fovy = radians(m.cam_fovy[self.cam_id])
-        self.cam_focus = self.fig_height / tan(.5 * self.cam_fovy)
+        self.cam_focus = self.fig_height / tan(0.5 * self.cam_fovy)
         self.cam_fovx = 2 * atan2(self.fig_width, self.cam_focus)
         self.fps = cfg.fps
         self.dataset_dir = Path(cfg.dataset_dir)
@@ -52,7 +52,7 @@ class Logger:
         self.aabb_scale = cfg.aabb_scale
 
         os.makedirs(self.complete_image_dir, exist_ok=True)  # not sure but should be called before
-                                                    # the videowriter is instantiated
+        # the videowriter is instantiated
 
         self.videowriter = cv2.VideoWriter(
             str(self.dataset_dir / cfg.videoname),
@@ -75,8 +75,7 @@ class Logger:
         bgr = self.renderer.render()[:, :, [2, 1, 0]]
         # Make an alpha mask to remove the white background
         alpha = np.where(np.all(bgr == 0, axis=-1), 0, 255)[..., np.newaxis]
-        cv2.imwrite(str(self.complete_image_dir / file_name),
-                    np.append(bgr, alpha, axis=2))  # image (bgr + alpha)
+        cv2.imwrite(str(self.complete_image_dir / file_name), np.append(bgr, alpha, axis=2))  # image (bgr + alpha)
         # Write a video frame
         self.videowriter.write(bgr)
 
@@ -103,8 +102,8 @@ class Logger:
         rng.shuffle(all_indices)
 
         train = itemgetter(*all_indices[:num_train])(data)
-        valid = itemgetter(*all_indices[num_train:num_train+num_valid])(data)
-        test = itemgetter(*all_indices[num_train:num_train+num_valid])(data)
+        valid = itemgetter(*all_indices[num_train : num_train + num_valid])(data)
+        test = itemgetter(*all_indices[num_train : num_train + num_valid])(data)
 
         return train, valid, test
 
@@ -131,27 +130,21 @@ class Logger:
         score = scorer.calculate(est_iparams)
         gt_iparams = scorer.gt_iparams
 
-        labels = ["total_mass",
-                  "mx", "my", "mz",
-                  "ixx", "iyy", "izz", "ixy", "iyz", "izx",
-                  "aabb_scale", "score"]
-        global_gt = [ *gt_iparams, self.aabb_scale, np.nan]
-        lstsq     = [*est_iparams,          np.nan,  score]
+        labels = ["total_mass", "mx", "my", "mz", "ixx", "iyy", "izz", "ixy", "iyz", "izx", "aabb_scale", "score"]
+        global_gt = [*gt_iparams, self.aabb_scale, np.nan]
+        lstsq = [*est_iparams, np.nan, score]
 
         split_transform = self.base_transform.copy()
         split_transform["frames"] = frames
         split_transform["labels"] = labels
         split_transform["global_gt"] = global_gt
         split_transform["lstsq"] = lstsq
-        #split_transform["globalinertia"] = comparison.to_json()
+        # split_transform["globalinertia"] = comparison.to_json()
 
         with open(self.dataset_dir / f"transform{suffix}.json", "w") as f:
             json.dump(split_transform, f, indent=2)
 
-    def finish(self,
-               frames,
-               regressors,
-               scorer):
+    def finish(self, frames, regressors, scorer):
         self.videowriter.release()
 
         train_frames, valid_frames, test_frames = self._split(frames)
@@ -161,6 +154,7 @@ class Logger:
         self._process_split(train_frames, train_regressors, scorer, split="train")
         self._process_split(valid_frames, valid_regressors, scorer, split="valid")
         self._process_split(test_frames, test_regressors, scorer, split="test")
+
 
 #        with open(self.dataset_dir / "transform.json", "w") as f:
 #            json.dump(self.transform, f, indent=2)
