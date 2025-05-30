@@ -1,7 +1,7 @@
 [project]
 name = "rigid-body-manipulation"
 version = "0.1"
-requires-python = ">= 3.9"
+requires-python = "<= 3.12"
 dependencies = [
     "numpy",
     "scipy",
@@ -15,6 +15,8 @@ dependencies = [
     "liegroups @ git+https://github.com/utiasSTARS/liegroups.git@refs/pull/10/head",
     "tyro",
     "ruff",
+    "opencv-python>=4.11.0.86",
+    "pyqt6>=6.9.0",
 ]
 
 [tool.ruff]
@@ -31,7 +33,6 @@ select = [ # 有効にするルール
 ]
 ignore = [ # 無視するルール
     "E501", # 行が長すぎる (line-length で管理)
-    "B950", # line-length と black の互換性
 ]
 #exclude = [ # 除外するファイル/ディレクトリ
 #    ".venv",
