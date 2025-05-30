@@ -1,9 +1,6 @@
 manipulator_name: sequential
 target_name: ???
 reset_keyframe: initial_state
-state_space:
-  epsilon: 1.0e-08
-  centered: true
 logger:
   target_class: Logger
   track_cam_name: tracking

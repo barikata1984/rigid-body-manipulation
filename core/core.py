@@ -1,15 +1,15 @@
 import inspect
 import logging
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 import pandas as pd
 from dm_control import mjcf
 from mujoco._functions import mj_resetDataKeyframe
 from mujoco._structs import MjData, MjModel
-from omegaconf import OmegaConf
+from omegaconf import MISSING, OmegaConf
 from omegaconf.dictconfig import DictConfig
 from omegaconf.errors import ConfigAttributeError, MissingMandatoryValue
 from omegaconf.listconfig import ListConfig
@@ -29,28 +29,23 @@ class SimulationConfig:
     manipulator_name: str = "sequential"
     target_name: str = MISSING
     reset_keyframe: str = "initial_state"
-    state_space: StateSpaceConfig = MISSING  # StateSpaceConfig()  # from dynamics
     logger: LoggerConfig = field(default_factory=LoggerConfig)
-    planner: JointPositionPlannerConfig = field(
-        default_factory=JointPositionPlannerConfig
-    )
-    controller: LinearQuadraticRegulatorConfig = field(
-        default_factory=LinearQuadraticRegulatorConfig
-    )
-    read_config: str = "configurations/base.yaml"
-    write_config: str = MISSING
+    planner: JointPositionPlannerConfig = field(default_factory=JointPositionPlannerConfig)
+    controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
+    config: str = "configurations/base.yaml"
+    config_export_path: str = MISSING
 
 
 def load_config():
     # _cfg = tyro.cli(SimulationConfig)
     cfg = OmegaConf.structured(SimulationConfig)
-    base_cfg = OmegaConf.load(cfg.read_config)
+    base_cfg = OmegaConf.load(cfg.config)
     OmegaConf.structured(SimulationConfig)
 
     cli_cfg = OmegaConf.from_cli()
 
     try:
-        yaml_cfg = OmegaConf.load(cli_cfg.read_config)
+        yaml_cfg = OmegaConf.load(cli_cfg.config)
     except ConfigAttributeError:  # if read_config not provided on cli, cli_cfg
         yaml_cfg = {}  # does not have it as its attribute, so using
         # this error rather than MissingMandatoryValue
@@ -58,7 +53,7 @@ def load_config():
     cfg = OmegaConf.merge(cfg, base_cfg, yaml_cfg, cli_cfg)
 
     try:
-        OmegaConf.save(cfg, cfg.write_config)
+        OmegaConf.save(cfg, cfg.config_export_path)
     except MissingMandatoryValue:
         pass
 
@@ -121,10 +116,7 @@ def show_comparison(
         ]
 
     else:
-        raise ValueError(
-            f"'mode' argument has to be either 'diaginertia' or 'fullinertia'. \
-                           '{mode}' is invalid."
-        )
+        raise ValueError(f"'mode' argument has to be either 'diaginertia' or 'fullinertia; {mode}' is invalid.")
 
     print(
         pd.DataFrame(
@@ -182,15 +174,15 @@ def get_target_object_ground_truth(target_object_cad_gt_path):
         _globalinertia[2, 0],
     ]
 
-    return dict(
-        aabb_scale=aabb_scale,
-        mass=mass,
-        com=pos_aabb_obji,
-        iquat=iquat,
-        diaginertia=diaginertia,
-        fullinertia=fullinertia,
-        globalinertia=globalinertia,
-    )
+    return {
+        "aabb_scale": aabb_scale,
+        "mass": mass,
+        "com": pos_aabb_obji,
+        "iquat": iquat,
+        "diaginertia": diaginertia,
+        "fullinertia": fullinertia,
+        "globalinertia": globalinertia,
+    }
 
 
 def spawn_target_object(
@@ -227,10 +219,7 @@ def spawn_target_object(
             file = elem_texture.get_attributes()["file"]
             assets[file.prefix + file.extension] = file.contents
         except:
-            print(
-                f"'{elem_texture.type}' type texture, '{elem_texture.name}', "
-                "does not have 'file' attribute."
-            )
+            print(f"'{elem_texture.type}' type texture, '{elem_texture.name}', does not have 'file' attribute.")
 
     target_object.asset.add(
         "texture",
@@ -243,15 +232,13 @@ def spawn_target_object(
     )
 
     if target_object.worldbody.find("site", "ft_sensor") is None:
-        target_object.worldbody.add(
-            "site", name="ft_sensor", euler="0 0 180", rgba="0 0 0 0"
-        )
+        target_object.worldbody.add("site", name="ft_sensor", euler="0 0 180", rgba="0 0 0 0")
     target_object_body = target_object.find("body", "object")
 
-    inertial = dict(
-        pos=ground_truth["com"],
-        mass=ground_truth["mass"],
-    )
+    inertial = {
+        "pos": ground_truth["com"],
+        "mass": ground_truth["mass"],
+    }
 
     if "diaginertia" == inertia_setting:
         logging.info("======== Set 'diaginertia' to the target object. ========")
@@ -269,13 +256,13 @@ def spawn_target_object(
         )
 
         assert len(component_mass_densities) == len(meshes), RuntimeError(
-            "Number of components does not match with the "
-            "number of aux data. Review the XML and CSV file"
+            "Number of components does not match with the number of aux data. Review the XML and CSV file"
         )
 
         for idx, mesh in zip(
             reversed(component_mass_densities.index),
             reversed(meshes),
+            strict=False,
         ):
             density = component_mass_densities.loc[idx, "mass_density"]
             target_object_body.insert(
@@ -287,9 +274,7 @@ def spawn_target_object(
             )
 
         # Use only the inserted geom for inertia computation
-        inertiagrouprange = " ".join(
-            str(i) for i in [0, len(component_mass_densities) - 1]
-        )
+        inertiagrouprange = " ".join(str(i) for i in [0, len(component_mass_densities) - 1])
         target_object.compiler.inertiagrouprange = inertiagrouprange
 
     target_object_body.add("inertial", **inertial)
@@ -302,8 +287,8 @@ def spawn_target_object(
 
 
 def generate_model_data(
-    cfg: Union[DictConfig, ListConfig],
-) -> tuple[MjModel, MjData, dict[str, Union[float, list[float]]]]:
+    cfg: DictConfig | ListConfig,
+) -> tuple[MjModel, MjData, dict[str, float | list[float]]]:
     # Get the ground truth data output by a CAD application ========================
     xml_dir = Path.cwd() / "xml_models"
     target_dir = xml_dir / "targets" / cfg.target_name
@@ -328,9 +313,7 @@ def generate_model_data(
     track_cam.pos = track_cam_pos
 
     # Spawn a mujoco model and a mujoco data
-    m = MjModel.from_xml_string(
-        manipulator.to_xml_string(filename_with_hash=False), assets=assets
-    )
+    m = MjModel.from_xml_string(manipulator.to_xml_string(filename_with_hash=False), assets=assets)
     d = MjData(m)
 
     show_comparison(m, "target/object", ground_truth, mode="diaginertia")
@@ -351,9 +334,7 @@ def generate_model_data(
     #     f"    sensor outputs (nsensordata):       {m.nsensordata:>2}")
 
 
-def autoinstantiate(
-    cfg: DictConfig, m: MjModel, d: MjData, *args, **kwargs
-) -> Any:  # TODO: reasonable but rough
+def autoinstantiate(cfg: DictConfig, m: MjModel, d: MjData, *args, **kwargs) -> Any:  # TODO: reasonable but rough
     for name, _class in inspect.getmembers(sys.modules[__name__], inspect.isclass):
         if cfg.target_class == name:
             return _class(cfg, m, d, *args, **kwargs)
