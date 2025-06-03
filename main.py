@@ -22,7 +22,7 @@ class Scorer:
         return score if scale is None else score / np.power(scale, 2)
 
     def calculate(self, estimate):
-        aabb_scale = cfg.logger.aabb_scale
+        aabb_scale = cfg.recorder.aabb_scale
         score = self._get_partial_score(
             estimate[0], self.gt_total_mass, scale=self.gt_total_mass * np.power(aabb_scale, 0)
         )  # eliminate [kg]
@@ -40,24 +40,23 @@ class Scorer:
 if __name__ == "__main__":
     cfg = load_config()  # priority: cli > cli-specified .yaml > base.yaml > hard-coded
     m, d, gt = generate_model_data(cfg)
-    globalinertia = gt["globalinertia"]
 
     # Fill (potentially) missing fields of a logger configulation =================
     try:
-        cfg.logger.aabb_scale
+        cfg.recorder.aabb_scale
     except MissingMandatoryValue:
         target_object_id = get_element_id(m, "numeric", "target/aabb_scale")
         aabb_scale = m.numeric_data[target_object_id]
-        cfg.logger.aabb_scale = float(aabb_scale)
+        cfg.recorder.aabb_scale = float(aabb_scale)
 
     try:
-        dir = cfg.logger.dataset_dir
+        dir = cfg.recorder.dataset_dir
     except MissingMandatoryValue:
         dir = cfg.target_name
 
     dataset_dir = Path.cwd() / "datasets" / f"{dir}"  # SETTING DATASET DIR NAME
     dataset_dir.mkdir(parents=True, exist_ok=True)
-    cfg.logger.dataset_dir = dataset_dir
+    cfg.recorder.dataset_dir = dataset_dir
 
     # Copy the ground truth mass distribution file to the dataset file ============
     target_gt = Path.cwd() / "xml_models" / "targets" / dir / "ground_truth.csv"
@@ -68,11 +67,11 @@ if __name__ == "__main__":
         copy(target_gt, dataset_gt)
 
     # Instantiate necessary classes ===============================================
-    logger = autoinstantiate(cfg.logger, m, d)
+    recorder = autoinstantiate(cfg.recorder, m, d)
     planner = autoinstantiate(cfg.planner, m, d)
     controller = autoinstantiate(cfg.controller, m, d)
 
-    result = simulate(m, d, logger, planner, controller)  # main process
+    result = simulate(m, d, recorder, planner, controller)  # main process
 
     # Show inertial params identified with the least squares method
     gt_total_mass = gt["mass"]
@@ -82,4 +81,4 @@ if __name__ == "__main__":
 
     # Log the identified inertial params and their ground truth
     # logger.transform["globalinertia"] = comparison.to_json()
-    logger.finish(result["frames"], result["regressors"], scorer)  # video and dataset json generated
+    recorder.finish(result["frames"], result["regressors"], scorer)  # video and dataset json generated

@@ -42,9 +42,7 @@ class LinearQuadraticRegulator:
     ) -> NDArray:
         self.ss.update_matrices(m, d)
 
-        Q = np.eye(
-            self.ss.ns
-        )  # Initial state cost matrix R = np.diag(self.input_gains)  # Input gain matrix
+        Q = np.eye(self.ss.ns)  # Initial state cost matrix R = np.diag(self.input_gains)  # Input gain matrix
         R = np.diag(self.input_gain)  # Input gain matrix
         # Compute the feedback gain matrix K
         P = linalg.solve_discrete_are(self.ss.A, self.ss.B, Q, R)

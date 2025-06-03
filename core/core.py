@@ -20,8 +20,9 @@ from transforms3d.quaternions import mat2quat, quat2mat
 import dynamics as dyn
 from controllers import *
 from dynamics import *
-from loggers import *
 from planners import *
+from recorders import *
+from utilities import get_element_id
 
 
 @dataclass
@@ -29,7 +30,7 @@ class SimulationConfig:
     manipulator_name: str = "sequential"
     target_name: str = MISSING
     reset_keyframe: str = "initial_state"
-    logger: LoggerConfig = field(default_factory=LoggerConfig)
+    recorder: BasicRecorderConfig = field(default_factory=BasicRecorderConfig)
     planner: JointPositionPlannerConfig = field(default_factory=JointPositionPlannerConfig)
     controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
     config: str = "configurations/base.yaml"
@@ -309,7 +310,7 @@ def generate_model_data(
     # Set camera position
     aabb_scale = manipulator.custom.numeric["target/aabb_scale"].data[0]
     track_cam_pos = [0, 0, 4 * aabb_scale]
-    track_cam = manipulator.find("camera", cfg.logger.track_cam_name)
+    track_cam = manipulator.find("camera", cfg.recorder.track_cam_name)
     track_cam.pos = track_cam_pos
 
     # Spawn a mujoco model and a mujoco data

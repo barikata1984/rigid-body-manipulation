@@ -1,8 +1,8 @@
 manipulator_name: sequential
 target_name: ???
 reset_keyframe: initial_state
-logger:
-  target_class: Logger
+recorder:
+  target_class: BasicRecorder
   track_cam_name: tracking
   fig_height: 800
   fig_width: 800

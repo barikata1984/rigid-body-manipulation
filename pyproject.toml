@@ -42,4 +42,4 @@ ignore = [ # 無視するルール
 target-version = "py312" # ターゲットの Python バージョン
 #src = ["src", "."] # ソースディレクトリ
 fix = true # 自動修正を有効にする
-unsafe-fixes = true # 安全でない修正も有効にする
+unsafe-fixes = false # 安全でない修正も有効にする
