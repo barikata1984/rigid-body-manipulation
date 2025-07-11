@@ -71,6 +71,10 @@ if __name__ == "__main__":
     planner = autoinstantiate(cfg.planner, m, d)
     controller = autoinstantiate(cfg.controller, m, d)
 
+    # import pdb
+
+    # pdb.set_trace()  # Debugger breakpoint
+
     result = simulate(m, d, recorder, planner, controller)  # main process
 
     # Show inertial params identified with the least squares method

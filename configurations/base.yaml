@@ -6,21 +6,21 @@ recorder:
   track_cam_name: tracking
   fig_height: 800
   fig_width: 800
-  fps: 50
+  fps: 60
   videoname: output.mp4
   videcodec: mp4v
   dataset_dir: ???
 planner:
   target_class: JointPositionPlanner
-  duration: 3.0
+  duration: 5.0
   timestep: -1.0
   displacements:
   - 0.2
   - 1.4
   - 0.6
-  - 3.141592653589793
+  - 3.141592653589793  # 1π
   - 0.0
-  - 18.8495559215
+  - 25.1327412287  # 8π
   pos_offset: ???
 controller:
   target_class: LinearQuadraticRegulator

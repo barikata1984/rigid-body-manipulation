@@ -227,8 +227,8 @@ def spawn_target_object(
         name="white_background",
         type="skybox",
         builtin="flat",
-        rgb1="1 1 1",
-        rgb2="1 1 1",
+        rgb1="0 0 0",
+        rgb2="0 0 0",
         width="1",
     )
 

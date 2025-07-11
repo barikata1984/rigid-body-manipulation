@@ -42,9 +42,11 @@ class BasicRecorder:
         self.cam_id = get_element_id(m, "camera", self.cam_name)
         self.fig_height = cfg.fig_height
         self.fig_width = cfg.fig_width
+        self.cam_cx = 0.5 * self.fig_width  # horizontal center of the figures
+        self.cam_cy = 0.5 * self.fig_height  # vertical center of the figures
         self.cam_fovy = radians(m.cam_fovy[self.cam_id])
-        self.cam_focus = self.fig_height / tan(0.5 * self.cam_fovy)
-        self.cam_fovx = 2 * atan2(self.fig_width, self.cam_focus)
+        self.cam_focus = 0.5 * self.fig_height / tan(0.5 * self.cam_fovy)
+        self.cam_fovx = 2 * atan2(0.5 * self.fig_width, self.cam_focus)
         self.fps = cfg.fps
         self.dataset_dir = Path(cfg.dataset_dir)
         self.complete_image_dir = self.dataset_dir / "complete"
@@ -61,9 +63,20 @@ class BasicRecorder:
             (self.fig_width, self.fig_height),
         )
 
+        # import pdb
+
+        # pdb.set_trace()
+
         self.base_transform = {
             "date_time": datetime.now().strftime("%d/%m/%Y_%H:%M:%S"),
             "camera_angle_x": self.cam_fovx,
+            "camera_angle_y": self.cam_fovy,
+            "cx": self.cam_cx,
+            "cy": self.cam_cy,
+            "fl_x": self.cam_focus,
+            "fl_y": self.cam_focus,
+            "h": self.fig_height,
+            "w": self.fig_width,
             "aabb_scale": self.aabb_scale,
         }
 
@@ -141,7 +154,7 @@ class BasicRecorder:
         split_transform["lstsq"] = lstsq
         # split_transform["globalinertia"] = comparison.to_json()
 
-        with open(self.dataset_dir / f"transform{suffix}.json", "w") as f:
+        with open(self.dataset_dir / f"transforms{suffix}.json", "w") as f:
             json.dump(split_transform, f, indent=2)
 
     def finish(self, frames, regressors, scorer):
