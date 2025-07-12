@@ -1,10 +1,51 @@
+from dataclasses import dataclass, field
 from pathlib import Path
 from shutil import copy
 
 import numpy as np
-from omegaconf.errors import MissingMandatoryValue
+from omegaconf import MISSING, OmegaConf
+from omegaconf.errors import ConfigAttributeError, MissingMandatoryValue
 
-from core import autoinstantiate, generate_model_data, get_element_id, load_config, simulate
+from controllers import *
+from core import autoinstantiate, generate_model_data, get_element_id, simulate
+from planners import *
+from recorders import *
+
+
+@dataclass
+class SimulationConfig:
+    manipulator_name: str = "sequential"
+    target_name: str = MISSING
+    reset_keyframe: str = "initial_state"
+    recorder: BasicRecorderConfig = field(default_factory=BasicRecorderConfig)
+    planner: JointPositionPlannerConfig = field(default_factory=JointPositionPlannerConfig)
+    controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
+    config: str = "configurations/base.yaml"
+    config_export_path: str = MISSING
+
+
+def load_config():
+    # _cfg = tyro.cli(SimulationConfig)
+    cfg = OmegaConf.structured(SimulationConfig)
+    base_cfg = OmegaConf.load(cfg.config)
+    OmegaConf.structured(SimulationConfig)
+
+    cli_cfg = OmegaConf.from_cli()
+
+    try:
+        yaml_cfg = OmegaConf.load(cli_cfg.config)
+    except ConfigAttributeError:  # if read_config not provided on cli, cli_cfg
+        yaml_cfg = {}  # does not have it as its attribute, so using
+        # this error rather than MissingMandatoryValue
+
+    cfg = OmegaConf.merge(cfg, base_cfg, yaml_cfg, cli_cfg)
+
+    try:
+        OmegaConf.save(cfg, cfg.config_export_path)
+    except MissingMandatoryValue:
+        pass
+
+    return cfg
 
 
 class Scorer:
