@@ -58,7 +58,7 @@ class BasicRecorder:
 
         self.videowriter = cv2.VideoWriter(
             str(self.dataset_dir / cfg.videoname),
-            cv2.VideoWriter_fourcc(*cfg.videcodec),
+            cv2.VideoWriter_fourcc(*cfg.videcodec),  # type: ignore
             self.fps,
             (self.fig_width, self.fig_height),
         )
@@ -120,7 +120,7 @@ class BasicRecorder:
 
         return train, valid, test
 
-    def _process_split(self, frames, regressors, scorer, split=None):
+    def _process_split(self, frames, regressors, gt_iparams, split=None):
         suffix = ""
         fts_sen = []
 
@@ -140,12 +140,12 @@ class BasicRecorder:
         regressors = np.reshape(regressors, (-1, 10))
         fts_sen = np.reshape(fts_sen, -1)
         est_iparams, _, _, _ = np.linalg.lstsq(regressors, fts_sen)
-        score = scorer.calculate(est_iparams)
-        gt_iparams = scorer.gt_iparams
+        # score = scorer.calculate(est_iparams)
+        # gt_iparams = scorer.gt_iparams
 
         labels = ["total_mass", "mx", "my", "mz", "ixx", "iyy", "izz", "ixy", "iyz", "izx", "aabb_scale", "score"]
-        global_gt = [*gt_iparams, self.aabb_scale, np.nan]
-        lstsq = [*est_iparams, np.nan, score]
+        global_gt = [*gt_iparams, self.aabb_scale]  # , np.nan]
+        lstsq = [*est_iparams, np.nan]  # , score]
 
         split_transform = self.base_transform.copy()
         split_transform["frames"] = frames
@@ -157,16 +157,16 @@ class BasicRecorder:
         with open(self.dataset_dir / f"transforms{suffix}.json", "w") as f:
             json.dump(split_transform, f, indent=2)
 
-    def finish(self, frames, regressors, scorer):
+    def finish(self, frames, regressors, gt_iparams):
         self.videowriter.release()
 
         train_frames, valid_frames, test_frames = self._split(frames)
         train_regressors, valid_regressors, test_regressors = self._split(regressors)
 
-        self._process_split(frames, regressors, scorer)
-        self._process_split(train_frames, train_regressors, scorer, split="train")
-        self._process_split(valid_frames, valid_regressors, scorer, split="valid")
-        self._process_split(test_frames, test_regressors, scorer, split="test")
+        self._process_split(frames, regressors, gt_iparams)
+        self._process_split(train_frames, train_regressors, gt_iparams, split="train")
+        self._process_split(valid_frames, valid_regressors, gt_iparams, split="valid")
+        self._process_split(test_frames, test_regressors, gt_iparams, split="test")
 
 
 #        with open(self.dataset_dir / "transform.json", "w") as f:
