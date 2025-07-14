@@ -1,28 +1,28 @@
-from typing import Optional, Union
-
 import numpy as np
-from liegroups import SO3, SE3
+from liegroups import SE3, SO3
 from numpy.typing import NDArray
 
 
-def tq2se3(t,
-           q,
-           ) -> SE3:
+def tq2se3(
+    t,
+    q,
+) -> SE3:
     rot = SO3.from_quaternion(q)
     return SE3(rot, t)
 
 
-def tr2se3(t,
-           r,
-           ) -> SE3:
-    rot = SO3.from_matrix(r)
+def tr2se3(
+    t,
+    r,
+) -> SE3:
+    rot = SO3.from_matrix(r, normalize=True)
     return SE3(rot, t)
 
 
-def compose(trans: NDArray,
-             rot: Optional[NDArray] = None,
-             ) -> Union[SE3, list[SE3]]:
-
+def compose(
+    trans: NDArray,
+    rot: NDArray | None = None,
+) -> SE3 | list[SE3]:
     if rot is None:
         id_quat = [1, 0, 0, 0]
         rot = np.array([id_quat for _ in trans])
@@ -41,7 +41,7 @@ def compose(trans: NDArray,
     assert len(trans) == len(rot), "Numbers of vectors in 'trans' and 'rot' must match."
 
     poses = []
-    for t, r in zip(trans, rot):
+    for t, r in zip(trans, rot, strict=False):
         if 4 == len(r):  # quaternion
             poses.append(tq2se3(t, r))
         elif 9 == len(r):  # rotation matrix

@@ -1,64 +1,61 @@
-import inspect
+import importlib
 import logging
-import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 from dm_control import mjcf
+from liegroups import SE3, SO3
 from mujoco._functions import mj_resetDataKeyframe
 from mujoco._structs import MjData, MjModel
-from omegaconf import MISSING, OmegaConf
 from omegaconf.dictconfig import DictConfig
-from omegaconf.errors import ConfigAttributeError, MissingMandatoryValue
 from omegaconf.listconfig import ListConfig
 from transforms3d.euler import euler2mat
 from transforms3d.quaternions import mat2quat, quat2mat
 
 # all the modules of the packages below are imported to enable autoinstantiate()
 import dynamics as dyn
-from controllers import *
-from dynamics import *
-from planners import *
-from recorders import *
 from utilities import get_element_id
 
 
+# Pretty printing class
+class PrintableConfig:
+    """Printable Config defining str function"""
+
+    def __str__(self):
+        lines = [self.__class__.__name__ + ":"]
+        for key, val in vars(self).items():
+            if isinstance(val, tuple):
+                flattened_val = "["
+                for item in val:
+                    flattened_val += str(item) + "\n"
+                flattened_val = flattened_val.rstrip("\n")
+                val = flattened_val + "]"
+            lines += f"{key}: {str(val)}".split("\n")
+        return "\n    ".join(lines)
+
+
+# Base instantiate configs
 @dataclass
-class SimulationConfig:
-    manipulator_name: str = "sequential"
-    target_name: str = MISSING
-    reset_keyframe: str = "initial_state"
-    recorder: BasicRecorderConfig = field(default_factory=BasicRecorderConfig)
-    planner: JointPositionPlannerConfig = field(default_factory=JointPositionPlannerConfig)
-    controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
-    config: str = "configurations/base.yaml"
-    config_export_path: str = MISSING
+class InstantiateConfig(PrintableConfig):
+    """Config class for instantiating an the class specified in the _target attribute."""
 
+    target_class: str  # 型ヒントを str も許容するように変更
 
-def load_config():
-    # _cfg = tyro.cli(SimulationConfig)
-    cfg = OmegaConf.structured(SimulationConfig)
-    base_cfg = OmegaConf.load(cfg.config)
-    OmegaConf.structured(SimulationConfig)
+    def setup(self, m, d, *args, **kwargs) -> Any:
+        """Returns the instantiated object using the config."""
 
-    cli_cfg = OmegaConf.from_cli()
+        # target_class が文字列の場合、クラスオブジェクトに解決する
+        if isinstance(self.target_class, str):
+            module_path, class_name = self.target_class.rsplit(".", 1)
+            module = importlib.import_module(module_path)
+            target_class_obj = getattr(module, class_name)
+        else:
+            target_class_obj = self.target_class
 
-    try:
-        yaml_cfg = OmegaConf.load(cli_cfg.config)
-    except ConfigAttributeError:  # if read_config not provided on cli, cli_cfg
-        yaml_cfg = {}  # does not have it as its attribute, so using
-        # this error rather than MissingMandatoryValue
-
-    cfg = OmegaConf.merge(cfg, base_cfg, yaml_cfg, cli_cfg)
-
-    try:
-        OmegaConf.save(cfg, cfg.config_export_path)
-    except MissingMandatoryValue:
-        pass
-
-    return cfg
+        return target_class_obj(self, m, d, *args, **kwargs)
 
 
 def show_comparison(
@@ -291,8 +288,7 @@ def generate_model_data(
     cfg: DictConfig | ListConfig,
 ) -> tuple[MjModel, MjData, dict[str, float | list[float]]]:
     # Get the ground truth data output by a CAD application ========================
-    xml_dir = Path.cwd() / "xml_models"
-    target_dir = xml_dir / "targets" / cfg.target_name
+    target_dir = Path(cfg.target_dir)
     target_object_path = target_dir / "object.xml"
     target_object_cad_gt_path = target_dir / "object_cad_gt.csv"
     target_object, assets, ground_truth = spawn_target_object(
@@ -300,7 +296,8 @@ def generate_model_data(
     )
 
     # Load the .xml of a manipulator and attach the target object to it
-    manipulator_path = xml_dir / "manipulators" / f"{cfg.manipulator_name}.xml"
+    manipulator_dir = Path(cfg.manipulator_dir)
+    manipulator_path = manipulator_dir / "manipulator.xml"
     manipulator = mjcf.from_path(manipulator_path)
     attachment_site = manipulator.find("site", "attachment")
     attachment_site.attach(target_object)
@@ -333,9 +330,3 @@ def generate_model_data(
     #     f"    degrees of freedom (nu):            {m.nu:>2}\n"
     #     f"    actuator activations (na):          {m.na:>2}\n"
     #     f"    sensor outputs (nsensordata):       {m.nsensordata:>2}")
-
-
-def autoinstantiate(cfg: DictConfig, m: MjModel, d: MjData, *args, **kwargs) -> Any:  # TODO: reasonable but rough
-    for name, _class in inspect.getmembers(sys.modules[__name__], inspect.isclass):
-        if cfg.target_class == name:
-            return _class(cfg, m, d, *args, **kwargs)

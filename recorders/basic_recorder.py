@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import os
 import shutil
@@ -13,13 +15,13 @@ from mujoco._structs import MjData, MjModel
 from mujoco.renderer import Renderer
 from omegaconf import MISSING
 
-# from main import Scorer
+from core import InstantiateConfig
 from utilities import get_element_id
 
 
 @dataclass
-class BasicRecorderConfig:
-    target_class: str = "Logger"
+class BasicRecorderConfig(InstantiateConfig):
+    target_class: str = "recorders.BasicRecorder"
     track_cam_name: str = "tracking"
     fig_height: int = 800
     fig_width: int = 800
@@ -62,10 +64,6 @@ class BasicRecorder:
             self.fps,
             (self.fig_width, self.fig_height),
         )
-
-        # import pdb
-
-        # pdb.set_trace()
 
         self.base_transform = {
             "date_time": datetime.now().strftime("%d/%m/%Y_%H:%M:%S"),

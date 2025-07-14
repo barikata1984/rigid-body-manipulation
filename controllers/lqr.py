@@ -7,12 +7,13 @@ from omegaconf import MISSING
 from omegaconf.errors import MissingMandatoryValue
 from scipy import linalg
 
+from core import InstantiateConfig
 from dynamics import StateSpace, StateSpaceConfig
 
 
 @dataclass
-class LinearQuadraticRegulatorConfig:
-    target_class: str = "LinearQuadraticRegulator"
+class LinearQuadraticRegulatorConfig(InstantiateConfig):
+    target_class: str = "controllers.LinearQuadraticRegulator"
     state_space: StateSpaceConfig = field(default_factory=StateSpaceConfig)
     input_gain: list[float] = MISSING
 

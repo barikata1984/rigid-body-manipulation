@@ -1,5 +1,4 @@
-manipulator_name: sequential
-target_name: ???
+manipulator_dir: xml_models/manipulators/sequential
 reset_keyframe: initial_state
 recorder:
   target_class: BasicRecorder
