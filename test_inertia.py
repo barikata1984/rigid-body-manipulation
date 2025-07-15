@@ -7,10 +7,9 @@ from mujoco._structs import MjModel
 from transforms3d.euler import euler2mat
 from transforms3d.quaternions import mat2quat, quat2mat
 
-
 # register the root body and a body to which iprops are assigned
-cf =  mjcf.RootElement()
-body = cf.worldbody.add("body", name="test_body")
+cf = mjcf.RootElement()
+body = cf.worldbody.add("body", name="test_body")  # type: ignore
 
 # body mass
 body_mass = 10
@@ -42,11 +41,12 @@ iyz = inertia_tensor[1, 2]
 izx = inertia_tensor[2, 0]
 fullinertia = np.array([ixx, iyy, izz, ixy, izx, iyz])
 # register the inertial params to the body
-body.add("inertial",
-         mass=body_mass,
-         pos=pos_obj_obji,
-         fullinertia=fullinertia,
-         )
+body.add(
+    "inertial",
+    mass=body_mass,
+    pos=pos_obj_obji,
+    fullinertia=fullinertia,
+)
 
 # spawn model and get mujoco-computed data
 m = MjModel.from_xml_string(cf.to_xml_string())
@@ -59,12 +59,15 @@ mjc = [mj_mass, *mj_diaginertia, *mj_iquat]
 # principal moments of inertia and the inertial frame's orientation w.r.t the body frame
 index = ["total_mass", "pixx", "piyy", "pizz", "real", "i", "j", "k"]
 print("mass, diaginertia, quat ------------------------------------------------------")
-print(pd.DataFrame({"original": cad_gt,
-                    "mujoco": mjc,
-                    },
-                   index=index,
-                   ).transpose()
-      )
+print(
+    pd.DataFrame(
+        {
+            "original": cad_gt,
+            "mujoco": mjc,
+        },
+        index=index,
+    ).transpose()
+)
 print("")
 print("rot_body_bodyi ---------------------------------------------------------------")
 print(f"original:\n{rot_body_bodyi}")
