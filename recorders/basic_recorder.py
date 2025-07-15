@@ -29,7 +29,7 @@ class BasicRecorderConfig(InstantiateConfig):
     videoname: str = "output.mp4"
     videcodec: str = "mp4v"
     dataset_dir: str = MISSING
-    aabb_scale: float = MISSING
+    aabb_scale: float | None = None
     # gt_mass_distr_file_path: str = MISSING
 
 

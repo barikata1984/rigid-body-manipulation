@@ -8,7 +8,6 @@ recorder:
   fps: 60
   videoname: output.mp4
   videcodec: mp4v
-  dataset_dir: ???
 planner:
   target_class: JointPositionPlanner
   duration: 5.0
@@ -20,7 +19,6 @@ planner:
   - 3.141592653589793  # 1π
   - 0.0
   - 25.1327412287  # 8π
-  pos_offset: ???
 controller:
   target_class: LinearQuadraticRegulator
   state_space:

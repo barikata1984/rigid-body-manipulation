@@ -15,7 +15,7 @@ from core import InstantiateConfig
 @dataclass
 class JointPositionPlannerConfig(InstantiateConfig):
     target_class: str = "planners.JointPositionPlanner"
-    duration: float = MISSING
+    duration: float = MISSING  # todo: using str is not good...
     timestep: float = -1
     pos_offset: list[float] | None = None
     displacements: list[float | str] = field(default_factory=lambda: [0.2, 0.4, 0.6, 1.0 * pi, 0.3 * pi, 1.5 * pi])
@@ -30,11 +30,18 @@ class JointPositionPlanner:
     ) -> None:
         # Fill a potentially missing field of a planner configuration
         if cfg.pos_offset is None:
-            cfg.pos_offset = d.qpos.copy().tolist()
+            self.pos_offset = d.qpos.copy().tolist()
 
-        self.duration = cfg.duration
+        try:
+            cfg.duration = float(cfg.duration)
+        except ValueError as e:
+            # 変換に失敗した場合、ValueErrorが発生し、このブロックが実行される
+            print(
+                f"{e}: Value for JointPositionPlannerConfig's attribute 'duration' is not properly set. Check the setting. It may be set at a string that are not castabble to flaot."
+            )
+
         self.timestep = MjOption().timestep if cfg.timestep <= 0 else cfg.timestep
-        self.n_steps = int(self.duration / self.timestep)
+        self.n_steps = int(cfg.duration / self.timestep)
 
         displacements = []
         for _disp in cfg.displacements:
@@ -47,7 +54,7 @@ class JointPositionPlanner:
             displacements.append(disp)
 
         self.displacements = displacements
-        self.plan = traj_5th_spline(self.displacements, cfg.pos_offset, self.timestep, self.n_steps)
+        self.plan = traj_5th_spline(self.displacements, self.pos_offset, self.timestep, self.n_steps)
 
         # print("Simulation time setup =======================================\n"
         #     f"    Number of steps:            {self.n_steps}\n"

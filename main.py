@@ -15,8 +15,6 @@ from core import generate_model_data, get_element_id, simulate
 from planners import JointPositionPlannerConfig
 from recorders import BasicRecorderConfig
 
-print(f"{type(BasicRecorderConfig)=}")
-
 
 @dataclass
 class SimulationConfig:
@@ -30,7 +28,7 @@ class SimulationConfig:
     config_export_path: str | None = None
 
 
-def instantiate(cfg: DictConfig, m: MjModel, d: MjData, *args, **kwargs) -> Any:  # TODO: reasonable but rough
+def instantiate(cfg: DictConfig, m: MjModel, d: MjData, *args, **kwargs) -> Any:
     cfg_class = OmegaConf.to_object(cfg)
     return cfg_class.setup(m, d, *args, **kwargs)  # type: ignore
 
@@ -70,8 +68,6 @@ if __name__ == "__main__":
     else:
         copy(target_gt, dataset_gt)
 
-    # Instantiate necessary classes ===============================================
-
     recorder = instantiate(cfg.recorder, m, d)
     planner = instantiate(cfg.planner, m, d)
     controller = instantiate(cfg.controller, m, d)
@@ -79,7 +75,7 @@ if __name__ == "__main__":
     result = simulate(m, d, recorder, planner, controller)  # main process
 
     gt_total_mass = gt["mass"]
-    gt_f_moms = gt_total_mass * gt["com"]  # type: ignore
+    gt_f_moms = gt_total_mass * gt["com"]
     gt_moms_i = gt["globalinertia"]
     gt_iparams = [gt_total_mass, *gt_f_moms, *gt_moms_i]
 

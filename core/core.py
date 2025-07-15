@@ -47,15 +47,11 @@ class InstantiateConfig(PrintableConfig):
     def setup(self, m, d, *args, **kwargs) -> Any:
         """Returns the instantiated object using the config."""
 
-        # target_class が文字列の場合、クラスオブジェクトに解決する
-        if isinstance(self.target_class, str):
-            module_path, class_name = self.target_class.rsplit(".", 1)
-            module = importlib.import_module(module_path)
-            target_class_obj = getattr(module, class_name)
-        else:
-            target_class_obj = self.target_class
+        module_path, class_name = self.target_class.rsplit(".", 1)
+        module = importlib.import_module(module_path)
+        target_class = getattr(module, class_name)
 
-        return target_class_obj(self, m, d, *args, **kwargs)
+        return target_class(self, m, d, *args, **kwargs)
 
 
 def show_comparison(
