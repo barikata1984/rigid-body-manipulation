@@ -189,13 +189,13 @@ def spawn_target_object(
     ground_truth = get_target_object_ground_truth(target_object_cad_gt_path)
     # Get mass and diaginertia computed by mujoco =========================
     target_object = mjcf.from_path(target_object_path)
-    target_object.custom.add(
+    target_object.custom.add(  # type: ignore
         "numeric",
         name="aabb_scale",
         data=str(ground_truth["aabb_scale"]),
     )
 
-    headlight = target_object.visual.headlight
+    headlight = target_object.visual.headlight  # type: ignore
     headlight.ambient = ".5 .5 .5"
     headlight.diffuse = ".4 .4 .4"
     headlight.specular = ".5 .5 .5"
@@ -203,19 +203,16 @@ def spawn_target_object(
     # Get asset files
     assets = {}
     meshes = []
-    for each_mesh in iter(target_object.asset.mesh):
+    for each_mesh in iter(target_object.asset.mesh):  # type: ignore
         file = each_mesh.get_attributes()["file"]
         assets[file.prefix + file.extension] = file.contents
         meshes.append(file.prefix)
 
-    for elem_texture in iter(target_object.asset.texture):
-        try:
-            file = elem_texture.get_attributes()["file"]
-            assets[file.prefix + file.extension] = file.contents
-        except:
-            print(f"'{elem_texture.type}' type texture, '{elem_texture.name}', does not have 'file' attribute.")
+    for elem_texture in iter(target_object.asset.texture):  # type: ignore
+        file = elem_texture.get_attributes()["file"]
+        assets[file.prefix + file.extension] = file.contents
 
-    target_object.asset.add(
+    target_object.asset.add(  # type: ignore
         "texture",
         name="white_background",
         type="skybox",
@@ -225,8 +222,8 @@ def spawn_target_object(
         width="1",
     )
 
-    if target_object.worldbody.find("site", "ft_sensor") is None:
-        target_object.worldbody.add("site", name="ft_sensor", euler="0 0 180", rgba="0 0 0 0")
+    if target_object.worldbody.find("site", "ft_sensor") is None:  # type: ignore
+        target_object.worldbody.add("site", name="ft_sensor", euler="0 0 180", rgba="0 0 0 0")  # type: ignore
     target_object_body = target_object.find("body", "object")
 
     inertial = {
@@ -271,7 +268,7 @@ def spawn_target_object(
         inertiagrouprange = " ".join(str(i) for i in [0, len(component_mass_densities) - 1])
         target_object.compiler.inertiagrouprange = inertiagrouprange
 
-    target_object_body.add("inertial", **inertial)
+    target_object_body.add("inertial", **inertial)  # type: ignore
 
     if compare_cad_mujoco:
         m = MjModel.from_xml_string(target_object.to_xml_string(), assets=assets)
@@ -296,15 +293,15 @@ def generate_model_data(
     manipulator_path = manipulator_dir / "manipulator.xml"
     manipulator = mjcf.from_path(manipulator_path)
     attachment_site = manipulator.find("site", "attachment")
-    attachment_site.attach(target_object)
+    attachment_site.attach(target_object)  # type: ignore
 
     # import pdb; pdb.set_trace()
 
     # Set camera position
-    aabb_scale = manipulator.custom.numeric["target/aabb_scale"].data[0]
+    aabb_scale = manipulator.custom.numeric["target/aabb_scale"].data[0]  # type: ignore
     track_cam_pos = [0, 0, 4 * aabb_scale]
     track_cam = manipulator.find("camera", cfg.recorder.track_cam_name)
-    track_cam.pos = track_cam_pos
+    track_cam.pos = track_cam_pos  # type: ignore
 
     # Spawn a mujoco model and a mujoco data
     m = MjModel.from_xml_string(manipulator.to_xml_string(filename_with_hash=False), assets=assets)
