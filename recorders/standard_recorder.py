@@ -15,13 +15,14 @@ from mujoco._structs import MjData, MjModel
 from mujoco.renderer import Renderer
 from omegaconf import MISSING
 
-from simulator import InstantiateConfig
 from utilities import get_element_id
+
+from .base_recorder import BaseRecorderConfig
 
 
 @dataclass
-class BasicRecorderConfig(InstantiateConfig):
-    target_class: str = "recorders.BasicRecorder"
+class StandardRecorderConfig(BaseRecorderConfig):
+    target_class: str = "StandardRecorder"
     track_cam_name: str = "tracking"
     fig_height: int = 800
     fig_width: int = 800
@@ -29,14 +30,14 @@ class BasicRecorderConfig(InstantiateConfig):
     videoname: str = "output.mp4"
     videcodec: str = "mp4v"
     dataset_dir: str = MISSING
-    aabb_scale: float | None = None
+    aabb_scale: float = MISSING  # | None = None
     # gt_mass_distr_file_path: str = MISSING
 
 
-class BasicRecorder:
+class StandardRecorder:
     def __init__(
         self,
-        cfg: BasicRecorderConfig,
+        cfg: StandardRecorderConfig,
         m: MjModel,
         d: MjData,
     ) -> None:

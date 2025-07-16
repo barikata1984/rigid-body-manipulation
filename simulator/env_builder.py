@@ -1,8 +1,5 @@
-import importlib
 import logging
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -20,38 +17,41 @@ from transforms3d.quaternions import mat2quat, quat2mat
 import dynamics as dyn
 
 
-# Pretty printing class
-class PrintableConfig:
-    """Printable Config defining str function"""
+def generate_model_data(
+    cfg: DictConfig | ListConfig,
+) -> tuple[MjModel, MjData, dict[str, float | list[float]]]:
+    # Get the ground truth data output by a CAD application ========================
+    target_dir = Path(cfg.target_dir)
+    target_object_path = target_dir / "object.xml"
+    target_object_cad_gt_path = target_dir / "object_cad_gt.csv"
+    target_object, assets, ground_truth = spawn_target_object(
+        target_object_path, target_object_cad_gt_path, compare_cad_mujoco=False
+    )
 
-    def __str__(self):
-        lines = [self.__class__.__name__ + ":"]
-        for key, val in vars(self).items():
-            if isinstance(val, tuple):
-                flattened_val = "["
-                for item in val:
-                    flattened_val += str(item) + "\n"
-                flattened_val = flattened_val.rstrip("\n")
-                val = flattened_val + "]"
-            lines += f"{key}: {str(val)}".split("\n")
-        return "\n    ".join(lines)
+    # Load the .xml of a manipulator and attach the target object to it
+    manipulator_dir = Path(cfg.manipulator_dir)
+    manipulator_path = manipulator_dir / "manipulator.xml"
+    manipulator = mjcf.from_path(manipulator_path)
+    attachment_site = manipulator.find("site", "attachment")
+    attachment_site.attach(target_object)  # type: ignore
 
+    # import pdb; pdb.set_trace()
 
-# Base instantiate configs
-@dataclass
-class InstantiateConfig(PrintableConfig):
-    """Config class for instantiating an the class specified in the _target attribute."""
+    # Set camera position
+    aabb_scale = manipulator.custom.numeric["target/aabb_scale"].data[0]  # type: ignore
+    track_cam_pos = [0, 0, 4 * aabb_scale]
+    track_cam = manipulator.find("camera", cfg.recorder.track_cam_name)
+    track_cam.pos = track_cam_pos  # type: ignore
 
-    target_class: str  # 型ヒントを str も許容するように変更
+    # Spawn a mujoco model and a mujoco data
+    m = MjModel.from_xml_string(manipulator.to_xml_string(filename_with_hash=False), assets=assets)
+    d = MjData(m)
 
-    def setup(self, m, d, *args, **kwargs) -> Any:
-        """Returns the instantiated object using the config."""
+    show_comparison(m, "target/object", ground_truth, mode="diaginertia")
 
-        module_path, class_name = self.target_class.rsplit(".", 1)
-        module = importlib.import_module(module_path)
-        target_class = getattr(module, class_name)
+    mj_resetDataKeyframe(m, d, get_element_id(m, "keyframe", cfg.reset_keyframe))
 
-        return target_class(self, m, d, *args, **kwargs)
+    return m, d, ground_truth
 
 
 def show_comparison(
@@ -275,54 +275,6 @@ def spawn_target_object(
         show_comparison(m, "object", ground_truth)
 
     return target_object, assets, ground_truth
-
-
-def generate_model_data(
-    cfg: DictConfig | ListConfig,
-) -> tuple[MjModel, MjData, dict[str, float | list[float]]]:
-    # Get the ground truth data output by a CAD application ========================
-    target_dir = Path(cfg.target_dir)
-    target_object_path = target_dir / "object.xml"
-    target_object_cad_gt_path = target_dir / "object_cad_gt.csv"
-    target_object, assets, ground_truth = spawn_target_object(
-        target_object_path, target_object_cad_gt_path, compare_cad_mujoco=False
-    )
-
-    # Load the .xml of a manipulator and attach the target object to it
-    manipulator_dir = Path(cfg.manipulator_dir)
-    manipulator_path = manipulator_dir / "manipulator.xml"
-    manipulator = mjcf.from_path(manipulator_path)
-    attachment_site = manipulator.find("site", "attachment")
-    attachment_site.attach(target_object)  # type: ignore
-
-    # import pdb; pdb.set_trace()
-
-    # Set camera position
-    aabb_scale = manipulator.custom.numeric["target/aabb_scale"].data[0]  # type: ignore
-    track_cam_pos = [0, 0, 4 * aabb_scale]
-    track_cam = manipulator.find("camera", cfg.recorder.track_cam_name)
-    track_cam.pos = track_cam_pos  # type: ignore
-
-    # Spawn a mujoco model and a mujoco data
-    m = MjModel.from_xml_string(manipulator.to_xml_string(filename_with_hash=False), assets=assets)
-    d = MjData(m)
-
-    show_comparison(m, "target/object", ground_truth, mode="diaginertia")
-
-    mj_resetDataKeyframe(m, d, get_element_id(m, "keyframe", cfg.reset_keyframe))
-
-    return m, d, ground_truth
-
-    # print("Configure manipulator and object ============================")
-    # xml_file = config.xml.system_file
-    # print(f"    Loaded xml file: {xml_file}")
-    # xml_path = os.path.join("./xml_models", xml_file)
-    # m = MjModel.from_xml_path(xml_path)
-    # print("Number of ===================================================\n"
-    #     f"    coorindates in joint space (nv):    {m.nv:>2}\n"
-    #     f"    degrees of freedom (nu):            {m.nu:>2}\n"
-    #     f"    actuator activations (na):          {m.na:>2}\n"
-    #     f"    sensor outputs (nsensordata):       {m.nsensordata:>2}")
 
 
 def get_element_id(m, elem_type, name):

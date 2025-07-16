@@ -1,1 +1,1 @@
-from .basic_recorder import BasicRecorder, BasicRecorderConfig
+from .standard_recorder import StandardRecorder, StandardRecorderConfig

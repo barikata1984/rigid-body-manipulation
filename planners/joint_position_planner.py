@@ -9,12 +9,12 @@ from numpy import linalg as la
 from numpy.typing import ArrayLike, NDArray
 from omegaconf import MISSING
 
-from simulator import InstantiateConfig
+from .base_planner import BasePlannerConfig
 
 
 @dataclass
-class JointPositionPlannerConfig(InstantiateConfig):
-    target_class: str = "planners.JointPositionPlanner"
+class JointPositionPlannerConfig(BasePlannerConfig):
+    target_class: str = "JointPositionPlanner"
     duration: float = MISSING  # todo: using str is not good...
     timestep: float = -1
     pos_offset: list[float] | None = None

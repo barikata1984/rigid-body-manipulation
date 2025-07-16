@@ -7,12 +7,13 @@ from omegaconf import MISSING
 from scipy import linalg
 
 from dynamics import StateSpace, StateSpaceConfig
-from simulator import InstantiateConfig
+
+from .base_controller import BaseControllerConfig
 
 
 @dataclass
-class LinearQuadraticRegulatorConfig(InstantiateConfig):
-    target_class: str = "controllers.LinearQuadraticRegulator"
+class LinearQuadraticRegulatorConfig(BaseControllerConfig):
+    target_class: str = "LinearQuadraticRegulator"
     state_space: StateSpaceConfig = field(default_factory=StateSpaceConfig)
     input_gain: list[float] = MISSING
 
