@@ -1,6 +1,6 @@
 import re
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from math import pi
 
 import numpy as np
@@ -9,7 +9,7 @@ from numpy import linalg as la
 from numpy.typing import ArrayLike, NDArray
 from omegaconf import MISSING
 
-from core import InstantiateConfig
+from simulator import InstantiateConfig
 
 
 @dataclass
@@ -18,7 +18,7 @@ class JointPositionPlannerConfig(InstantiateConfig):
     duration: float = MISSING  # todo: using str is not good...
     timestep: float = -1
     pos_offset: list[float] | None = None
-    displacements: list[float | str] = field(default_factory=lambda: [0.2, 0.4, 0.6, 1.0 * pi, 0.3 * pi, 1.5 * pi])
+    displacements: list[float] = MISSING
 
 
 class JointPositionPlanner:

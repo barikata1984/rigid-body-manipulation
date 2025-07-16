@@ -6,8 +6,8 @@ from numpy.typing import NDArray
 from omegaconf import MISSING
 from scipy import linalg
 
-from core import InstantiateConfig
 from dynamics import StateSpace, StateSpaceConfig
+from simulator import InstantiateConfig
 
 
 @dataclass

@@ -8,7 +8,8 @@ import numpy as np
 import pandas as pd
 from dm_control import mjcf
 from liegroups import SE3, SO3
-from mujoco._functions import mj_resetDataKeyframe
+from mujoco._enums import mjtObj
+from mujoco._functions import mj_name2id, mj_resetDataKeyframe
 from mujoco._structs import MjData, MjModel
 from omegaconf.dictconfig import DictConfig
 from omegaconf.listconfig import ListConfig
@@ -17,7 +18,6 @@ from transforms3d.quaternions import mat2quat, quat2mat
 
 # all the modules of the packages below are imported to enable autoinstantiate()
 import dynamics as dyn
-from utilities import get_element_id
 
 
 # Pretty printing class
@@ -323,3 +323,33 @@ def generate_model_data(
     #     f"    degrees of freedom (nu):            {m.nu:>2}\n"
     #     f"    actuator activations (na):          {m.na:>2}\n"
     #     f"    sensor outputs (nsensordata):       {m.nsensordata:>2}")
+
+
+def get_element_id(m, elem_type, name):
+    obj_enum = None
+
+    if "body" == elem_type:
+        obj_enum = mjtObj.mjOBJ_BODY
+    elif "camera" == elem_type:
+        obj_enum = mjtObj.mjOBJ_CAMERA
+    elif "joint" == elem_type:
+        obj_enum = mjtObj.mjOBJ_JOINT
+    elif "sensor" == elem_type:
+        obj_enum = mjtObj.mjOBJ_SENSOR
+    elif "site" == elem_type:
+        obj_enum = mjtObj.mjOBJ_SITE
+    elif "keyframe" == elem_type:
+        obj_enum = mjtObj.mjOBJ_KEY
+    elif "numeric" == elem_type:
+        obj_enum = mjtObj.mjOBJ_NUMERIC
+    else:
+        raise ValueError(
+            f"'{elem_type}' is not supported for now. Use mj_name2id and check the value of an ID instead."
+        )
+
+    id = mj_name2id(m, obj_enum, name)
+
+    if -1 == id:
+        raise ValueError(f"ID for '{name}' not found. Check the manipulator .xml or the object .xml")
+
+    return id

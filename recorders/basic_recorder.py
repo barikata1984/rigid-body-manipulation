@@ -15,7 +15,7 @@ from mujoco._structs import MjData, MjModel
 from mujoco.renderer import Renderer
 from omegaconf import MISSING
 
-from core import InstantiateConfig
+from simulator import InstantiateConfig
 from utilities import get_element_id
 
 

@@ -1,9 +1,8 @@
 import numpy as np
 from matplotlib import pyplot as plt
-from math import tan, atan2, pi, radians as rad, degrees as deg
-# Import original modules
-from utilities import classify_dict_kargs
 
+# Import original modules
+from utilities import categorize_dict_kargs
 
 # Frequently used plot variables
 cb_rgb = ["#FF4B00", "#03AF7A", "#0041FF"]
@@ -23,7 +22,7 @@ def ax_plot_lines(ax, x, ys, ylabel, c=cb_rgb, alpha=0.5, **kargs):
     defaults.update(kargs)
     # Separate keyword arguments into array like ones (excluding strings) and
     # the others
-    arr_like, others = classify_dict_kargs(defaults)
+    arr_like, others = categorize_dict_kargs(defaults)
 
     ys = np.asarray(ys)
     ys = np.atleast_2d(ys) if 1 == len(ys.shape) else ys.T
@@ -37,7 +36,7 @@ def ax_plot_lines(ax, x, ys, ylabel, c=cb_rgb, alpha=0.5, **kargs):
             y[:clip],
             **others,
             **{k: v[i % len(v)] for k, v in arr_like.items()},
-            )
+        )
 
     _, labels = plt.gca().get_legend_handles_labels()
 
@@ -49,13 +48,11 @@ def ax_plot_lines(ax, x, ys, ylabel, c=cb_rgb, alpha=0.5, **kargs):
 
 
 def ax_plot_lines_w_tgt(ax, time, act, tgt, ylabel, **kargs):
-    for ys, ls in zip((act, tgt), act_tgt_ls):
+    for ys, ls in zip((act, tgt), act_tgt_ls, strict=False):
         ax_plot_lines(ax, time, ys, ylabel, ls=ls, **kargs)
 
 
 def axes_plot_frc(axes, time, act, tgt, ylabel=None, **kargs):
     ylabel = "frc [N]" if ylabel is None else ylabel
-    ax_plot_lines_w_tgt(
-        axes[0], time, act[:, :2], tgt[:, :2], ylabel, c=cb_rgb[:2], **kargs)
-    ax_plot_lines_w_tgt(
-        axes[1], time, act[:, 2:], tgt[:, 2:], ylabel, c=cb_rgb[2:], **kargs)
+    ax_plot_lines_w_tgt(axes[0], time, act[:, :2], tgt[:, :2], ylabel, c=cb_rgb[:2], **kargs)
+    ax_plot_lines_w_tgt(axes[1], time, act[:, 2:], tgt[:, 2:], ylabel, c=cb_rgb[2:], **kargs)

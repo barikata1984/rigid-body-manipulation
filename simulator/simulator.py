@@ -10,10 +10,10 @@ from numpy import linalg as nla
 from tqdm import tqdm
 
 import dynamics as dyn
-import visualization as vis
 from sensors import Sensors
 from transformations import Poses
 from utilities import get_element_id
+from visualization import ax_plot_lines, ax_plot_lines_w_tgt
 
 # Naming convention of spatial and dynamics variables:
 #
@@ -311,13 +311,13 @@ def simulate(
     yls = ["q0-2 [m]", "q3-5 [rad]"]
     for i in range(len(qpos_axes)):
         slcr = slice(i * 3, (i + 1) * 3)
-        vis.ax_plot_lines_w_tgt(qpos_axes[i], time, trajectory[:, 0, slcr], tgt_trajectory[:, 0, slcr], yls[i])
+        ax_plot_lines_w_tgt(qpos_axes[i], time, trajectory[:, 0, slcr], tgt_trajectory[:, 0, slcr], yls[i])
 
     # Object linear acceleration and ft sensor measurements rel. to {sensor}
     acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)
-    vis.ax_plot_lines(acc_ft_axes[0], frame_iter, linaccs_sen_obji, "recovered_linacc_sen_obji [m/s/s]")
-    vis.ax_plot_lines(acc_ft_axes[1], frame_iter, fts_sen[:, :3], "frc_sen [N]")
-    vis.ax_plot_lines(acc_ft_axes[2], frame_iter, fts_sen[:, 3:], "trq_sen [N*m]")
+    ax_plot_lines(acc_ft_axes[0], frame_iter, linaccs_sen_obji, "recovered_linacc_sen_obji [m/s/s]")
+    ax_plot_lines(acc_ft_axes[1], frame_iter, fts_sen[:, :3], "frc_sen [N]")
+    ax_plot_lines(acc_ft_axes[2], frame_iter, fts_sen[:, 3:], "trq_sen [N*m]")
     for ax in acc_ft_axes:
         ax.hlines(0.0, frame_iter[0], frame_iter[-1], ls="dashed", alpha=0.5)
 

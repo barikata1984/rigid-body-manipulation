@@ -11,9 +11,10 @@ from omegaconf.errors import MissingMandatoryValue
 from tyro import MISSING
 
 from controllers import LinearQuadraticRegulatorConfig
-from core import generate_model_data, get_element_id, simulate
 from planners import JointPositionPlannerConfig
 from recorders import BasicRecorderConfig
+from simulator import generate_model_data, simulate
+from utilities import get_element_id
 
 
 @dataclass
