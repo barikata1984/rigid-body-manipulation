@@ -71,8 +71,8 @@ if __name__ == "__main__":
     result = simulator.run()  # m, d, recorder, planner, controller)  # main process
 
     gt_total_mass = gt["mass"]
-    gt_f_moms = gt_total_mass * gt["com"]
+    gt_f_moms = gt_total_mass * gt["com"]  # type: ignore
     gt_moms_i = gt["globalinertia"]
-    gt_iparams = [gt_total_mass, *gt_f_moms, *gt_moms_i]
+    gt_iparams = [gt_total_mass, *gt_f_moms, *gt_moms_i]  # type: ignore
 
     recorder.finish(result["frames"], result["regressors"], gt_iparams)

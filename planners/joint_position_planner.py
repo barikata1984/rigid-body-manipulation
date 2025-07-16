@@ -14,7 +14,7 @@ from .base_planner import BasePlannerConfig
 
 @dataclass
 class JointPositionPlannerConfig(BasePlannerConfig):
-    target_class: str = "JointPositionPlanner"
+    target_class: str = "JointPositionPlanner"  # type: ignore
     duration: float = MISSING  # todo: using str is not good...
     timestep: float = -1
     pos_offset: list[float] | None = None

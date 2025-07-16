@@ -22,7 +22,7 @@ from .base_recorder import BaseRecorderConfig
 
 @dataclass
 class StandardRecorderConfig(BaseRecorderConfig):
-    target_class: str = "StandardRecorder"
+    target_class: str = "StandardRecorder"  # type: ignore
     track_cam_name: str = "tracking"
     fig_height: int = 800
     fig_width: int = 800
