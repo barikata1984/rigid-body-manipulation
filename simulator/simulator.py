@@ -131,9 +131,9 @@ def simulate(
 
     for pose_x_bi, simat_bi_b in zip(poses.x_bi[id_ll + 1 :], simats_bi_b[id_ll + 1 :], strict=False):
         # "b" here is ∈ {attachment, object}
-        pose_x_llj = pose_x_ll.dot(pose_ll_llj)
+        pose_x_llj = pose_x_ll.dot(pose_ll_llj)  # type: ignore
         pose_bi_llj = pose_x_bi.inv().dot(pose_x_llj)
-        simat_llj_b = dyn.transfer_simat(pose_bi_llj.inv(), simat_bi_b)
+        simat_llj_b = dyn.transfer_simat(pose_bi_llj.inv(), simat_bi_b)  # type: ignore
         simat_sen_obj += simat_llj_b
         simats_lj_l[id_ll] += simat_llj_b
 
@@ -144,7 +144,7 @@ def simulate(
         hpose_l_lj = poses.l_lj[k + 1]
         hpose_k_l = poses.a_b[k + 1]
         hpose_kj_lj = hpose_kj_k.dot(hpose_k_l.dot(hpose_l_lj))
-        hposes_lj_kj.append(hpose_kj_lj.inv())
+        hposes_lj_kj.append(hpose_kj_lj.inv())  # type: ignore
 
     # Set some arguments of dyn.inverse() which dose not evolve along time ========
     gacc_x = -1 * np.array([*MjOption().gravity, 0, 0, 0])
@@ -200,13 +200,13 @@ def simulate(
             trajectory.append(act_traj)
 
             # Get (d)twist_sen, and linacc_sen_obj for later verification
-            pose_sen_llj = pose_x_sen.inv().dot(pose_x_ll.dot(pose_ll_llj))
+            pose_sen_llj = pose_x_sen.inv().dot(pose_x_ll.dot(pose_ll_llj))  # type: ignore
             twist_llj = twists_lj_l[id_ll]
-            twist_sen = pose_sen_llj.adjoint() @ twist_llj
+            twist_sen = pose_sen_llj.adjoint() @ twist_llj  # type: ignore
             # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
             dtwist_llj = dtwists_lj_l[id_ll]
-            pose_sen_llj_dadjoint = SE3.curlywedge(twist_sen) @ pose_sen_llj.adjoint()
-            dtwist_sen = pose_sen_llj_dadjoint @ twist_llj + pose_sen_llj.adjoint() @ dtwist_llj
+            pose_sen_llj_dadjoint = SE3.curlywedge(twist_sen) @ pose_sen_llj.adjoint()  # type: ignore
+            dtwist_sen = pose_sen_llj_dadjoint @ twist_llj + pose_sen_llj.adjoint() @ dtwist_llj  # type: ignore
             # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
             linacc_sen_obji = dyn.extract_linacc_frame_transferred(twist_sen, dtwist_sen, pose_sen_obji)
@@ -230,25 +230,12 @@ def simulate(
             pose_obj_cam = pose_x_obj.inv().dot(poses.x_cam[recorder.cam_id])
 
             file_paths.append(str(recorder.complete_image_dir / file_name))
-            transform_matrices.append(pose_obj_cam.as_matrix().tolist())
-            poses_sen_obj.append(pose_sen_obj.as_matrix().tolist())
-            poses_sen_obji.append(pose_sen_obji.as_matrix().tolist())
+            transform_matrices.append(pose_obj_cam.as_matrix().tolist())  # type: ignore
+            poses_sen_obj.append(pose_sen_obj.as_matrix().tolist())  # type: ignore
+            poses_sen_obji.append(pose_sen_obji.as_matrix().tolist())  # type: ignore
             twists_sen.append(twist_sen.tolist())
             dtwists_sen.append(dtwist_sen.tolist())
 
-            #            frame = dict(
-            #                file_path=str(recorder.complete_image_dir / file_name),
-            #                transform_matrix=pose_obj_cam.as_matrix().tolist(),
-            #                pose_sen_obj=pose_sen_obj.as_matrix().tolist(),
-            #                pose_sen_obji=pose_sen_obji.as_matrix().tolist(),
-            #                twist_sen=twist_sen.tolist(),
-            #                dtwist_sen=dtwist_sen.tolist(),
-            #                ft_sen=fts_sen[-1].tolist(),
-            #                linacc_sen_obji=linaccs_sen_obji[-1].tolist(),
-            #                )
-            #
-            #            #recorder.transform["frames"].append(frame)
-            #            frames.append(frame)
             frame_count += 1
 
         # Get residual of state
@@ -291,14 +278,14 @@ def simulate(
     frames = []
     data_containers = [file_paths, transform_matrices, poses_sen_obj, twists_sen, dtwists_sen, fts_sen]
     for fpath, tf, pose, t, dt, ft in zip(*data_containers, strict=False):
-        frame = dict(
-            file_path=fpath,
-            transform_matrix=tf,
-            pose_sen_obj=pose,
-            twist_sen=t,
-            dtwist_sen=dt,
-            ft_sen=ft.tolist(),
-        )
+        frame = {
+            "file_path": fpath,
+            "transform_matrix": tf,
+            "pose_sen_obj": pose,
+            "twist_sen": t,
+            "dtwist_sen": dt,
+            "ft_sen": ft.tolist(),
+        }
 
         frames.append(frame)
 
@@ -323,4 +310,4 @@ def simulate(
 
     plt.show()
 
-    return dict(frames=frames, regressors=regressors)
+    return {"frames": frames, "regressors": regressors}

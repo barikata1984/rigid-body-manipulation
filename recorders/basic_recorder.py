@@ -137,13 +137,13 @@ class BasicRecorder:
 
         regressors = np.reshape(regressors, (-1, 10))
         fts_sen = np.reshape(fts_sen, -1)
-        est_iparams, _, _, _ = np.linalg.lstsq(regressors, fts_sen)
+        lstsq_iparams, _, _, _ = np.linalg.lstsq(regressors, fts_sen)
         # score = scorer.calculate(est_iparams)
         # gt_iparams = scorer.gt_iparams
 
         labels = ["total_mass", "mx", "my", "mz", "ixx", "iyy", "izz", "ixy", "iyz", "izx", "aabb_scale", "score"]
         global_gt = [*gt_iparams, self.aabb_scale]  # , np.nan]
-        lstsq = [*est_iparams, np.nan]  # , score]
+        lstsq = [*lstsq_iparams, np.nan]  # , score]
 
         split_transform = self.base_transform.copy()
         split_transform["frames"] = frames
