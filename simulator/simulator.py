@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 
 import matplotlib as mpl
@@ -9,8 +9,13 @@ from mujoco._functions import mj_differentiatePos, mj_step
 from mujoco._structs import MjData, MjModel, MjOption
 from numpy import linalg as nla
 from tqdm import tqdm
+from tyro import MISSING
 
 import dynamics as dyn
+from configurations import instantiate
+from controllers import LinearQuadraticRegulatorConfig
+from planners import JointPositionPlannerConfig
+from recorders import StandardRecorderConfig
 from sensors import Sensors
 from transformations import Poses
 from utilities import get_element_id
@@ -20,8 +25,16 @@ from .base_simulator import BaseSimulatorConfig
 
 
 @dataclass
-class _SimulatorConfig(BaseSimulatorConfig):
-    target_class: str = "_Simulator"
+class SimulatorConfig(BaseSimulatorConfig):
+    target_class: str = "Simulator"  # type: ignore
+    manipulator_dir: str = "xml_models/manipulators/sequential"
+    target_dir: str = MISSING
+    reset_keyframe: str = "initial_state"
+    recorder: StandardRecorderConfig = field(default_factory=StandardRecorderConfig)
+    planner: JointPositionPlannerConfig = field(default_factory=JointPositionPlannerConfig)
+    controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
+    exp_setup: str = "experimental_setups/base.yaml"
+    config_export_path: str | None = None
 
 
 # Naming convention of spatial and dynamics variables:
@@ -74,17 +87,16 @@ np.set_printoptions(precision=5, suppress=True)
 class Simulator:
     def __init__(
         self,
+        cfg: SimulatorConfig,
         m: MjModel,
         d: MjData,
-        recorder,
-        planner,
-        controller,
     ):
         self.m = m
         self.d = d
-        self.recorder = recorder
-        self.planner = planner
-        self.controller = controller
+
+        self.recorder = instantiate(cfg.recorder, m, d)
+        self.planner = instantiate(cfg.planner, m, d)
+        self.controller = instantiate(cfg.controller, m, d)
 
         # Instantiate register classes
         self.poses = Poses(self.m, self.d)
@@ -127,9 +139,9 @@ class Simulator:
         for pose_x_bi, simat_bi_b in zip(
             self.poses.x_bi[self.id_ll + 1 :], simats_bi_b[self.id_ll + 1 :], strict=False
         ):
-            pose_x_llj = pose_x_ll.dot(self.pose_ll_llj)
+            pose_x_llj = pose_x_ll.dot(self.pose_ll_llj)  # type: ignore
             pose_bi_llj = pose_x_bi.inv().dot(pose_x_llj)
-            simat_llj_b = dyn.transfer_simat(pose_bi_llj.inv(), simat_bi_b)
+            simat_llj_b = dyn.transfer_simat(pose_bi_llj.inv(), simat_bi_b)  # type: ignore
             simats_lj_l[self.id_ll] += simat_llj_b
         self.simats_lj_l = simats_lj_l
 
@@ -140,7 +152,7 @@ class Simulator:
             hpose_l_lj = self.poses.l_lj[k + 1]
             hpose_k_l = self.poses.a_b[k + 1]
             hpose_kj_lj = hpose_kj_k.dot(hpose_k_l.dot(hpose_l_lj))
-            hposes_lj_kj.append(hpose_kj_lj.inv())
+            hposes_lj_kj.append(hpose_kj_lj.inv())  # type: ignore
         self.hposes_lj_kj = hposes_lj_kj
 
         # Partially initialize inverse dynamics function
@@ -197,6 +209,10 @@ class Simulator:
             self.tgt_trajectory.append(tgt_traj)
             self.trajectory.append(act_traj)
 
+            import pdb
+
+            pdb.set_trace()
+
             # Dynamic poses
             pose_x_ll = self.poses.x_b[self.id_ll]
             pose_x_sen = self.poses.get_x_("site", "target/ft_sensor")
@@ -206,12 +222,12 @@ class Simulator:
             pose_sen_obji = pose_x_sen.inv().dot(pose_x_obji)
 
             # Get (d)twist_sen, and linacc_sen_obj for verification
-            pose_sen_llj = pose_x_sen.inv().dot(pose_x_ll.dot(self.pose_ll_llj))
+            pose_sen_llj = pose_x_sen.inv().dot(pose_x_ll.dot(self.pose_ll_llj))  # type: ignore
             twist_llj = twists_lj_l[self.id_ll]
-            twist_sen = pose_sen_llj.adjoint() @ twist_llj
+            twist_sen = pose_sen_llj.adjoint() @ twist_llj  # type: ignore
             dtwist_llj = dtwists_lj_l[self.id_ll]
-            pose_sen_llj_dadjoint = SE3.curlywedge(twist_sen) @ pose_sen_llj.adjoint()
-            dtwist_sen = pose_sen_llj_dadjoint @ twist_llj + pose_sen_llj.adjoint() @ dtwist_llj
+            pose_sen_llj_dadjoint = SE3.curlywedge(twist_sen) @ pose_sen_llj.adjoint()  # type: ignore
+            dtwist_sen = pose_sen_llj_dadjoint @ twist_llj + pose_sen_llj.adjoint() @ dtwist_llj  # type: ignore
 
             linacc_sen_obji = dyn.extract_linacc_frame_transferred(twist_sen, dtwist_sen, pose_sen_obji)
             self.linaccs_sen_obji.append(linacc_sen_obji)
@@ -232,9 +248,9 @@ class Simulator:
             # Log NeMD ingredients
             pose_obj_cam = pose_x_obj.inv().dot(self.poses.x_cam[self.recorder.cam_id])
             self.file_paths.append(str(self.recorder.complete_image_dir / file_name))
-            self.transform_matrices.append(pose_obj_cam.as_matrix().tolist())
-            self.poses_sen_obj.append(pose_sen_obj.as_matrix().tolist())
-            self.poses_sen_obji.append(pose_sen_obji.as_matrix().tolist())
+            self.transform_matrices.append(pose_obj_cam.as_matrix().tolist())  # type: ignore
+            self.poses_sen_obj.append(pose_sen_obj.as_matrix().tolist())  # type: ignore
+            self.poses_sen_obji.append(pose_sen_obji.as_matrix().tolist())  # type: ignore
             self.twists_sen.append(twist_sen.tolist())
             self.dtwists_sen.append(dtwist_sen.tolist())
 

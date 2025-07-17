@@ -1,43 +1,24 @@
-from dataclasses import dataclass, field
 from pathlib import Path
 from shutil import copy
 
 import tyro
 from omegaconf import OmegaConf
 from omegaconf.errors import MissingMandatoryValue
-from tyro import MISSING
 
 from configurations import instantiate
-from controllers import LinearQuadraticRegulatorConfig
-from planners import JointPositionPlannerConfig
-from recorders import StandardRecorderConfig
-from simulator import Simulator, generate_model_data
+from simulator import SimulatorConfig, generate_model_data
 from utilities import get_element_id
 
-
-@dataclass
-class SimulationConfig:
-    manipulator_dir: str = "xml_models/manipulators/sequential"
-    target_dir: str = MISSING
-    reset_keyframe: str = "initial_state"
-    recorder: StandardRecorderConfig = field(default_factory=StandardRecorderConfig)
-    planner: JointPositionPlannerConfig = field(default_factory=JointPositionPlannerConfig)
-    controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
-    exp_setup: str = "experimental_setups/base.yaml"
-    config_export_path: str | None = None
-
-
 if __name__ == "__main__":
-    cli_config = tyro.cli(SimulationConfig)
+    cli_config = tyro.cli(SimulatorConfig)
     cli_specified_yaml = cli_config.exp_setup
     yaml_config = OmegaConf.load(cli_specified_yaml)
-    base_config = SimulationConfig()
+    base_config = SimulatorConfig()
 
     cfg = OmegaConf.merge(base_config, yaml_config, cli_config)  # priority: cli > cli-specified yaml > vanilla
     m, d, gt = generate_model_data(cfg)
 
     # Fill (potentially) missing fields of a logger configulation =================
-
     try:
         cfg.recorder.aabb_scale = float(cfg.recorder.aabb_scale)
     except MissingMandatoryValue:
@@ -63,16 +44,14 @@ if __name__ == "__main__":
     else:
         copy(target_gt, dataset_gt)
 
-    recorder = instantiate(cfg.recorder, m, d)
-    planner = instantiate(cfg.planner, m, d)
-    controller = instantiate(cfg.controller, m, d)
-    simulator = Simulator(m, d, recorder, planner, controller)
+    simulator_cfg = OmegaConf.to_object(cfg)
+    simulator = instantiate(simulator_cfg, m, d)
 
-    result = simulator.run()  # m, d, recorder, planner, controller)  # main process
+    result = simulator.run()
 
     gt_total_mass = gt["mass"]
     gt_f_moms = gt_total_mass * gt["com"]  # type: ignore
     gt_moms_i = gt["globalinertia"]
     gt_iparams = [gt_total_mass, *gt_f_moms, *gt_moms_i]  # type: ignore
 
-    recorder.finish(result["frames"], result["regressors"], gt_iparams)
+    simulator.recorder.finish(result["frames"], result["regressors"], gt_iparams)

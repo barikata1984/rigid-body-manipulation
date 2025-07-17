@@ -5,4 +5,4 @@ from configurations import InstantiateConfig
 
 @dataclass
 class BaseSimulatorConfig(InstantiateConfig):
-    moduule: str = "simulator"
+    module_name: str = "simulator"  # type: ignore

@@ -4,8 +4,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from mujoco._structs import MjData, MjModel
-from omegaconf import OmegaConf
-from omegaconf.dictconfig import DictConfig
 
 
 # Pretty printing class
@@ -39,6 +37,7 @@ class InstantiateConfig(ABC, PrintableConfig):
     def target_class(self) -> str: ...
 
     def setup(self, m, d, *args, **kwargs) -> Any:
+        print("=== == === == === SimulatorConfig is called. === == === == ===")
         """Returns the instantiated object using the config."""
         module = importlib.import_module(self.module_name)
         target_class = getattr(module, self.target_class)
@@ -46,6 +45,6 @@ class InstantiateConfig(ABC, PrintableConfig):
         return target_class(self, m, d, *args, **kwargs)
 
 
-def instantiate(cfg: DictConfig, m: MjModel, d: MjData, *args, **kwargs) -> Any:
-    cfg_class = OmegaConf.to_object(cfg)
+def instantiate(cfg_class: Any, m: MjModel, d: MjData, *args, **kwargs) -> Any:
+    # cfg_class = OmegaConf.to_object(cfg)
     return cfg_class.setup(m, d, *args, **kwargs)  # type: ignore
