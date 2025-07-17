@@ -15,35 +15,26 @@ class Sensors:
         self.m = m
         self.d = d
         self._sensordata = d.sensordata
-        self.jointpos_stddev = np.array(
-            [1.0e-3, 1.0e-3, 1.0e-3, 1.0e-2, 1.0e-2, 1.0e-2]  # [m, m, m, rad, rad, rad]
-        )
-        self.noise_scaler = np.sqrt(2) * fps
-        self.rng = np.random.default_rng()
-
-    def get_jointpos_noise(self) -> np.ndarray:
-        return self.rng.normal(
-            np.zeros_like(self.jointpos_stddev),
-            self.jointpos_stddev,
-        )
+        self.jointpos_noise_stddev = np.array(
+            [7.0e-6, 7.0e-6, 7.0e-6, 0.00012, 0.00012, 0.00012]
+        )  # [m, m, m, rad, rad, rad]
+        self.jointpos_noise_scale_factor = np
 
     def get(
         self,
         key,
-        perturbed: bool = False,
     ):
         match key:
             case "jointpos":
-                return self.d.qpos + self.get_jointpos_noise() if perturbed else self.d.qpos
+                return self.d.qpos
             case "jointvel":
-                return self.d.qvel + self.noise_scaler * self.get_jointpos_noise() if perturbed else self.d.qvel
+                return self.d.qvel
             case "jointacc":
-                return self.d.qacc + self.noise_scaler**2 * self.get_jointpos_noise() if perturbed else self.d.qvel
-            # shape: (6,), (6,), (6,)
+                return self.d.qacc  # shape: (6,), (6,), (6,)
             case "jointvars":
-                qpos = self.get("jointpos", perturbed)
-                qvel = self.get("jointvel", perturbed)
-                qacc = self.get("jointacc", perturbed)
+                qpos = self.get("jointpos")
+                qvel = self.get("jointvel")
+                qacc = self.get("jointacc")
                 return qpos, qvel, qacc  # shape: (6,), (6,), (6,)
             case _:  # default case
                 idx = get_sensor_measurement_idx(self.m, name=key)

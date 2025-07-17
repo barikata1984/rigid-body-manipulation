@@ -37,7 +37,6 @@ class InstantiateConfig(ABC, PrintableConfig):
     def target_class(self) -> str: ...
 
     def setup(self, m, d, *args, **kwargs) -> Any:
-        print("=== == === == === SimulatorConfig is called. === == === == ===")
         """Returns the instantiated object using the config."""
         module = importlib.import_module(self.module_name)
         target_class = getattr(module, self.target_class)

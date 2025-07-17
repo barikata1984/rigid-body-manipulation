@@ -100,7 +100,7 @@ class Simulator:
 
         # Instantiate register classes
         self.poses = Poses(self.m, self.d)
-        self.sensors = Sensors(self.m, self.d)
+        self.sensors = Sensors(self.m, self.d, self.recorder.fps)
 
         # Get ids and indices
         self.id_ll = get_element_id(self.m, "body", "link6")
@@ -200,7 +200,9 @@ class Simulator:
         tgt_traj = self.planner.plan(step_idx)
         tgt_ctrl, _, _, _ = self.inverse(tgt_traj)
 
-        qpos, qvel, qacc = self.d.qpos, self.d.qvel, self.d.qacc
+        # qpos, qvel, qacc = self.d.qpos, self.d.qvel, self.d.qacc  # shape: (6,), (6,), (6,)
+        qpos, qvel, qacc = self.sensors.get("jointvars", perturbed=True)
+
         act_traj = np.stack((qpos, qvel, qacc))
         _, _, twists_lj_l, dtwists_lj_l = self.inverse(act_traj)
 
@@ -208,10 +210,6 @@ class Simulator:
             self.time.append(self.d.time)
             self.tgt_trajectory.append(tgt_traj)
             self.trajectory.append(act_traj)
-
-            import pdb
-
-            pdb.set_trace()
 
             # Dynamic poses
             pose_x_ll = self.poses.x_b[self.id_ll]
@@ -245,7 +243,7 @@ class Simulator:
             file_name = f"{self.frame_count:04}.png"
             self.recorder.render(self.d, file_name)
 
-            # Log NeMD ingredients
+            # Log Neural Mass Distribution ingredients
             pose_obj_cam = pose_x_obj.inv().dot(self.poses.x_cam[self.recorder.cam_id])
             self.file_paths.append(str(self.recorder.complete_image_dir / file_name))
             self.transform_matrices.append(pose_obj_cam.as_matrix().tolist())  # type: ignore
@@ -256,10 +254,12 @@ class Simulator:
 
             self.frame_count += 1
 
+        # compute the residuals and control signals
         mj_differentiatePos(self.m, self.res_qpos, self.m.nu, qpos, tgt_traj[0])
         res_state = np.concatenate((self.res_qpos, tgt_traj[1] - qvel))
         self.d.ctrl = tgt_ctrl - self.controller.gain_matrix @ res_state
 
+        # step the simulate
         mj_step(self.m, self.d)
 
     def _post_process_data(self):
@@ -272,7 +272,7 @@ class Simulator:
         error_rate = 0.05
         seed = 0
         rng = np.random.default_rng(seed)
-        perturb_wrench = True
+        perturb_wrench = False
         if perturb_wrench:
             fs_std = error_rate * nla.norm(self.fts_sen[..., :3], axis=1).max()
             ts_std = error_rate * nla.norm(self.fts_sen[..., 3:], axis=1).max()
@@ -322,14 +322,3 @@ class Simulator:
             ax.hlines(0.0, frame_iter[0], frame_iter[-1], ls="dashed", alpha=0.5)
 
         plt.show()
-
-
-def simulate(
-    m: MjModel,
-    d: MjData,
-    recorder,
-    planner,
-    controller,
-):
-    sim = Simulator(m, d, recorder, planner, controller)
-    return sim.run()

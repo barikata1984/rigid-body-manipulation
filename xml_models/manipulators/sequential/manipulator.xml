@@ -49,25 +49,26 @@
   </actuator>
 
   <sensor>
+    <!-- actuatorfrc (mjtSensor type enum: 16) -->
     <actuatorfrc name="x" actuator="x"/>
     <actuatorfrc name="y" actuator="y"/>
     <actuatorfrc name="z" actuator="z"/>
     <actuatorfrc name="roll" actuator="roll"/>
     <actuatorfrc name="pitch" actuator="pitch"/>
     <actuatorfrc name="yaw" actuator="yaw"/>
-    <!-- type int: 30, 3-vector x 2 -->
+    <!-- framelinvel (mjtSensor type enum: 30) -->
     <framelinvel name="linvel_x_obj" objtype="xbody" objname="target/object"/>
     <framelinvel name="linvel_x_obji" objtype="body" objname="target/object"/>
     <framelinvel name="linvel_x_sen" objtype="site" objname="target/ft_sensor"/>
-    <!-- type int: 31, 3-vector x 2 -->
+    <!-- frameangvel (mjtSensor type enum: 31) -->
     <frameangvel name="angvel_x_obj" objtype="xbody" objname="target/object"/>
     <frameangvel name="angvel_x_obji" objtype="body" objname="target/object"/>
     <frameangvel name="angvel_x_sen" objtype="site" objname="target/ft_sensor"/>
-    <!-- type int: 32, 3-vector x 2 -->
+    <!-- framelinacc (mjtSensor type enum: 32) -->
     <framelinacc name="linacc_x_obj" objtype="xbody" objname="target/object"/>
     <framelinacc name="linacc_x_obji" objtype="body" objname="target/object"/>
     <framelinacc name="linacc_x_sen" objtype="site" objname="target/ft_sensor"/>
-    <!-- type int: 33, 3-vector x 2 -->
+    <!-- frameangacc (mjtSensor type enum: 33) -->
     <frameangacc name="angacc_x_obj" objtype="xbody" objname="target/object"/>
     <frameangacc name="angacc_x_obji" objtype="body" objname="target/object"/>
     <frameangacc name="angacc_x_sen" objtype="site" objname="target/ft_sensor"/>
