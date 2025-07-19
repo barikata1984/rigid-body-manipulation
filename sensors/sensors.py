@@ -16,7 +16,7 @@ class Sensors:
         self.d = d
         self._sensordata = d.sensordata
         self.jointpos_stddev = np.array(
-            [1.0e-3, 1.0e-3, 1.0e-3, 5.0e-3, 5.0e-3, 5.0e-3]  # [m, m, m, rad, rad, rad]
+            [5.0e-4, 5.0e-4, 5.0e-4, 1.0e-3, 1.0e-3, 1.0e-3]  # [m, m, m, rad, rad, rad]
         )
         self.noise_scaler = np.sqrt(2) * fps
         self.rng = np.random.default_rng()

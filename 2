@@ -1,10 +1,9 @@
 from pathlib import Path
 from shutil import copy
 
-import numpy as np
 import pandas as pd
 import tyro
-from numpy.linalg import lstsq, norm
+from numpy.linalg import lstsq
 from omegaconf import OmegaConf
 from omegaconf.errors import MissingMandatoryValue
 
@@ -12,6 +11,7 @@ from configurations import instantiate
 from regressions import total_lstsq
 from simulator import SimulatorConfig, generate_model_data
 from utilities import get_element_id
+import numpy as np
 
 if __name__ == "__main__":
     cli_config = tyro.cli(SimulatorConfig)
@@ -64,14 +64,14 @@ if __name__ == "__main__":
     fts_sen = result["fts_sen"].reshape(-1)
     ls_iparams = lstsq(regressors, fts_sen)[0]  # test
     tls_iparams = total_lstsq(regressors, fts_sen)[0]  # test
-    l2_ls = norm(ls_iparams - np.array(gt_iparams), 2)
-    l2_tls = norm(tls_iparams - np.array(gt_iparams), 2)
-    labels = ["total_mass", "mx", "my", "mz", "ixx", "iyy", "izz", "ixy", "iyz", "izx", "l2"]
+
+    # Calculate MSE between gt_iparams and ls_iparams
+    mse_ls = np.mean((np.array(gt_iparams) - np.array(ls_iparams)) ** 2)
+    print(f"MSE between gt_iparams and ls_iparams: {mse_ls}")
+    labels = ["total_mass", "mx", "my", "mz", "ixx", "iyy", "izz", "ixy", "iyz", "izx"]
 
     df = pd.DataFrame(
-        [[*gt_iparams, np.nan], [*ls_iparams, l2_ls], [*tls_iparams, l2_tls]],
-        columns=labels,
-        index=["gt_iparams", "ls_iparams", "tls_iparams"],
+        [gt_iparams, ls_iparams, tls_iparams], columns=labels, index=["gt_iparams", "ls_iparams", "tls_iparams"]
     )
     print("\nLeast Squares Results DataFrame:")
     print(df)

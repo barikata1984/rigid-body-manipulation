@@ -194,7 +194,7 @@ class Simulator:
         self._post_process_data()
         self._visualize_results()
 
-        return {"frames": self.frames, "regressors": self.regressors}
+        return {"frames": self.frames, "regressors": self.regressors, "fts_sen": self.fts_sen}
 
     def step(self, step_idx):
         tgt_traj = self.planner.plan(step_idx)
