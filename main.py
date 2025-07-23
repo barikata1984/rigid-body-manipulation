@@ -13,7 +13,7 @@ from regressions import total_lstsq
 from simulator import SimulatorConfig, generate_model_data
 from utilities import get_element_id
 
-if __name__ == "__main__":
+def main():
     cli_config = tyro.cli(SimulatorConfig)
     cli_specified_yaml = cli_config.exp_setup
     yaml_config = OmegaConf.load(cli_specified_yaml)
@@ -77,3 +77,7 @@ if __name__ == "__main__":
     print(df)
 
     simulator.recorder.finish(result["frames"], result["regressors"], gt_iparams)
+
+
+if __name__ == "__main__":
+    main()

@@ -19,6 +19,27 @@ dependencies = [
     "pyqt6>=6.9.0",
 ]
 
+[project.scripts]
+manipulate = "main:main"
+
+[tool.setuptools]
+py-modules = ["main"]
+
+[tool.setuptools.packages.find]
+include = [
+    "configurations*",
+    "controllers*",
+    "dynamics*",
+    "planners*",
+    "recorders*",
+    "regressions*",
+    "sensors*",
+    "simulator*",
+    "transformations*",
+    "utilities*",
+    "visualization*",
+]
+
 [tool.ruff]
 line-length = 119 # 行の最大文字数
 select = [ # 有効にするルール
@@ -43,3 +64,12 @@ target-version = "py312" # ターゲットの Python バージョン
 #src = ["src", "."] # ソースディレクトリ
 fix = true # 自動修正を有効にする
 unsafe-fixes = false # 安全でない修正も有効にする
+
+
+[tool.pyright]
+# pyright の設定
+# ...
+
+[tool.pytest.ini_options]
+# pytest の設定
+# ...

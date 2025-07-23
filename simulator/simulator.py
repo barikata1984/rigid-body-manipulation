@@ -197,16 +197,17 @@ class Simulator:
         return {"frames": self.frames, "regressors": self.regressors, "fts_sen": self.fts_sen}
 
     def step(self, step_idx):
-        tgt_traj = self.planner.plan(step_idx)
-        tgt_ctrl, _, _, _ = self.inverse(tgt_traj)
-
-        # qpos, qvel, qacc = self.d.qpos, self.d.qvel, self.d.qacc  # shape: (6,), (6,), (6,)
         qpos, qvel, qacc = self.sensors.get("jointvars", perturbed=True)
-
-        act_traj = np.stack((qpos, qvel, qacc))
-        _, _, twists_lj_l, dtwists_lj_l = self.inverse(act_traj)
-
         if self.frame_count <= self.d.time * self.recorder.fps:
+            tgt_traj = self.planner.plan(step_idx)
+            tgt_ctrl, _, _, _ = self.inverse(tgt_traj)
+
+            # qpos, qvel, qacc = self.d.qpos, self.d.qvel, self.d.qacc  # shape: (6,), (6,), (6,)
+
+            act_traj = np.stack((qpos, qvel, qacc))
+            _, _, twists_lj_l, dtwists_lj_l = self.inverse(act_traj)
+
+            # if self.frame_count <= self.d.time * self.recorder.fps:
             self.time.append(self.d.time)
             self.tgt_trajectory.append(tgt_traj)
             self.trajectory.append(act_traj)
@@ -254,10 +255,10 @@ class Simulator:
 
             self.frame_count += 1
 
-        # compute the residuals and control signals
-        mj_differentiatePos(self.m, self.res_qpos, self.m.nu, qpos, tgt_traj[0])
-        res_state = np.concatenate((self.res_qpos, tgt_traj[1] - qvel))
-        self.d.ctrl = tgt_ctrl - self.controller.gain_matrix @ res_state
+            # compute the residuals and control signals
+            mj_differentiatePos(self.m, self.res_qpos, self.m.nu, qpos, tgt_traj[0])
+            res_state = np.concatenate((self.res_qpos, tgt_traj[1] - qvel))
+            self.d.ctrl = tgt_ctrl - self.controller.gain_matrix @ res_state
 
         # step the simulate
         mj_step(self.m, self.d)
