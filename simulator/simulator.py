@@ -7,8 +7,8 @@ from liegroups import SE3
 from matplotlib import pyplot as plt
 from mujoco._functions import mj_differentiatePos, mj_step
 from mujoco._structs import MjData, MjModel, MjOption
+from omegaconf import MISSING
 from tqdm import tqdm
-from tyro import MISSING
 
 import dynamics as dyn
 from configurations import instantiate
@@ -22,6 +22,11 @@ from visualization import ax_plot_lines, ax_plot_lines_w_tgt
 
 from .base_simulator import BaseSimulatorConfig
 
+# Remove redundant space at the head and tail of the horizontal axis's scale
+mpl.rcParams["axes.xmargin"] = 0
+# Reduce the number of digits of values with numpy
+np.set_printoptions(precision=5, suppress=True)
+
 
 @dataclass
 class SimulatorConfig(BaseSimulatorConfig):
@@ -29,6 +34,8 @@ class SimulatorConfig(BaseSimulatorConfig):
     manipulator_dir: str = "xml_models/manipulators/sequential"
     target_dir: str = MISSING
     reset_keyframe: str = "initial_state"
+    duration: float = MISSING
+    fps: int = MISSING
     recorder: StandardRecorderConfig = field(default_factory=StandardRecorderConfig)
     planner: JointPositionPlannerConfig = field(default_factory=JointPositionPlannerConfig)
     controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
@@ -77,12 +84,6 @@ class SimulatorConfig(BaseSimulatorConfig):
 #
 
 
-# Remove redundant space at the head and tail of the horizontal axis's scale
-mpl.rcParams["axes.xmargin"] = 0
-# Reduce the number of digits of values with numpy
-np.set_printoptions(precision=5, suppress=True)
-
-
 class Simulator:
     def __init__(
         self,
@@ -93,13 +94,14 @@ class Simulator:
         self.m = m
         self.d = d
 
-        self.recorder = instantiate(cfg.recorder, m, d)
-        self.planner = instantiate(cfg.planner, m, d)
+        self.fps = cfg.fps
+        self.recorder = instantiate(cfg.recorder, m, d, fps=self.fps)
+        self.planner = instantiate(cfg.planner, m, d, duration=cfg.duration)
         self.controller = instantiate(cfg.controller, m, d)
 
         # Instantiate register classes
         self.poses = Poses(self.m, self.d)
-        self.sensors = Sensors(self.m, self.d, self.recorder.fps)
+        self.sensors = Sensors(self.m, self.d, cfg.fps)
 
         # Get ids and indices
         self.id_ll = get_element_id(self.m, "body", "link6")
@@ -194,6 +196,10 @@ class Simulator:
         self.dtwists_sen = []
         self.linaccs_sen_obji = []
 
+        import pdb
+
+        pdb.set_trace()
+
     def run(self):
         for step_idx in tqdm(range(self.planner.n_steps), desc="Progress"):
             self.step(step_idx)
@@ -204,7 +210,7 @@ class Simulator:
         return {"frames": self.frames, "regressors": self.regressors, "fts_sen": self.fts_sen}
 
     def step(self, step_idx):
-        current_frame = self.d.time * self.recorder.fps  # float
+        current_frame = self.d.time * self.fps  # float
         process_frame = self.n_processed_frames <= current_frame  # int vs float
 
         if process_frame:
@@ -234,7 +240,7 @@ class Simulator:
             self.regressors.append(regressor)  # type: ignore
 
             # Get and log the linear acceleration at the target object's inertial center w.r.t. the sensor frame
-            linacc_sen_obji = dyn.extract_linacc_frame_transferred(twist_sen, dtwist_sen, self.pose_sen_obji)
+            linacc_sen_obji = dyn.get_linacc(twist_sen, dtwist_sen, self.pose_sen_obji)
             self.linaccs_sen_obji.append(linacc_sen_obji)
 
             # Measure and log the force and torque measurements

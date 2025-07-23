@@ -14,11 +14,9 @@ from .base_planner import BasePlannerConfig
 
 @dataclass
 class JointPositionPlannerConfig(BasePlannerConfig):
-    target_class: str = "JointPositionPlanner"  # type: ignore
-    duration: float = MISSING  # todo: using str is not good...
-    # timestep: float = -1
-    pos_offset: list[float] | None = None
     displacements: list[float] = MISSING
+    target_class: str = "JointPositionPlanner"  # type: ignore
+    pos_offset: list[float] | None = None
 
 
 class JointPositionPlanner:
@@ -27,21 +25,16 @@ class JointPositionPlanner:
         cfg: JointPositionPlannerConfig,
         m: MjModel,
         d: MjData,
+        *args,
+        **kwargs,
     ) -> None:
         # Fill a potentially missing field of a planner configuration
         if cfg.pos_offset is None:
             self.pos_offset = d.qpos.copy().tolist()
 
-        try:
-            cfg.duration = float(cfg.duration)
-        except ValueError as e:
-            # 変換に失敗した場合、ValueErrorが発生し、このブロックが実行される
-            print(
-                f"{e}: Value for JointPositionPlannerConfig's attribute 'duration' is not properly set. Check the setting. It may be set at a string that are not castabble to flaot."
-            )
-
-        self._timestep = MjOption().timestep  # if cfg.timestep <= 0 else cfg.timestep
-        self.n_steps = int(cfg.duration / self._timestep)
+        self.duration = kwargs.get("duration")
+        self._timestep = MjOption().timestep
+        self.n_steps = int(self.duration / self._timestep)
 
         displacements = []
         for _disp in cfg.displacements:

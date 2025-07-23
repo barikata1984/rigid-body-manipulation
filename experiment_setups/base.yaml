@@ -5,12 +5,11 @@ recorder:
   track_cam_name: tracking
   fig_height: 800
   fig_width: 800
-  fps: 60
+  #fps: 60
   videoname: output.mp4
   videcodec: mp4v
 planner:
   target_class: JointPositionPlanner
-  duration: 5.0
   displacements:
   - 0.2
   - 1.4
@@ -30,3 +29,5 @@ controller:
   - 10000.0
   - 10000.0
   - 10000.0
+duration: 3.0
+fps: 60
