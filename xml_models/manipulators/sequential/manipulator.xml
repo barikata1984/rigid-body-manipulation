@@ -73,7 +73,7 @@
     <frameangacc name="angacc_x_obji" objtype="body" objname="target/object"/>
     <frameangacc name="angacc_x_sen" objtype="site" objname="target/ft_sensor"/>
 
-    <accelerometer name="linacc_sen" site="target/ft_sensor"/>
+    <!-- noise below means the stddev of simulated noize -->
     <force name="force" site="target/ft_sensor"/>
     <torque name="torque" site="target/ft_sensor"/>
   </sensor>

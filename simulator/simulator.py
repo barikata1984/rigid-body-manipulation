@@ -7,7 +7,6 @@ from liegroups import SE3
 from matplotlib import pyplot as plt
 from mujoco._functions import mj_differentiatePos, mj_step
 from mujoco._structs import MjData, MjModel, MjOption
-from numpy import linalg as nla
 from tqdm import tqdm
 from tyro import MISSING
 
@@ -33,7 +32,7 @@ class SimulatorConfig(BaseSimulatorConfig):
     recorder: StandardRecorderConfig = field(default_factory=StandardRecorderConfig)
     planner: JointPositionPlannerConfig = field(default_factory=JointPositionPlannerConfig)
     controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
-    exp_setup: str = "experimental_setups/base.yaml"
+    exp_setup: str = "experiment_setups/base.yaml"
     config_export_path: str | None = None
 
 
@@ -166,9 +165,17 @@ class Simulator:
             dtwist_0=gacc_x,
         )
 
-        # Set a random number generator
-        self.rng = np.random.default_rng()
-        self.rng.standard_normal(10)
+        # Accessors to the registers that store pose data of interest.
+        # NOTE: Maybe MuJoco overrives the data on registers once step() is called.
+        # So, computing these poses at every step is not necessary.
+        self.pose_x_ll = self.poses.x_b[self.id_ll]
+        self.pose_x_sen = self.poses.get_x_("site", "target/ft_sensor")
+        self.pose_x_obj = self.poses.get_x_("body", "target/object")
+        self.pose_x_obji = self.pose_x_obj.dot(self.pose_obj_obji)
+        self.pose_obj_cam = self.pose_x_obj.inv().dot(self.poses.x_cam[self.recorder.cam_id])
+        self.pose_sen_obj = self.pose_x_sen.inv().dot(self.pose_x_obj)
+        self.pose_sen_obji = self.pose_x_sen.inv().dot(self.pose_x_obji)
+        self.pose_sen_llj = self.pose_x_sen.inv().dot(self.pose_x_ll.dot(self.pose_ll_llj))  # type: ignore
 
         # Prepare data containers
         self.res_qpos = np.empty(self.m.nu)
@@ -176,7 +183,7 @@ class Simulator:
         self.trajectory = []
         self.fts_sen = []
         self.time = []
-        self.frame_count = 0
+        self.n_processed_frames = 0
         self.regressors = []
         self.frames = []
         self.file_paths = []
@@ -197,68 +204,57 @@ class Simulator:
         return {"frames": self.frames, "regressors": self.regressors, "fts_sen": self.fts_sen}
 
     def step(self, step_idx):
-        qpos, qvel, qacc = self.sensors.get("jointvars", perturbed=True)
-        if self.frame_count <= self.d.time * self.recorder.fps:
+        current_frame = self.d.time * self.recorder.fps  # float
+        process_frame = self.n_processed_frames <= current_frame  # int vs float
+
+        if process_frame:
+            qpos, qvel, qacc = self.sensors.get("jointvars", perturbed=True)  # # shape: (6,), (6,), (6,)
+
             tgt_traj = self.planner.plan(step_idx)
-            tgt_ctrl, _, _, _ = self.inverse(tgt_traj)
-
-            # qpos, qvel, qacc = self.d.qpos, self.d.qvel, self.d.qacc  # shape: (6,), (6,), (6,)
-
             act_traj = np.stack((qpos, qvel, qacc))
-            _, _, twists_lj_l, dtwists_lj_l = self.inverse(act_traj)
-
-            # if self.frame_count <= self.d.time * self.recorder.fps:
-            self.time.append(self.d.time)
-            self.tgt_trajectory.append(tgt_traj)
-            self.trajectory.append(act_traj)
-
-            # Dynamic poses
-            pose_x_ll = self.poses.x_b[self.id_ll]
-            pose_x_sen = self.poses.get_x_("site", "target/ft_sensor")
-            pose_x_obj = self.poses.get_x_("body", "target/object")
-            pose_sen_obj = pose_x_sen.inv().dot(pose_x_obj)
-            pose_x_obji = pose_x_obj.dot(self.pose_obj_obji)
-            pose_sen_obji = pose_x_sen.inv().dot(pose_x_obji)
+            self.tgt_trajectory.append(tgt_traj)  # type: ignore
+            self.trajectory.append(act_traj)  # type: ignore
 
             # Get (d)twist_sen, and linacc_sen_obj for verification
-            pose_sen_llj = pose_x_sen.inv().dot(pose_x_ll.dot(self.pose_ll_llj))  # type: ignore
+            _, _, twists_lj_l, dtwists_lj_l = self.inverse(act_traj)
             twist_llj = twists_lj_l[self.id_ll]
-            twist_sen = pose_sen_llj.adjoint() @ twist_llj  # type: ignore
+            twist_sen = self.pose_sen_llj.adjoint() @ twist_llj  # type: ignore
             dtwist_llj = dtwists_lj_l[self.id_ll]
-            pose_sen_llj_dadjoint = SE3.curlywedge(twist_sen) @ pose_sen_llj.adjoint()  # type: ignore
-            dtwist_sen = pose_sen_llj_dadjoint @ twist_llj + pose_sen_llj.adjoint() @ dtwist_llj  # type: ignore
+            pose_sen_llj_dadjoint = SE3.curlywedge(twist_sen) @ self.pose_sen_llj.adjoint()  # type: ignore
+            dtwist_sen = pose_sen_llj_dadjoint @ twist_llj + self.pose_sen_llj.adjoint() @ dtwist_llj  # type: ignore
 
-            linacc_sen_obji = dyn.extract_linacc_frame_transferred(twist_sen, dtwist_sen, pose_sen_obji)
+            # Compute the residuals and control signals, and set the control singals
+            mj_differentiatePos(self.m, self.res_qpos, self.m.nu, qpos, tgt_traj[0])
+            res_state = np.concatenate((self.res_qpos, tgt_traj[1] - qvel))
+            tgt_ctrl, _, _, _ = self.inverse(tgt_traj)
+            self.d.ctrl = tgt_ctrl - self.controller.gain_matrix @ res_state
+
+            # Get and log the regressor matrix for Least Squares-based identification of the target object's iparams
+            regressor = dyn.get_regressor_matrix(twist_sen, dtwist_sen)
+            self.regressors.append(regressor)  # type: ignore
+
+            # Get and log the linear acceleration at the target object's inertial center w.r.t. the sensor frame
+            linacc_sen_obji = dyn.extract_linacc_frame_transferred(twist_sen, dtwist_sen, self.pose_sen_obji)
             self.linaccs_sen_obji.append(linacc_sen_obji)
 
-            # Get force-torque measurements
-            force = self.sensors.get("force")
-            torque = self.sensors.get("torque")
-            wrench = np.concatenate([force, torque], axis=None)
-            self.fts_sen.append(wrench)
+            # Measure and log the force and torque measurements
+            ft = self.sensors.get("ft", perturbed=True)
+            self.fts_sen.append(ft)  # type: ignore
 
-            regressor = dyn.get_regressor_matrix(twist_sen, dtwist_sen)
-            self.regressors.append(regressor)
-
-            # Writing a single frame of a dataset
-            file_name = f"{self.frame_count:04}.png"
+            # Render the camera observatio
+            file_name = f"{self.n_processed_frames:04}.png"
             self.recorder.render(self.d, file_name)
 
-            # Log Neural Mass Distribution ingredients
-            pose_obj_cam = pose_x_obj.inv().dot(self.poses.x_cam[self.recorder.cam_id])
+            # Log the other Neural Mass Distribution ingredients
             self.file_paths.append(str(self.recorder.complete_image_dir / file_name))
-            self.transform_matrices.append(pose_obj_cam.as_matrix().tolist())  # type: ignore
-            self.poses_sen_obj.append(pose_sen_obj.as_matrix().tolist())  # type: ignore
-            self.poses_sen_obji.append(pose_sen_obji.as_matrix().tolist())  # type: ignore
+            self.transform_matrices.append(self.pose_obj_cam.as_matrix().tolist())  # type: ignore
+            self.poses_sen_obj.append(self.pose_sen_obj.as_matrix().tolist())  # type: ignore
+            self.poses_sen_obji.append(self.pose_sen_obji.as_matrix().tolist())  # type: ignore
             self.twists_sen.append(twist_sen.tolist())
             self.dtwists_sen.append(dtwist_sen.tolist())
 
-            self.frame_count += 1
-
-            # compute the residuals and control signals
-            mj_differentiatePos(self.m, self.res_qpos, self.m.nu, qpos, tgt_traj[0])
-            res_state = np.concatenate((self.res_qpos, tgt_traj[1] - qvel))
-            self.d.ctrl = tgt_ctrl - self.controller.gain_matrix @ res_state
+            self.n_processed_frames += 1
+            self.time.append(self.d.time)
 
         # step the simulate
         mj_step(self.m, self.d)
@@ -269,18 +265,6 @@ class Simulator:
         self.fts_sen = np.array(self.fts_sen)
         self.regressors = np.array(self.regressors)
 
-        # Perturb wrench
-        error_rate = 0.05
-        seed = 0
-        rng = np.random.default_rng(seed)
-        perturb_wrench = False
-        if perturb_wrench:
-            fs_std = error_rate * nla.norm(self.fts_sen[..., :3], axis=1).max()
-            ts_std = error_rate * nla.norm(self.fts_sen[..., 3:], axis=1).max()
-            self.fts_sen[..., :3] += fs_std * rng.standard_normal((self.frame_count, 3))
-            self.fts_sen[..., 3:] += ts_std * rng.standard_normal((self.frame_count, 3))
-
-        # Compose frames
         data_containers = [
             self.file_paths,
             self.transform_matrices,
@@ -301,7 +285,7 @@ class Simulator:
             self.frames.append(frame)
 
     def _visualize_results(self):
-        frame_iter = np.arange(self.frame_count)
+        frame_iter = np.arange(self.n_processed_frames)
 
         # Actual and target joint positions
         qpos_fig, qpos_axes = plt.subplots(2, 1, sharex="col", tight_layout=True)
@@ -311,14 +295,18 @@ class Simulator:
         for i in range(len(qpos_axes)):
             slcr = slice(i * 3, (i + 1) * 3)
             ax_plot_lines_w_tgt(
-                qpos_axes[i], self.time, self.trajectory[:, 0, slcr], self.tgt_trajectory[:, 0, slcr], yls[i]
+                qpos_axes[i],
+                self.time,
+                self.trajectory[:, 0, slcr],  # type: ignore
+                self.tgt_trajectory[:, 0, slcr],  # type: ignore
+                yls[i],  # type: ignore
             )
 
         # Object linear acceleration and ft sensor measurements
         acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)
         ax_plot_lines(acc_ft_axes[0], frame_iter, np.array(self.linaccs_sen_obji), "recovered_linacc_sen_obji [m/s/s]")
-        ax_plot_lines(acc_ft_axes[1], frame_iter, self.fts_sen[:, :3], "frc_sen [N]")
-        ax_plot_lines(acc_ft_axes[2], frame_iter, self.fts_sen[:, 3:], "trq_sen [N*m]")
+        ax_plot_lines(acc_ft_axes[1], frame_iter, self.fts_sen[:, :3], "frc_sen [N]")  # type: ignore
+        ax_plot_lines(acc_ft_axes[2], frame_iter, self.fts_sen[:, 3:], "trq_sen [N*m]")  # type: ignore
         for ax in acc_ft_axes:
             ax.hlines(0.0, frame_iter[0], frame_iter[-1], ls="dashed", alpha=0.5)
 

@@ -8,6 +8,17 @@ def linear_rigid_body_dynamics(regressors, iparams):
 
 
 def total_lstsq(regressors: np.ndarray, fts_sen: np.ndarray, initbeta_scale: float = 1.0) -> tuple:
+    """Perform Total Least Squares (TLS) regression. Since TLS regression is essentially the same as
+    Orthogonal Distance Regression (ODR), scipy.odr's odr() method is used.
+
+    Args:
+        regressors (np.ndarray): The regressor matrix.
+        fts_sen (np.ndarray): The sensor measurements.
+        initbeta_scale (float, optional): The initial scale for the beta parameters. Defaults to 1.0.
+
+    Returns:
+        tuple: _description_
+    """
     initbeta = initbeta_scale * np.ones(regressors.shape[-1])
 
     return odr(

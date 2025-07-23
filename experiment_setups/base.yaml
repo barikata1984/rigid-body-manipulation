@@ -11,7 +11,6 @@ recorder:
 planner:
   target_class: JointPositionPlanner
   duration: 5.0
-  timestep: -1.0
   displacements:
   - 0.2
   - 1.4

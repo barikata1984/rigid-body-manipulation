@@ -13,6 +13,7 @@ from regressions import total_lstsq
 from simulator import SimulatorConfig, generate_model_data
 from utilities import get_element_id
 
+
 def main():
     cli_config = tyro.cli(SimulatorConfig)
     cli_specified_yaml = cli_config.exp_setup

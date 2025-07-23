@@ -16,7 +16,7 @@ from .base_planner import BasePlannerConfig
 class JointPositionPlannerConfig(BasePlannerConfig):
     target_class: str = "JointPositionPlanner"  # type: ignore
     duration: float = MISSING  # todo: using str is not good...
-    timestep: float = -1
+    # timestep: float = -1
     pos_offset: list[float] | None = None
     displacements: list[float] = MISSING
 
@@ -40,8 +40,8 @@ class JointPositionPlanner:
                 f"{e}: Value for JointPositionPlannerConfig's attribute 'duration' is not properly set. Check the setting. It may be set at a string that are not castabble to flaot."
             )
 
-        self.timestep = MjOption().timestep if cfg.timestep <= 0 else cfg.timestep
-        self.n_steps = int(cfg.duration / self.timestep)
+        self._timestep = MjOption().timestep  # if cfg.timestep <= 0 else cfg.timestep
+        self.n_steps = int(cfg.duration / self._timestep)
 
         displacements = []
         for _disp in cfg.displacements:
@@ -54,7 +54,7 @@ class JointPositionPlanner:
             displacements.append(disp)
 
         self.displacements = displacements
-        self.plan = traj_5th_spline(self.displacements, self.pos_offset, self.timestep, self.n_steps)
+        self.plan = traj_5th_spline(self.displacements, self.pos_offset, self._timestep, self.n_steps)
 
         # print("Simulation time setup =======================================\n"
         #     f"    Number of steps:            {self.n_steps}\n"
