@@ -180,21 +180,21 @@ class Simulator:
         self.pose_sen_llj = self.pose_x_sen.inv().dot(self.pose_x_ll.dot(self.pose_ll_llj))  # type: ignore
 
         # Prepare data containers
-        self.res_qpos = np.empty(self.m.nu)
-        self.tgt_trajectory = []
-        self.trajectory = []
-        self.fts_sen = []
-        self.time = []
-        self.n_processed_frames = 0
-        self.regressors = []
-        self.frames = []
+        self.dtwists_sen = []
         self.file_paths = []
-        self.transform_matrices = []
+        self.frames = []
+        self.fts_sen = []
+        self.linaccs_sen_obji = []
+        self.n_processed_frames = 0
         self.poses_sen_obj = []
         self.poses_sen_obji = []
+        self.regressors = []
+        self.res_qpos = np.empty(self.m.nu)
+        self.tgt_trajectory = []
+        self.time = []
+        self.trajectory = []
+        self.transform_matrices = []
         self.twists_sen = []
-        self.dtwists_sen = []
-        self.linaccs_sen_obji = []
 
     def run(self):
         for step_idx in tqdm(range(self.planner.n_steps), desc="Progress"):
@@ -210,6 +210,8 @@ class Simulator:
         process_frame = self.n_processed_frames <= current_frame  # int vs float
 
         if process_frame:
+            print(f"{step_idx=}")
+
             qpos, qvel, qacc = self.sensors.get("jointvars", perturbed=True)  # # shape: (6,), (6,), (6,)
 
             tgt_traj = self.planner.plan(step_idx)

@@ -6,7 +6,7 @@ from mujoco._structs import MjData, MjModel, MjOption
 from omegaconf import MISSING
 
 from .base_planner import BasePlannerConfig
-from .fifth_spline_interpolation import get_trajectory_interpolated_with_fifth_spline
+from .fifth_order_jspline_interpolation import get_trajectory_interpolated_with_fifth_order_spline
 
 
 @dataclass
@@ -44,7 +44,7 @@ class JointPositionPlanner:
             displacements.append(disp)
 
         self.displacements = displacements
-        self.plan = get_trajectory_interpolated_with_fifth_spline(
+        self.plan = get_trajectory_interpolated_with_fifth_order_spline(
             self.displacements,  # [m, m, m, rad, rad, rad]
             self.pos_offset,  # [m, m, m, rad, rad, rad]
             self._timestep,  # [s]
