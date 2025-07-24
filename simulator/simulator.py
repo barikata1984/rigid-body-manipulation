@@ -196,10 +196,6 @@ class Simulator:
         self.dtwists_sen = []
         self.linaccs_sen_obji = []
 
-        import pdb
-
-        pdb.set_trace()
-
     def run(self):
         for step_idx in tqdm(range(self.planner.n_steps), desc="Progress"):
             self.step(step_idx)
