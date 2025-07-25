@@ -38,6 +38,7 @@ include = [
     "transformations*",
     "utilities*",
     "visualization*",
+    "omegaconf_custom_resolver*",
 ]
 
 [tool.ruff]

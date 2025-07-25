@@ -95,8 +95,9 @@ class Simulator:
         self.d = d
 
         self.fps = cfg.fps
+        self.n_steps = int(cfg.duration / MjOption().timestep)
         self.recorder = instantiate(cfg.recorder, m, d, fps=self.fps)
-        self.planner = instantiate(cfg.planner, m, d, duration=cfg.duration)
+        self.planner = instantiate(cfg.planner, m, d, duration=cfg.duration, fps=self.fps)
         self.controller = instantiate(cfg.controller, m, d)
 
         # Instantiate register classes
@@ -167,7 +168,7 @@ class Simulator:
             dtwist_0=gacc_x,
         )
 
-        # Accessors to the registers that store pose data of interest.
+        # Accessors to the registers that store the data of poses in interest.
         # NOTE: Maybe MuJoco overrives the data on registers once step() is called.
         # So, computing these poses at every step is not necessary.
         self.pose_x_ll = self.poses.x_b[self.id_ll]
@@ -197,71 +198,69 @@ class Simulator:
         self.twists_sen = []
 
     def run(self):
-        for step_idx in tqdm(range(self.planner.n_steps), desc="Progress"):
-            self.step(step_idx)
+        for _ in tqdm(range(self.n_steps), desc="Simulation Progress"):
+            current_frame_idx = self.d.time * self.fps
+
+            if self.n_processed_frames <= current_frame_idx:
+                self.procoess_frame(current_frame_idx)
+
+            # step the simulate
+            mj_step(self.m, self.d)
 
         self._post_process_data()
         self._visualize_results()
 
         return {"frames": self.frames, "regressors": self.regressors, "fts_sen": self.fts_sen}
 
-    def step(self, step_idx):
-        current_frame = self.d.time * self.fps  # float
-        process_frame = self.n_processed_frames <= current_frame  # int vs float
+    def procoess_frame(self, current_frame_idx):
+        qpos, qvel, qacc = self.sensors.get("jointvars", perturbed=True)  # # shape: (6,), (6,), (6,)
 
-        if process_frame:
-            print(f"{step_idx=}")
+        # tgt_traj = self.planner.plan(step_idx)
+        tgt_traj = self.planner.plan(current_frame_idx)
+        act_traj = np.stack((qpos, qvel, qacc))
+        self.tgt_trajectory.append(tgt_traj)  # type: ignore
+        self.trajectory.append(act_traj)  # type: ignore
 
-            qpos, qvel, qacc = self.sensors.get("jointvars", perturbed=True)  # # shape: (6,), (6,), (6,)
+        # Get (d)twist_sen, and linacc_sen_obj for verification
+        _, _, twists_lj_l, dtwists_lj_l = self.inverse(act_traj)
+        twist_llj = twists_lj_l[self.id_ll]
+        twist_sen = self.pose_sen_llj.adjoint() @ twist_llj  # type: ignore
+        dtwist_llj = dtwists_lj_l[self.id_ll]
+        pose_sen_llj_dadjoint = SE3.curlywedge(twist_sen) @ self.pose_sen_llj.adjoint()  # type: ignore
+        dtwist_sen = pose_sen_llj_dadjoint @ twist_llj + self.pose_sen_llj.adjoint() @ dtwist_llj  # type: ignore
 
-            tgt_traj = self.planner.plan(step_idx)
-            act_traj = np.stack((qpos, qvel, qacc))
-            self.tgt_trajectory.append(tgt_traj)  # type: ignore
-            self.trajectory.append(act_traj)  # type: ignore
+        # Compute the residuals and control signals, and set the control singals
+        mj_differentiatePos(self.m, self.res_qpos, self.m.nu, qpos, tgt_traj[0])
+        res_state = np.concatenate((self.res_qpos, tgt_traj[1] - qvel))
+        tgt_ctrl, _, _, _ = self.inverse(tgt_traj)
+        self.d.ctrl = tgt_ctrl - self.controller.gain_matrix @ res_state
 
-            # Get (d)twist_sen, and linacc_sen_obj for verification
-            _, _, twists_lj_l, dtwists_lj_l = self.inverse(act_traj)
-            twist_llj = twists_lj_l[self.id_ll]
-            twist_sen = self.pose_sen_llj.adjoint() @ twist_llj  # type: ignore
-            dtwist_llj = dtwists_lj_l[self.id_ll]
-            pose_sen_llj_dadjoint = SE3.curlywedge(twist_sen) @ self.pose_sen_llj.adjoint()  # type: ignore
-            dtwist_sen = pose_sen_llj_dadjoint @ twist_llj + self.pose_sen_llj.adjoint() @ dtwist_llj  # type: ignore
+        # Get and log the regressor matrix for Least Squares-based identification of the target object's iparams
+        regressor = dyn.get_regressor_matrix(twist_sen, dtwist_sen)
+        self.regressors.append(regressor)  # type: ignore
 
-            # Compute the residuals and control signals, and set the control singals
-            mj_differentiatePos(self.m, self.res_qpos, self.m.nu, qpos, tgt_traj[0])
-            res_state = np.concatenate((self.res_qpos, tgt_traj[1] - qvel))
-            tgt_ctrl, _, _, _ = self.inverse(tgt_traj)
-            self.d.ctrl = tgt_ctrl - self.controller.gain_matrix @ res_state
+        # Get and log the linear acceleration at the target object's inertial center w.r.t. the sensor frame
+        linacc_sen_obji = dyn.get_linacc(twist_sen, dtwist_sen, self.pose_sen_obji)
+        self.linaccs_sen_obji.append(linacc_sen_obji)
 
-            # Get and log the regressor matrix for Least Squares-based identification of the target object's iparams
-            regressor = dyn.get_regressor_matrix(twist_sen, dtwist_sen)
-            self.regressors.append(regressor)  # type: ignore
+        # Measure and log the force and torque measurements
+        ft = self.sensors.get("ft", perturbed=True)
+        self.fts_sen.append(ft)  # type: ignore
 
-            # Get and log the linear acceleration at the target object's inertial center w.r.t. the sensor frame
-            linacc_sen_obji = dyn.get_linacc(twist_sen, dtwist_sen, self.pose_sen_obji)
-            self.linaccs_sen_obji.append(linacc_sen_obji)
+        # Render the camera observatio
+        file_name = f"{self.n_processed_frames:04}.png"
+        self.recorder.render(self.d, file_name)
 
-            # Measure and log the force and torque measurements
-            ft = self.sensors.get("ft", perturbed=True)
-            self.fts_sen.append(ft)  # type: ignore
+        # Log the other Neural Mass Distribution ingredients
+        self.file_paths.append(str(self.recorder.complete_image_dir / file_name))
+        self.transform_matrices.append(self.pose_obj_cam.as_matrix().tolist())  # type: ignore
+        self.poses_sen_obj.append(self.pose_sen_obj.as_matrix().tolist())  # type: ignore
+        self.poses_sen_obji.append(self.pose_sen_obji.as_matrix().tolist())  # type: ignore
+        self.twists_sen.append(twist_sen.tolist())
+        self.dtwists_sen.append(dtwist_sen.tolist())
 
-            # Render the camera observatio
-            file_name = f"{self.n_processed_frames:04}.png"
-            self.recorder.render(self.d, file_name)
-
-            # Log the other Neural Mass Distribution ingredients
-            self.file_paths.append(str(self.recorder.complete_image_dir / file_name))
-            self.transform_matrices.append(self.pose_obj_cam.as_matrix().tolist())  # type: ignore
-            self.poses_sen_obj.append(self.pose_sen_obj.as_matrix().tolist())  # type: ignore
-            self.poses_sen_obji.append(self.pose_sen_obji.as_matrix().tolist())  # type: ignore
-            self.twists_sen.append(twist_sen.tolist())
-            self.dtwists_sen.append(dtwist_sen.tolist())
-
-            self.n_processed_frames += 1
-            self.time.append(self.d.time)
-
-        # step the simulate
-        mj_step(self.m, self.d)
+        self.n_processed_frames += 1
+        self.time.append(self.d.time)
 
     def _post_process_data(self):
         self.tgt_trajectory = np.array(self.tgt_trajectory)

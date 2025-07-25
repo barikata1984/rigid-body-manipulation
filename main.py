@@ -9,9 +9,12 @@ from omegaconf import OmegaConf
 from omegaconf.errors import MissingMandatoryValue
 
 from configurations import instantiate
+from omegaconf_custom_resolver import pi_converter
 from regressions import total_lstsq
 from simulator import SimulatorConfig, generate_model_data
 from utilities import get_element_id
+
+OmegaConf.register_new_resolver("pi", pi_converter)
 
 
 def main():
@@ -22,6 +25,8 @@ def main():
 
     cfg = OmegaConf.merge(base_config, yaml_config, cli_config)  # priority: cli > cli-specified yaml > vanilla
     m, d, gt = generate_model_data(cfg)
+
+    print(f"{cfg.planner.displacements=}")
 
     # Fill (potentially) missing fields of a logger configulation =================
     try:

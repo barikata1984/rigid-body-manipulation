@@ -2,7 +2,7 @@ import re
 from dataclasses import dataclass
 from math import pi
 
-from mujoco._structs import MjData, MjModel, MjOption
+from mujoco._structs import MjData, MjModel
 from omegaconf import MISSING
 
 from .base_planner import BasePlannerConfig
@@ -26,12 +26,11 @@ class JointPositionPlanner:
         **kwargs,
     ) -> None:
         # Fill a potentially missing field of a planner configuration
-        if cfg.pos_offset is None:
-            self.pos_offset = d.qpos.copy().tolist()
+        pos_offset = d.qpos.copy().tolist() if cfg.pos_offset is None else cfg.pos_offset
 
-        self.duration = kwargs.get("duration")
-        self._timestep = MjOption().timestep
-        self.n_steps = int(self.duration / self._timestep)
+        duration = kwargs.get("duration")
+        fps = kwargs.get("fps")
+        n_frames = duration * fps
 
         displacements = []
         for _disp in cfg.displacements:
@@ -43,12 +42,14 @@ class JointPositionPlanner:
 
             displacements.append(disp)
 
+        print(f"{cfg.displacements=}")
+
         self.displacements = displacements
         self.plan = get_trajectory_interpolated_with_fifth_order_spline(
             self.displacements,  # [m, m, m, rad, rad, rad]
-            self.pos_offset,  # [m, m, m, rad, rad, rad]
-            self._timestep,  # [s]
-            self.n_steps,  # [steps]
+            pos_offset,  # [m, m, m, rad, rad, rad]
+            1.0 / fps,  # [s]  # type: ignore
+            n_frames,
         )
 
     def safe_eval(self, expr):
