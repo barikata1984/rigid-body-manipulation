@@ -31,3 +31,10 @@ controller:
   - 10000.0
 duration: 3.0
 fps: 60
+displacements:
+- 0.2
+- 1.4
+- 0.6
+- ${pi:1pi}  # converted by a omegaconf custom resolver
+- 0.0
+- ${pi:8pi}  # converted by a omegaconf custom resolver

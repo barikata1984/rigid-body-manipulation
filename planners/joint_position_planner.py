@@ -26,7 +26,7 @@ class JointPositionPlanner:
         **kwargs,
     ) -> None:
         # Fill a potentially missing field of a planner configuration
-        pos_offset = d.qpos.copy().tolist() if cfg.pos_offset is None else cfg.pos_offset
+        self.pos_offset = d.qpos.copy().tolist() if cfg.pos_offset is None else cfg.pos_offset
 
         duration = kwargs.get("duration")
         fps = kwargs.get("fps")
@@ -36,7 +36,7 @@ class JointPositionPlanner:
 
         self.trajectories = get_trajectory_interpolated_with_fifth_order_spline(
             cfg.displacements,  # [m, m, m, rad, rad, rad]
-            pos_offset,  # [m, m, m, rad, rad, rad]
+            self.pos_offset,  # [m, m, m, rad, rad, rad]
             1.0 / fps,  # [s]  # type: ignore
             n_frames,
         )

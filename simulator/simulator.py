@@ -13,7 +13,7 @@ from tqdm import tqdm
 import dynamics as dyn
 from configurations import instantiate
 from controllers import LinearQuadraticRegulatorConfig
-from planners import JointPositionPlannerConfig
+from planners import JointPositionPlannerConfig, get_trajectory_interpolated_with_fifth_order_spline
 from recorders import StandardRecorderConfig
 from sensors import Sensors
 from transformations import Poses
@@ -41,6 +41,7 @@ class SimulatorConfig(BaseSimulatorConfig):
     controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
     exp_setup: str = "experiment_setups/base.yaml"
     config_export_path: str | None = None
+    displacements: list[float] = MISSING
 
 
 # Naming convention of spatial and dynamics variables:
@@ -97,8 +98,16 @@ class Simulator:
         self.fps = cfg.fps
         self.n_steps = int(cfg.duration / MjOption().timestep)
         self.recorder = instantiate(cfg.recorder, m, d, fps=self.fps)
-        self.planner = instantiate(cfg.planner, m, d, duration=cfg.duration, fps=self.fps)
+        # self.planner = instantiate(cfg.planner, m, d, duration=cfg.duration, fps=self.fps)
         self.controller = instantiate(cfg.controller, m, d)
+
+        pos_offset = d.qpos.copy().tolist() if cfg.planner.pos_offset is None else cfg.planner.pos_offset
+        self.trajectories = get_trajectory_interpolated_with_fifth_order_spline(
+            cfg.displacements,  # [m, m, m, rad, rad, rad]
+            pos_offset,  # [m, m, m, rad, rad, rad]
+            1.0 / self.fps,  # [s]  # type: ignore
+            int(cfg.duration * self.fps),
+        )
 
         # Instantiate register classes
         self.poses = Poses(self.m, self.d)
@@ -215,7 +224,8 @@ class Simulator:
         qpos, qvel, qacc = self.sensors.get("jointvars", perturbed=True)  # # shape: (6,), (6,), (6,)
 
         # tgt_traj = self.planner.plan(step_idx)
-        tgt_traj = self.planner.trajectories[current_frame_idx]
+        # tgt_traj = self.planner.trajectories[current_frame_idx]
+        tgt_traj = self.trajectories[current_frame_idx]
         act_traj = np.stack((qpos, qvel, qacc))
         self.tgt_trajectory.append(tgt_traj)  # type: ignore
         self.trajectory.append(act_traj)  # type: ignore
