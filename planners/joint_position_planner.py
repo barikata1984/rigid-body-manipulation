@@ -30,23 +30,12 @@ class JointPositionPlanner:
 
         duration = kwargs.get("duration")
         fps = kwargs.get("fps")
-        n_frames = duration * fps
-
-        displacements = []
-        for _disp in cfg.displacements:
-            disp = _disp.__repr__().strip("'")  # not sure this is the best solution...
-            try:
-                disp = float(disp)
-            except ValueError:
-                disp = self.safe_eval(self.replace_pi(disp))
-
-            displacements.append(disp)
+        n_frames = int(duration * fps)
 
         print(f"{cfg.displacements=}")
 
-        self.displacements = displacements
-        self.plan = get_trajectory_interpolated_with_fifth_order_spline(
-            self.displacements,  # [m, m, m, rad, rad, rad]
+        self.trajectories = get_trajectory_interpolated_with_fifth_order_spline(
+            cfg.displacements,  # [m, m, m, rad, rad, rad]
             pos_offset,  # [m, m, m, rad, rad, rad]
             1.0 / fps,  # [s]  # type: ignore
             n_frames,

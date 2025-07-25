@@ -57,6 +57,23 @@ def get_trajectory_interpolated_with_fifth_order_spline(
     displacement = np.array(displacement)
     pos_offset = np.array(pos_offset)
 
+    fifth = np.array([[f**i for i in range(5, -1, -1)] for f in range(n_frames)])  # 5th to 0th (6 elems in total))
+    fourth = np.array(
+        [[f**i * (i + 1) for i in range(4, -1, -1)] for f in range(n_frames)]
+    )  # 4th to 0th (5 elems in total)
+    third = np.array(
+        [[f**i * (i + 1) * (i + 2) for i in range(3, -1, -1)] for f in range(n_frames)]
+    )  # 3rd to 0th  (4 elems in total))
+
+    # Multipy the trajectory with displacement since the trajectory is normalized
+    pos = np.outer(fifth.dot(coeffs[:]), displacement) + pos_offset  # unit: [m] ← [m] * [.]  + [m]
+    vel = np.outer(fourth.dot(coeffs[:-1]), displacement) / frame_span  # unit: [m/s] ← ([m] * [.]  + [m]) / [s]
+    acc = np.outer(third.dot(coeffs[:-2]), displacement) / frame_span**2  # unit: [m/s^2] ← ([m] * [.]  + [m]) / [s^2]
+
+    trajectories = np.stack([pos, vel, acc], axis=1)
+
+    return trajectories
+
     def plan(step: int):
         fifth = np.array([step**i for i in range(5, -1, -1)])  # 5th to 0th (6 elems in total))
         fourth = np.array([step**i * (i + 1) for i in range(4, -1, -1)])  # 4th to 0th (5 elems in total)

@@ -199,8 +199,7 @@ class Simulator:
 
     def run(self):
         for _ in tqdm(range(self.n_steps), desc="Simulation Progress"):
-            current_frame_idx = self.d.time * self.fps
-
+            current_frame_idx = int(self.d.time * self.fps)
             if self.n_processed_frames <= current_frame_idx:
                 self.procoess_frame(current_frame_idx)
 
@@ -216,7 +215,7 @@ class Simulator:
         qpos, qvel, qacc = self.sensors.get("jointvars", perturbed=True)  # # shape: (6,), (6,), (6,)
 
         # tgt_traj = self.planner.plan(step_idx)
-        tgt_traj = self.planner.plan(current_frame_idx)
+        tgt_traj = self.planner.trajectories[current_frame_idx]
         act_traj = np.stack((qpos, qvel, qacc))
         self.tgt_trajectory.append(tgt_traj)  # type: ignore
         self.trajectory.append(act_traj)  # type: ignore
