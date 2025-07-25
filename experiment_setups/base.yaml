@@ -14,9 +14,9 @@ planner:
   - 0.2
   - 1.4
   - 0.6
-  - ${pi:1pi}
+  - ${pi:1pi}  # converted by a omegaconf custom resolver
   - 0.0
-  - ${pi:8pi}
+  - ${pi:8pi}  # converted by a omegaconf custom resolver
 controller:
   target_class: LinearQuadraticRegulator
   state_space:
