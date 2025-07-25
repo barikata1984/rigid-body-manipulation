@@ -1,3 +1,4 @@
+import json
 from collections.abc import Callable
 
 import numpy as np
@@ -72,18 +73,30 @@ def get_trajectory_interpolated_with_fifth_order_spline(
 
     trajectories = np.stack([pos, vel, acc], axis=1)
 
+    # Prepare data for JSON
+    duration = frame_span
+    fps = n_frames / frame_span  # Assuming frame_span is the total duration for n_frames
+
+    frames_data = []
+    for i in range(n_frames):
+        frame_dict = {
+            "qpos": trajectories[i, 0, :].tolist(),
+            "qvel": trajectories[i, 1, :].tolist(),
+            "qacc": trajectories[i, 2, :].tolist(),
+        }
+        frames_data.append(frame_dict)
+
+    json_data = {
+        "duration": duration,
+        "fps": fps,
+        "pos_offset": pos_offset.tolist(),
+        "displacement": displacement.tolist(),
+        "frames": frames_data,
+    }
+
+    # Save to JSON file
+    json_file_path = "trajectory_data.json"  # Hardcoded for now, can be made configurable
+    with open(json_file_path, "w") as f:
+        json.dump(json_data, f, indent=4)
+
     return trajectories
-
-    def plan(step: int):
-        fifth = np.array([step**i for i in range(5, -1, -1)])  # 5th to 0th (6 elems in total))
-        fourth = np.array([step**i * (i + 1) for i in range(4, -1, -1)])  # 4th to 0th (5 elems in total)
-        third = np.array([step**i * (i + 1) * (i + 2) for i in range(3, -1, -1)])  # 3rd to 0th  (4 elems in total))
-
-        # Multipy the trajectory with displacement since the trajectory is normalized
-        pos = displacement * np.dot(coeffs[:], fifth) + pos_offset  # unit: [m] ← [m] * [.]  + [m]
-        vel = displacement * np.dot(coeffs[:-1], fourth) / frame_span  # unit: [m/s] ← ([m] * [.]  + [m]) / [s]
-        acc = displacement * np.dot(coeffs[:-2], third) / frame_span**2  # unit: [m/s^2] ← ([m] * [.]  + [m]) / [s^2]
-
-        return np.array([pos, vel, acc])
-
-    return plan
