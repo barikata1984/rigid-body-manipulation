@@ -21,6 +21,7 @@ dependencies = [
 
 [project.scripts]
 manipulate = "main:main"
+generate-trajectory = "trajectories:generate_trajectory"
 
 [tool.setuptools]
 py-modules = ["main"]
@@ -30,15 +31,16 @@ include = [
     "configurations*",
     "controllers*",
     "dynamics*",
+    "omegaconf_custom_resolvers*",
     "planners*",
     "recorders*",
     "regressions*",
     "sensors*",
     "simulator*",
+    "trajectories*",
     "transformations*",
     "utilities*",
     "visualization*",
-    "omegaconf_custom_resolvers*",
 ]
 
 [tool.ruff]

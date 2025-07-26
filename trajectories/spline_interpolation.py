@@ -6,7 +6,7 @@ from numpy import linalg as la
 from numpy.typing import ArrayLike, NDArray
 
 
-def get_trajectory_interpolated_with_fifth_order_spline(
+def get_spline_trajectory(
     duration: float,  # [s]
     fps: float,  # [Hz]
     pos_offset: ArrayLike,  # [m, m, m, rad, rad, rad]
