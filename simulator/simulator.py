@@ -38,7 +38,7 @@ class SimulatorConfig(BaseSimulatorConfig):
     recorder: StandardRecorderConfig = field(default_factory=StandardRecorderConfig)
     # planner: JointPositionPlannerConfig = field(default_factory=JointPositionPlannerConfig)
     controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
-    exp_setup: str = "experiment_setups/base.yaml"
+    exp_setup: str = "experiment_setups/simulators/base.yaml"
     config_export_path: str | None = None
     displacements: list[float] = MISSING
     target_trajectory: str | None = None
@@ -238,7 +238,7 @@ class Simulator:
             mj_step(self.m, self.d)
 
         self._post_process_data()
-        self._visualize_results()
+        # self._visualize_results()
 
         return {"frames": self.frames, "regressors": self.regressors, "fts_sen": self.fts_sen}
 
