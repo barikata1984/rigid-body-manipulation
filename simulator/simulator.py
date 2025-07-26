@@ -13,7 +13,7 @@ from tqdm import tqdm
 import dynamics as dyn
 from configurations import instantiate
 from controllers import LinearQuadraticRegulatorConfig
-from planners import JointPositionPlannerConfig, get_trajectory_interpolated_with_fifth_order_spline
+from planners import JointPositionPlannerConfig
 from recorders import StandardRecorderConfig
 from sensors import Sensors
 from transformations import Poses
@@ -42,6 +42,11 @@ class SimulatorConfig(BaseSimulatorConfig):
     exp_setup: str = "experiment_setups/base.yaml"
     config_export_path: str | None = None
     displacements: list[float] = MISSING
+    target_trajectory: str | None = None
+    generate_trajectory: str | None = None
+    duration: float
+    fps: int
+    pos_offset: list[float] | None = None
 
 
 # Naming convention of spatial and dynamics variables:
@@ -95,19 +100,39 @@ class Simulator:
         self.m = m
         self.d = d
 
-        self.fps = cfg.fps
+        if cfg.target_trajectory is not None:
+            import json
+
+            try:
+                with open(cfg.target_trajectory) as f:
+                    self.trajectory_data = json.load(f)
+                self.duration = self.trajectory_data["duration"]
+                self.fps = self.trajectory_data["fps"]
+                self.target_jointvars = self.trajectory_data["jointvars"]
+
+            except FileNotFoundError as e:
+                print(f"{e}: Target rajectory file not found at {cfg.target_trajectory}")
+                return
+
+            except json.JSONDecodeError as e:
+                print(
+                    f"{e}: Could not decode JSON from {cfg.target_trajectory}. Please ensure it's a valid JSON file."
+                )
+                return
+
+        # self.fps = cfg.fps
         self.n_steps = int(cfg.duration / MjOption().timestep)
         self.recorder = instantiate(cfg.recorder, m, d, fps=self.fps)
         # self.planner = instantiate(cfg.planner, m, d, duration=cfg.duration, fps=self.fps)
         self.controller = instantiate(cfg.controller, m, d)
 
-        pos_offset = d.qpos.copy().tolist() if cfg.planner.pos_offset is None else cfg.planner.pos_offset
-        self.trajectories = get_trajectory_interpolated_with_fifth_order_spline(
-            cfg.displacements,  # [m, m, m, rad, rad, rad]
-            pos_offset,  # [m, m, m, rad, rad, rad]
-            1.0 / self.fps,  # [s]  # type: ignore
-            int(cfg.duration * self.fps),
-        )
+        #        pos_offset = d.qpos.copy().tolist() if cfg.planner.pos_offset is None else cfg.planner.pos_offset
+        #        self.trajectories = get_trajectory_interpolated_with_fifth_order_spline(
+        #            cfg.duration,
+        #            self.fps,
+        #            pos_offset,  # [m, m, m, rad, rad, rad]
+        #            cfg.displacements,  # [m, m, m, rad, rad, rad]
+        #        )
 
         # Instantiate register classes
         self.poses = Poses(self.m, self.d)
@@ -222,13 +247,12 @@ class Simulator:
 
     def procoess_frame(self, current_frame_idx):
         qpos, qvel, qacc = self.sensors.get("jointvars", perturbed=True)  # # shape: (6,), (6,), (6,)
-
-        # tgt_traj = self.planner.plan(step_idx)
-        # tgt_traj = self.planner.trajectories[current_frame_idx]
-        tgt_traj = self.trajectories[current_frame_idx]
         act_traj = np.stack((qpos, qvel, qacc))
-        self.tgt_trajectory.append(tgt_traj)  # type: ignore
         self.trajectory.append(act_traj)  # type: ignore
+
+        tgt_qpos, tgt_qvel, tgt_qacc = self.target_jointvars[current_frame_idx].values()
+        tgt_traj = np.stack((tgt_qpos, tgt_qvel, tgt_qacc))
+        self.tgt_trajectory.append(tgt_traj)  # type: ignore
 
         # Get (d)twist_sen, and linacc_sen_obj for verification
         _, _, twists_lj_l, dtwists_lj_l = self.inverse(act_traj)

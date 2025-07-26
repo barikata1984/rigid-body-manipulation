@@ -7,13 +7,15 @@ from numpy.typing import ArrayLike, NDArray
 
 
 def get_trajectory_interpolated_with_fifth_order_spline(
-    displacement: ArrayLike,  # [m, m, m, rad, rad, rad]
+    duration: float,  # [s]
+    fps: float,  # [Hz]
     pos_offset: ArrayLike,  # [m, m, m, rad, rad, rad]
-    frame_span: float,  # [s]
-    n_frames: int,  # [steps]
+    displacement: ArrayLike,  # [m, m, m, rad, rad, rad]
     init_step: int = 0,
 ) -> Callable[[int], NDArray]:
     # Set the time window
+    n_frames = int(duration * fps)
+    frame_interval = 1.0 / fps
     t_s = init_step
     t_e = t_s + n_frames
 
@@ -67,35 +69,31 @@ def get_trajectory_interpolated_with_fifth_order_spline(
     )  # 3rd to 0th  (4 elems in total))
 
     # Multipy the trajectory with displacement since the trajectory is normalized
-    pos = np.outer(fifth.dot(coeffs[:]), displacement) + pos_offset  # unit: [m] ← [m] * [.]  + [m]
-    vel = np.outer(fourth.dot(coeffs[:-1]), displacement) / frame_span  # unit: [m/s] ← ([m] * [.]  + [m]) / [s]
-    acc = np.outer(third.dot(coeffs[:-2]), displacement) / frame_span**2  # unit: [m/s^2] ← ([m] * [.]  + [m]) / [s^2]
+    pos = np.outer(fifth.dot(coeffs[:]), displacement) + pos_offset  # [m] ← [m] * [.]  + [m]
+    vel = np.outer(fourth.dot(coeffs[:-1]), displacement) / frame_interval  # [m/s] ← ([m] * [.]  + [m]) / [s]
+    acc = np.outer(third.dot(coeffs[:-2]), displacement) / frame_interval**2  # [m/s^2] ← ([m] * [.]  + [m]) / [s^2]
 
     trajectories = np.stack([pos, vel, acc], axis=1)
 
-    # Prepare data for JSON
-    duration = frame_span
-    fps = n_frames / frame_span  # Assuming frame_span is the total duration for n_frames
-
-    frames_data = []
+    jointvars = []
     for i in range(n_frames):
-        frame_dict = {
+        jointvar = {
             "qpos": trajectories[i, 0, :].tolist(),
             "qvel": trajectories[i, 1, :].tolist(),
             "qacc": trajectories[i, 2, :].tolist(),
         }
-        frames_data.append(frame_dict)
+        jointvars.append(jointvar)
 
     json_data = {
         "duration": duration,
         "fps": fps,
         "pos_offset": pos_offset.tolist(),
         "displacement": displacement.tolist(),
-        "frames": frames_data,
+        "jointvars": jointvars,
     }
 
     # Save to JSON file
-    json_file_path = "trajectory_data.json"  # Hardcoded for now, can be made configurable
+    json_file_path = "fifth_order_spline.json"  # Hardcoded for now, can be made configurable
     with open(json_file_path, "w") as f:
         json.dump(json_data, f, indent=4)
 
