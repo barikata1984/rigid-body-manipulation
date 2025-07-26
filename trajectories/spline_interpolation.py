@@ -85,7 +85,7 @@ def generate_spline_trajectory(
     json_data = {
         "duration": duration,
         "fps": fps,
-        "jointpos_offset": jointpos_offset,
+        "jointpos_offset": jointpos_offset.tolist(),
         "displacement": displacement.tolist(),
         "jointvars": jointvars,
     }
