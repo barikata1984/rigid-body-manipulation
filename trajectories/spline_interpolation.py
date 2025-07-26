@@ -1,5 +1,4 @@
 import json
-from collections.abc import Callable
 
 import numpy as np
 from numpy import linalg as la
@@ -12,7 +11,7 @@ def generate_spline_trajectory(
     displacement: ArrayLike,  # [m, m, m, rad, rad, rad]
     jointpos_offset: ArrayLike,  # [m, m, m, rad, rad, rad]
     init_step: int = 0,
-) -> Callable[[int], NDArray]:
+) -> NDArray:
     # Set the time window
     n_frames = int(duration * fps)
     frame_interval = 1.0 / fps
@@ -67,18 +66,17 @@ def generate_spline_trajectory(
 
     # Multipy the trajectory with displacement since the trajectory is normalized
     displacement = np.array(displacement)
-    pos = np.outer(fifth.dot(coeffs[:]), displacement) + np.array(jointpos_offset)  # [m] ← [m] * [.]  + [m]
-    vel = np.outer(fourth.dot(coeffs[:-1]), displacement) / frame_interval  # [m/s] ← ([m] * [.]  + [m]) / [s]
-    acc = np.outer(third.dot(coeffs[:-2]), displacement) / frame_interval**2  # [m/s^2] ← ([m] * [.]  + [m]) / [s^2]
-
-    trajectories = np.stack([pos, vel, acc], axis=1)
+    jointpos_offset = np.array(jointpos_offset)
+    qposs = np.outer(fifth.dot(coeffs[:]), displacement) + jointpos_offset  # [m] ← [.] * [m]  + [m]
+    qvels = np.outer(fourth.dot(coeffs[:-1]), displacement) / frame_interval  # [m/s] ← ([.] * [m]  + [m]) / [s]
+    qaccs = np.outer(third.dot(coeffs[:-2]), displacement) / frame_interval**2  # [m/s^2] ← ([.] * [m]  + [m]) / [s^2]
 
     jointvars = []
     for i in range(n_frames):
         jointvar = {
-            "qpos": trajectories[i, 0, :].tolist(),
-            "qvel": trajectories[i, 1, :].tolist(),
-            "qacc": trajectories[i, 2, :].tolist(),
+            "qpos": qposs[i].tolist(),
+            "qvel": qvels[i].tolist(),
+            "qacc": qaccs[i].tolist(),
         }
         jointvars.append(jointvar)
 
@@ -95,4 +93,4 @@ def generate_spline_trajectory(
     with open(json_file_path, "w") as f:
         json.dump(json_data, f, indent=4)
 
-    return trajectories
+    return np.stack([qposs, qvels, qaccs], axis=1)
