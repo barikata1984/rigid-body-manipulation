@@ -1,4 +1,4 @@
-manipulator_dir: xml_models/manipulators/sequential
+manipulator: xml_models/manipulators/sequential
 reset_keyframe: initial_state
 recorder:
   target_class: BasicRecorder
@@ -8,15 +8,6 @@ recorder:
   #fps: 60
   videoname: output.mp4
   videcodec: mp4v
-planner:
-  target_class: JointPositionPlanner
-  displacements:
-  - 0.2
-  - 1.4
-  - 0.6
-  - ${pi:1pi}  # converted by a omegaconf custom resolver
-  - 0.0
-  - ${pi:8pi}  # converted by a omegaconf custom resolver
 controller:
   target_class: LinearQuadraticRegulator
   state_space:

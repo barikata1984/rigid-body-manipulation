@@ -13,7 +13,6 @@ from tqdm import tqdm
 import dynamics as dyn
 from configurations import instantiate
 from controllers import LinearQuadraticRegulatorConfig
-from planners import JointPositionPlannerConfig
 from recorders import StandardRecorderConfig
 from sensors import Sensors
 from transformations import Poses
@@ -31,21 +30,19 @@ np.set_printoptions(precision=5, suppress=True)
 @dataclass
 class SimulatorConfig(BaseSimulatorConfig):
     target_class: str = "Simulator"  # type: ignore
-    manipulator_dir: str = "xml_models/manipulators/sequential"
-    target_dir: str = MISSING
+    manipulator: str = "xml_models/manipulators/sequential"
+    object: str = MISSING
     reset_keyframe: str = "initial_state"
     duration: float = MISSING
     fps: int = MISSING
     recorder: StandardRecorderConfig = field(default_factory=StandardRecorderConfig)
-    planner: JointPositionPlannerConfig = field(default_factory=JointPositionPlannerConfig)
+    # planner: JointPositionPlannerConfig = field(default_factory=JointPositionPlannerConfig)
     controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
     exp_setup: str = "experiment_setups/base.yaml"
     config_export_path: str | None = None
     displacements: list[float] = MISSING
     target_trajectory: str | None = None
     generate_trajectory: str | None = None
-    duration: float
-    fps: int
     pos_offset: list[float] | None = None
 
 

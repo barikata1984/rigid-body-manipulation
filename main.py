@@ -30,17 +30,16 @@ def main():
     try:
         cfg.recorder.aabb_scale = float(cfg.recorder.aabb_scale)
     except MissingMandatoryValue:
-        target_object_id = get_element_id(m, "numeric", "target/aabb_scale")
-        aabb_scale = m.numeric_data[target_object_id]
+        aabb_scale = m.numeric_data[get_element_id(m, "numeric", "target/aabb_scale")]
         cfg.recorder.aabb_scale = float(aabb_scale)
 
-    target_dir = Path(cfg.target_dir)
-    target_gt = target_dir / "ground_truth.csv"
+    object_dir = Path(cfg.object)
+    object_gt = object_dir / "ground_truth.csv"
 
     try:
         dataset_dir = Path(cfg.recorder.dataset_dir)
     except MissingMandatoryValue:
-        dataset_dir = Path.cwd() / "datasets" / target_dir.name
+        dataset_dir = Path.cwd() / "datasets" / object_dir.name
         cfg.recorder.dataset_dir = dataset_dir
 
     dataset_dir.mkdir(parents=True, exist_ok=True)
@@ -50,7 +49,7 @@ def main():
     if dataset_gt.is_file():
         print("'ground_truth.csv' is not copied to the dataset dir since the file with the same name already existsd.")
     else:
-        copy(target_gt, dataset_gt)
+        copy(object_gt, dataset_gt)
 
     simulator_cfg = OmegaConf.to_object(cfg)
     simulator = instantiate(simulator_cfg, m, d)
