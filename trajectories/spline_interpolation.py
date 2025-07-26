@@ -6,11 +6,11 @@ from numpy import linalg as la
 from numpy.typing import ArrayLike, NDArray
 
 
-def get_spline_trajectory(
+def generate_spline_trajectory(
     duration: float,  # [s]
     fps: float,  # [Hz]
-    pos_offset: ArrayLike,  # [m, m, m, rad, rad, rad]
     displacement: ArrayLike,  # [m, m, m, rad, rad, rad]
+    jointpos_offset: ArrayLike,  # [m, m, m, rad, rad, rad]
     init_step: int = 0,
 ) -> Callable[[int], NDArray]:
     # Set the time window
@@ -57,9 +57,6 @@ def get_spline_trajectory(
         normalized_boundaries,  # boundary values
     )
 
-    displacement = np.array(displacement)
-    pos_offset = np.array(pos_offset)
-
     fifth = np.array([[f**i for i in range(5, -1, -1)] for f in range(n_frames)])  # 5th to 0th (6 elems in total))
     fourth = np.array(
         [[f**i * (i + 1) for i in range(4, -1, -1)] for f in range(n_frames)]
@@ -69,7 +66,8 @@ def get_spline_trajectory(
     )  # 3rd to 0th  (4 elems in total))
 
     # Multipy the trajectory with displacement since the trajectory is normalized
-    pos = np.outer(fifth.dot(coeffs[:]), displacement) + pos_offset  # [m] ← [m] * [.]  + [m]
+    displacement = np.array(displacement)
+    pos = np.outer(fifth.dot(coeffs[:]), displacement) + np.array(jointpos_offset)  # [m] ← [m] * [.]  + [m]
     vel = np.outer(fourth.dot(coeffs[:-1]), displacement) / frame_interval  # [m/s] ← ([m] * [.]  + [m]) / [s]
     acc = np.outer(third.dot(coeffs[:-2]), displacement) / frame_interval**2  # [m/s^2] ← ([m] * [.]  + [m]) / [s^2]
 
@@ -87,13 +85,13 @@ def get_spline_trajectory(
     json_data = {
         "duration": duration,
         "fps": fps,
-        "pos_offset": pos_offset.tolist(),
+        "jointpos_offset": jointpos_offset,
         "displacement": displacement.tolist(),
         "jointvars": jointvars,
     }
 
     # Save to JSON file
-    json_file_path = "fifth_order_spline.json"  # Hardcoded for now, can be made configurable
+    json_file_path = "experiment_setups/trajectories/_spline.json"  # Hardcoded for now, can be made configurable
     with open(json_file_path, "w") as f:
         json.dump(json_data, f, indent=4)
 
