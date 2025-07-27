@@ -5,7 +5,7 @@ from numpy.typing import ArrayLike
 def generate_sinusoidal_trajectory(
     duration: float,
     fps: int,
-    harmonic_coeffs: ArrayLike,
+    coeffs: ArrayLike,
     base_frequency: float,
     jointpos_offset: ArrayLike = (0, 0, 0, 0, 0, 0),
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -17,7 +17,7 @@ def generate_sinusoidal_trajectory(
     sine and cosine functions plus a constant offset.
 
     Args:
-        harmonic_coeffs (np.ndarray):
+        coeffs (np.ndarray):
             A 3D numpy array of shape (n_joints, n_harmonics, 2). It holds the coefficients for the sinusoids.
             coeffs[i, k, 0] corresponds to p_ik (sine coefficient for joint i, harmonic k). coeffs[i, k, 1]
             corresponds to d_ik (cosine coefficient for joint i, harmonic k).
@@ -37,9 +37,9 @@ def generate_sinusoidal_trajectory(
         - qvel: 2D array of joint velocities `q_dot(t)` of shape (n_joints, n_timesteps).
         - qacc: 2D array of joint accelerations `q_ddot(t)` of shape (n_joints, n_timesteps).
     """
-    n_joints, n_harmonics, _ = harmonic_coeffs.shape
+    n_joints, n_harmonics, _ = coeffs.shape
     if jointpos_offset.shape[0] != n_joints:
-        raise ValueError("Shape mismatch between harmonic_coeffs and jointpos_offset.")
+        raise ValueError("Shape mismatch between coeffs and jointpos_offset.")
 
     # 1. Create the time vector
     n_timesteps = int(duration * fps)
@@ -54,8 +54,8 @@ def generate_sinusoidal_trajectory(
     for k in range(1, n_harmonics + 1):
         omega = 2 * np.pi * k * base_frequency
 
-        p_k = harmonic_coeffs[:, k - 1, 0]
-        d_k = harmonic_coeffs[:, k - 1, 1]
+        p_k = coeffs[:, k - 1, 0]
+        d_k = coeffs[:, k - 1, 1]
 
         sin_t = np.sin(omega * t_vec)
         cos_t = np.cos(omega * t_vec)

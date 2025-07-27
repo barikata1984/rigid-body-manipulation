@@ -22,13 +22,13 @@ class TestGenerateSinusoidalTrajectory(unittest.TestCase):
 
         # Generate random but deterministic coefficients and offsets for consistency
         np.random.seed(42)
-        self.harmonic_coeffs = np.random.rand(self.n_joints, self.n_harmonics, 2)
+        self.coeffs = np.random.rand(self.n_joints, self.n_harmonics, 2)
         self.jointpos_offset = np.random.rand(self.n_joints)
 
     def test_output_shapes(self):
         """1. Test if the output arrays have the correct shapes."""
         t_vec, qpos, qvel, qacc = generate_sinusoidal_trajectory(
-            harmonic_coeffs=self.harmonic_coeffs,
+            coeffs=self.coeffs,
             jointpos_offset=self.jointpos_offset,
             base_frequency=self.base_frequency,
             duration=self.duration,
@@ -55,7 +55,7 @@ class TestGenerateSinusoidalTrajectory(unittest.TestCase):
         offset = np.array([0.0])
 
         t_vec, qpos, qvel, qacc = generate_sinusoidal_trajectory(
-            harmonic_coeffs=coeffs, jointpos_offset=offset, base_frequency=base_freq, duration=duration, fps=fps
+            coeffs=coeffs, jointpos_offset=offset, base_frequency=base_freq, duration=duration, fps=fps
         )
 
         # Check values at t = 0.25s
@@ -82,7 +82,7 @@ class TestGenerateSinusoidalTrajectory(unittest.TestCase):
         offset = np.array([0.0])
 
         t_vec, qpos, qvel, qacc = generate_sinusoidal_trajectory(
-            harmonic_coeffs=coeffs, jointpos_offset=offset, base_frequency=base_freq, duration=duration, fps=fps
+            coeffs=coeffs, jointpos_offset=offset, base_frequency=base_freq, duration=duration, fps=fps
         )
 
         joint_idx = 0
@@ -105,7 +105,7 @@ class TestGenerateSinusoidalTrajectory(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             generate_sinusoidal_trajectory(
-                harmonic_coeffs=self.harmonic_coeffs,
+                coeffs=self.coeffs,
                 jointpos_offset=bad_offset,
                 base_frequency=self.base_frequency,
                 duration=self.duration,
