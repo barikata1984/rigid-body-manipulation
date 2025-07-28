@@ -1,13 +1,15 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import partial
 
 import numpy as np
 from liegroups.numpy import SE3, SO3
 from mujoco._functions import mjd_transitionFD
-from mujoco._structs import MjData, MjModel
+from mujoco._structs import MjData, MjModel, MjOption
 from numpy.typing import NDArray
 
-from transformations import homogenize
+from transformations import Poses, homogenize
+from utilities import get_element_id
 
 
 @dataclass
@@ -266,3 +268,97 @@ def coordinate_transfer_simat(pose_target_current, simat_current):
     simat = pose_target_current.adjoint() @ simat_current @ pose_target_current.adjoint().T
 
     return simat
+
+
+def calculate_condition_number(
+    m: MjModel,
+    d: MjData,
+    joint_trajectory: NDArray,
+    ee_body_name: str = "link6",
+) -> float:
+    """
+    Calculates the condition number of the regressor matrix for a given trajectory.
+
+    Args:
+        m: MuJoCo MjModel object.
+        d: MuJoCo MjData object.
+        joint_trajectory:
+            A numpy array of shape (n_frames, 3, n_dof) containing the joint positions, velocities, and accelerations.
+
+    Returns:
+        The condition number of the stacked regressor matrix.
+    """
+    # The following logic is mirrored from Simulator.__init__
+    poses = Poses(m, d)
+    id_ll = get_element_id(m, "body", ee_body_name)
+    id_x2ll = slice(0, id_ll + 1)
+    pose_ll_llj = poses.l_lj[id_ll]
+
+    uscrews_lj = []
+    for t, ax in zip(m.jnt_type, m.jnt_axis, strict=False):
+        us_lj = np.zeros(6)
+        if 2 == t:  # slider joint
+            us_lj[:3] += ax
+        elif 3 == t:  # hinge joint
+            us_lj[3:] += ax
+        else:
+            raise TypeError(
+                "Only slide or hinge joints, represented as 2 or 3 for an element of m.jnt_type, are supported."
+            )
+        uscrews_lj.append(us_lj)
+    uscrews_lj = np.array(uscrews_lj)
+
+    simats_bi_b = get_spatial_inertia_matrix(
+        m.body_mass,
+        m.body_inertia,
+    )
+    simats_lj_l = []
+    for pose_lj_li, simat_li_l in zip(poses.lj_li, simats_bi_b[id_x2ll], strict=False):
+        simats_lj_l.append(transfer_simat(pose_lj_li, simat_li_l))
+    simats_lj_l = np.array(simats_lj_l)
+
+    pose_x_ll = poses.x_b[id_ll]
+    for pose_x_bi, simat_bi_b in zip(poses.x_bi[id_ll + 1 :], simats_bi_b[id_ll + 1 :], strict=False):
+        pose_x_llj = pose_x_ll.dot(pose_ll_llj)
+        pose_bi_llj = pose_x_bi.inv().dot(pose_x_llj)
+        simat_llj_b = transfer_simat(pose_bi_llj.inv(), simat_bi_b)
+        simats_lj_l[id_ll] += simat_llj_b
+
+    hposes_lj_kj = [SE3.identity()]
+    for k in range(m.njnt):
+        hpose_kj_k = poses.l_lj[k].inv()
+        hpose_l_lj = poses.l_lj[k + 1]
+        hpose_k_l = poses.a_b[k + 1]
+        hpose_kj_lj = hpose_kj_k.dot(hpose_k_l.dot(hpose_l_lj))
+        hposes_lj_kj.append(hpose_kj_lj.inv())
+
+    gacc_x = -1 * np.array([*MjOption().gravity, 0, 0, 0])
+    inverse_dynamics = partial(
+        inverse,
+        hposes_body_parent=hposes_lj_kj,
+        simats_body=simats_lj_l,
+        uscrews_body=uscrews_lj,
+        twist_0=np.zeros(6),
+        dtwist_0=gacc_x,
+    )
+
+    # The following logic is mirrored from Simulator.procoess_frame
+    pose_x_sen = poses.get_x_("site", "target/ft_sensor")
+    pose_sen_llj = pose_x_sen.inv().dot(pose_x_ll.dot(pose_ll_llj))
+
+    regressors = []
+    for i in range(joint_trajectory.shape[0]):
+        act_traj = joint_trajectory[i, :, :]
+        _, _, twists_lj_l, dtwists_lj_l = inverse_dynamics(act_traj)
+        twist_llj = twists_lj_l[id_ll]
+        twist_sen = pose_sen_llj.adjoint() @ twist_llj
+        dtwist_llj = dtwists_lj_l[id_ll]
+        pose_sen_llj_dadjoint = SE3.curlywedge(twist_sen) @ pose_sen_llj.adjoint()
+        dtwist_sen = pose_sen_llj_dadjoint @ twist_llj + pose_sen_llj.adjoint() @ dtwist_llj
+
+        regressor = get_regressor_matrix(twist_sen, dtwist_sen)
+        regressors.append(regressor)
+
+    stacked_regressors = np.vstack(regressors)
+    correlation_matrix = stacked_regressors.T @ stacked_regressors
+    return np.linalg.cond(correlation_matrix)
