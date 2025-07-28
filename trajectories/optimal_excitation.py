@@ -2,6 +2,22 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 
+def generate_optimal_excitation_trajectory(
+    duration: float,
+    fps: int,
+    coeffs: ArrayLike,
+    base_frequency: float,
+    jointpos_offset: ArrayLike = (0, 0, 0, 0, 0, 0),
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    return generate_sinusoidal_trajectory(
+        duration=duration,
+        fps=fps,
+        coeffs=coeffs,
+        base_frequency=base_frequency,
+        jointpos_offset=jointpos_offset,
+    )
+
+
 def generate_sinusoidal_trajectory(
     duration: float,
     fps: int,
@@ -37,6 +53,7 @@ def generate_sinusoidal_trajectory(
         - qvel: 2D array of joint velocities `q_dot(t)` of shape (n_joints, n_timesteps).
         - qacc: 2D array of joint accelerations `q_ddot(t)` of shape (n_joints, n_timesteps).
     """
+    n_joints, n_harmonics, _ = coeffs.shape
     n_joints, n_harmonics, _ = coeffs.shape
     if jointpos_offset.shape[0] != n_joints:
         raise ValueError("Shape mismatch between coeffs and jointpos_offset.")

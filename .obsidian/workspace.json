@@ -1,0 +1,174 @@
+{
+  "main": {
+    "id": "3eafbac6f0703024",
+    "type": "split",
+    "children": [
+      {
+        "id": "c5d7cd062be41480",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "d452e553dc325b11",
+            "type": "leaf",
+            "state": {
+              "type": "pdf",
+              "state": {
+                "file": "literature/main.pdf"
+              },
+              "icon": "lucide-file-text",
+              "title": "main"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "46fb2f4d5534d9f7",
+    "type": "split",
+    "children": [
+      {
+        "id": "58512679e914b2e7",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "8a7e67f32c61862f",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "e0f9eca99537b601",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "4e04574629248522",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "fb6e5bd6952000b6",
+    "type": "split",
+    "children": [
+      {
+        "id": "11a104238eb0b969",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "4783b0175baf5362",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "literature/main.pdf",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for main"
+            }
+          },
+          {
+            "id": "92d85bafc82f8414",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "literature/main.pdf",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from main"
+            }
+          },
+          {
+            "id": "b5c7ee356108aef6",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "ce6611d53b5f9511",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "literature/main.pdf",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of main"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false
+    }
+  },
+  "active": "d452e553dc325b11",
+  "lastOpenFiles": [
+    "experiment_setups/trajectories/_sixth-order-spline.json",
+    "experiment_setups/trajectories/_fifth-order-spline.json"
+  ]
+}

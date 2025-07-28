@@ -243,8 +243,8 @@ class Simulator:
         return {"frames": self.frames, "regressors": self.regressors, "fts_sen": self.fts_sen}
 
     def procoess_frame(self, current_frame_idx):
-        qpos, qvel, qacc = self.sensors.get("jointvars", perturbed=True)  # # shape: (6,), (6,), (6,)
-        act_traj = np.stack((qpos, qvel, qacc))
+        act_qpos, act_qvel, act_qacc = self.sensors.get("jointvars", perturbed=True)  # # shape: (6,), (6,), (6,)
+        act_traj = np.stack((act_qpos, act_qvel, act_qacc))
         self.trajectory.append(act_traj)  # type: ignore
 
         tgt_qpos, tgt_qvel, tgt_qacc = self.target_jointvars[current_frame_idx].values()
@@ -260,8 +260,8 @@ class Simulator:
         dtwist_sen = pose_sen_llj_dadjoint @ twist_llj + self.pose_sen_llj.adjoint() @ dtwist_llj  # type: ignore
 
         # Compute the residuals and control signals, and set the control singals
-        mj_differentiatePos(self.m, self.res_qpos, self.m.nu, qpos, tgt_traj[0])
-        res_state = np.concatenate((self.res_qpos, tgt_traj[1] - qvel))
+        mj_differentiatePos(self.m, self.res_qpos, self.m.nu, act_qpos, tgt_traj[0])
+        res_state = np.concatenate((self.res_qpos, tgt_traj[1] - act_qvel))
         tgt_ctrl, _, _, _ = self.inverse(tgt_traj)
         self.d.ctrl = tgt_ctrl - self.controller.gain_matrix @ res_state
 

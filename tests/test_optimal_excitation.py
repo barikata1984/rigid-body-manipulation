@@ -3,12 +3,46 @@ import os
 # As the function is in a sibling directory, we adjust the path to import it.
 import sys
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from trajectories.optimal_excitation import generate_sinusoidal_trajectory
+from trajectories.optimal_excitation import (
+    generate_optimal_excitation_trajectory,
+    generate_sinusoidal_trajectory,
+)
+
+
+class TestGenerateOptimalExcitationTrajectory(unittest.TestCase):
+    def setUp(self):
+        """Set up common parameters for tests."""
+        self.n_joints = 6
+        self.n_harmonics = 5
+        self.duration = 2.0
+        self.fps = 100
+        self.base_frequency = 1.0
+        self.coeffs = np.random.rand(self.n_joints, self.n_harmonics, 2)
+        self.jointpos_offset = np.random.rand(self.n_joints)
+
+    @patch("trajectories.optimal_excitation.generate_sinusoidal_trajectory")
+    def test_calls_generate_sinusoidal_trajectory(self, mock_generate_sinusoidal):
+        """Test if generate_optimal_excitation_trajectory calls generate_sinusoidal_trajectory."""
+        generate_optimal_excitation_trajectory(
+            duration=self.duration,
+            fps=self.fps,
+            coeffs=self.coeffs,
+            base_frequency=self.base_frequency,
+            jointpos_offset=self.jointpos_offset,
+        )
+        mock_generate_sinusoidal.assert_called_once_with(
+            duration=self.duration,
+            fps=self.fps,
+            coeffs=self.coeffs,
+            base_frequency=self.base_frequency,
+            jointpos_offset=self.jointpos_offset,
+        )
 
 
 class TestGenerateSinusoidalTrajectory(unittest.TestCase):

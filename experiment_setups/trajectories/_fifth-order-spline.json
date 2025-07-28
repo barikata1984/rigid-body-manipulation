@@ -17,6 +17,7 @@
         5.0,
         6.0
     ],
+    "trajectory_type": "fifth-order-spline",
     "jointvars": [
         {
             "qpos": [
