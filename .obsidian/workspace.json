@@ -11,12 +11,14 @@
             "id": "d452e553dc325b11",
             "type": "leaf",
             "state": {
-              "type": "pdf",
+              "type": "markdown",
               "state": {
-                "file": "literature/main.pdf"
+                "file": "vault_rigid-body-manipulation/excitation_trajectory_design.md",
+                "mode": "source",
+                "source": false
               },
-              "icon": "lucide-file-text",
-              "title": "main"
+              "icon": "lucide-file",
+              "title": "excitation_trajectory_design"
             }
           }
         ]
@@ -92,7 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "literature/main.pdf",
+                "file": "vault_rigid-body-manipulation/excitation_trajectory_design.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -102,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks for main"
+              "title": "Backlinks for excitation_trajectory_design"
             }
           },
           {
@@ -111,12 +113,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "literature/main.pdf",
+                "file": "vault_rigid-body-manipulation/excitation_trajectory_design.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links from main"
+              "title": "Outgoing links from excitation_trajectory_design"
             }
           },
           {
@@ -140,13 +142,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "literature/main.pdf",
+                "file": "vault_rigid-body-manipulation/excitation_trajectory_design.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline of main"
+              "title": "Outline of excitation_trajectory_design"
             }
           }
         ]
@@ -168,6 +170,7 @@
   },
   "active": "d452e553dc325b11",
   "lastOpenFiles": [
+    "literature/main.pdf",
     "experiment_setups/trajectories/_sixth-order-spline.json",
     "experiment_setups/trajectories/_fifth-order-spline.json"
   ]

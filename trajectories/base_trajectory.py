@@ -25,7 +25,7 @@ def generate_trajectory():
         # displacement_converted = [pi_converter(val) for val in displacement]
         # pos_offset_converted = [pi_converter(val) for val in jointpos_offset]
 
-        generate_spline_trajectory(
+        trajectory = generate_spline_trajectory(
             trajectory_type=cfg.trajectory_type,
             duration=cfg.duration,
             fps=cfg.fps,
@@ -33,16 +33,16 @@ def generate_trajectory():
             displacement=cfg.displacement,
         )
     elif "optimal_excitation" == cfg.trajectory_type:
-        tmp = generate_optimal_excitation_trajectory(
+        trajectory = generate_optimal_excitation_trajectory(
             duration=cfg.duration,
             fps=cfg.fps,
             jointpos_offset=cfg.jointpos_offset,
             coeffs=cfg.coeffs,
             base_frequency=cfg.base_frequency,
         )
-
-        import pdb
-
-        pdb.set_trace()
     else:
         raise ValueError(f"Unknown trajectory type: {cfg.trajectory_type}")
+
+    import pdb
+
+    pdb.set_trace()
