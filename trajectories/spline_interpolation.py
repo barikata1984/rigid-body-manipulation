@@ -1,12 +1,10 @@
-import json
-
 import numpy as np
 from numpy import linalg as la
 from numpy.typing import NDArray
 
 
-def _generate_fifth_order_spline_coeffs(t_s: float, t_e: float) -> NDArray:
-    """Generates coefficients for a 5th-order spline with zero velocity and acceleration at start/end."""
+def _generate_fifth_order_spline_coeffs(t_s: float, t_e: float, boundary_conditions: NDArray) -> NDArray:
+    """Generates coefficients for a 5th-order spline with specified boundary conditions."""
     boundary_matrix = np.array(
         [
             # start pos
@@ -24,22 +22,11 @@ def _generate_fifth_order_spline_coeffs(t_s: float, t_e: float) -> NDArray:
         ],
         dtype=float,
     )
-
-    normalized_boundaries = np.array(
-        [
-            0,  # start pos
-            1,  # end pos
-            0,  # start vel
-            0,  # end vel
-            0,  # start acc
-            0,  # end acc
-        ]
-    )
-    return la.solve(boundary_matrix, normalized_boundaries)
+    return la.solve(boundary_matrix, boundary_conditions)
 
 
-def _generate_sixth_order_spline_coeffs(t_s: float, t_e: float) -> NDArray:
-    """Generates coefficients for a 6th-order spline with zero velocity, acceleration, and jerk at start/end."""
+def _generate_sixth_order_spline_coeffs(t_s: float, t_e: float, boundary_conditions: NDArray) -> NDArray:
+    """Generates coefficients for a 6th-order spline with specified boundary conditions."""
     boundary_matrix = np.array(
         [
             # start pos
@@ -59,82 +46,91 @@ def _generate_sixth_order_spline_coeffs(t_s: float, t_e: float) -> NDArray:
         ],
         dtype=float,
     )
-
-    normalized_boundaries = np.array(
-        [
-            0,  # start pos
-            1,  # end pos
-            0,  # start vel
-            0,  # end vel
-            0,  # start acc
-            0,  # end acc
-            0,  # start jerk
-        ]
-    )
-    return la.solve(boundary_matrix, normalized_boundaries)
+    return la.solve(boundary_matrix, boundary_conditions)
 
 
 def generate_spline_trajectory(
     duration: float,  # [s]
     fps: float,  # [Hz]
-    displacement: list[float],  # [m, m, m, rad, rad, rad]
-    jointpos_offset: list[float],  # [m, m, m, rad, rad, rad]
+    start_conditions: dict[str, list[float]],
+    end_conditions: dict[str, list[float]],
     trajectory_type: str = "fifth",  # "fifth" or "sixth"
 ) -> NDArray:
-    # Set the time window
+    """
+    Generates a spline trajectory for multiple joints with specified start and end conditions.
+
+    Args:
+        duration: The duration of the trajectory in seconds.
+        fps: The frequency of the trajectory in Hz.
+        start_conditions: A dictionary with "qpos", "qvel", and "qacc" at the start.
+        end_conditions: A dictionary with "qpos", "qvel", and "qacc" at the end.
+        trajectory_type: The type of spline to use, either "fifth" or "sixth".
+
+    Returns:
+        A numpy array of shape (n_frames, 3, n_dof) containing the joint positions,
+        velocities, and accelerations at each frame.
+    """
     n_frames = int(duration * fps)
-    frame_interval = 1.0 / fps
-    t_s = 0
-    t_e = t_s + n_frames
+    t_s = 0.0
+    t_e = duration
 
-    if "fifth" in trajectory_type:
-        coeffs = _generate_fifth_order_spline_coeffs(t_s, t_e)
-        # Polynomial terms for 5th order
-        fifth_poly = np.array([[f**i for i in range(5, -1, -1)] for f in range(n_frames)])
-        fourth_poly_deriv = np.array([[f**i * (i + 1) for i in range(4, -1, -1)] for f in range(n_frames)])
-        third_poly_deriv2 = np.array([[f**i * (i + 1) * (i + 2) for i in range(3, -1, -1)] for f in range(n_frames)])
+    start_qpos = np.array(start_conditions["qpos"])
+    start_qvel = np.array(start_conditions["qvel"])
+    start_qacc = np.array(start_conditions["qacc"])
+    end_qpos = np.array(end_conditions["qpos"])
+    end_qvel = np.array(end_conditions["qvel"])
+    end_qacc = np.array(end_conditions["qacc"])
 
-        qposs = np.outer(fifth_poly.dot(coeffs), displacement) + jointpos_offset
-        qvels = np.outer(fourth_poly_deriv.dot(coeffs[:-1]), displacement) / frame_interval
-        qaccs = np.outer(third_poly_deriv2.dot(coeffs[:-2]), displacement) / frame_interval**2
+    n_dof = len(start_qpos)
+    qposs = np.zeros((n_frames, n_dof))
+    qvels = np.zeros((n_frames, n_dof))
+    qaccs = np.zeros((n_frames, n_dof))
 
-    elif "sixth" in trajectory_type:
-        coeffs = _generate_sixth_order_spline_coeffs(t_s, t_e)
-        # Polynomial terms for 6th order
-        sixth_poly = np.array([[f**i for i in range(6, -1, -1)] for f in range(n_frames)])
-        fifth_poly_deriv = np.array([[f**i * (i + 1) for i in range(5, -1, -1)] for f in range(n_frames)])
-        fourth_poly_deriv2 = np.array([[f**i * (i + 1) * (i + 2) for i in range(4, -1, -1)] for f in range(n_frames)])
+    time_points = np.linspace(t_s, t_e, n_frames)
 
-        qposs = np.outer(sixth_poly.dot(coeffs), displacement) + jointpos_offset
-        qvels = np.outer(fifth_poly_deriv.dot(coeffs[:-1]), displacement) / frame_interval
-        qaccs = np.outer(fourth_poly_deriv2.dot(coeffs[:-2]), displacement) / frame_interval**2
+    for i in range(n_dof):
+        if "fifth" in trajectory_type:
+            boundary_conditions = np.array(
+                [
+                    start_qpos[i],
+                    end_qpos[i],
+                    start_qvel[i],
+                    end_qvel[i],
+                    start_qacc[i],
+                    end_qacc[i],
+                ]
+            )
+            coeffs = _generate_fifth_order_spline_coeffs(t_s, t_e, boundary_conditions)
+            poly_t = np.array([time_points**j for j in range(5, -1, -1)]).T
+            poly_vel_t = np.array([j * time_points ** (j - 1) for j in range(5, 0, -1)]).T
+            poly_acc_t = np.array([j * (j - 1) * time_points ** (j - 2) for j in range(5, 1, -1)]).T
 
-    else:
-        raise ValueError("Invalid trajectory_type. Must be 'fifth' or 'sixth'.")
+            qposs[:, i] = poly_t @ coeffs
+            qvels[:, i] = poly_vel_t @ coeffs[:-1]
+            qaccs[:, i] = poly_acc_t @ coeffs[:-2]
 
-    jointvars = []
-    for i in range(n_frames):
-        jointvar = {
-            "qpos": qposs[i].tolist(),
-            "qvel": qvels[i].tolist(),
-            "qacc": qaccs[i].tolist(),
-        }
-        jointvars.append(jointvar)
+        elif "sixth" in trajectory_type:
+            start_qjerk = start_conditions.get("qjerk", [0.0] * n_dof)[i]
+            boundary_conditions = np.array(
+                [
+                    start_qpos[i],
+                    end_qpos[i],
+                    start_qvel[i],
+                    end_qvel[i],
+                    start_qacc[i],
+                    end_qacc[i],
+                    start_qjerk,
+                ]
+            )
+            coeffs = _generate_sixth_order_spline_coeffs(t_s, t_e, boundary_conditions)
+            poly_t = np.array([time_points**j for j in range(6, -1, -1)]).T
+            poly_vel_t = np.array([j * time_points ** (j - 1) for j in range(6, 0, -1)]).T
+            poly_acc_t = np.array([j * (j - 1) * time_points ** (j - 2) for j in range(6, 1, -1)]).T
 
-    json_data = {
-        "duration": duration,
-        "fps": fps,
-        "jointpos_offset": jointpos_offset,
-        "displacement": displacement,
-        "trajectory_type": trajectory_type,
-        "jointvars": jointvars,
-    }
-
-    # Save to JSON file
-    json_file_path = (
-        f"experiment_setups/trajectories/_{trajectory_type}.json"  # Hardcoded for now, can be made configurable
-    )
-    with open(json_file_path, "w") as f:
-        json.dump(json_data, f, indent=4)
+            qposs[:, i] = poly_t @ coeffs
+            qvels[:, i] = poly_vel_t @ coeffs[:-1]
+            qaccs[:, i] = poly_acc_t @ coeffs[:-2]
+        else:
+            raise ValueError("Invalid trajectory_type. Must be 'fifth' or 'sixth'.")
 
     return np.stack([qposs, qvels, qaccs], axis=1)

@@ -171,6 +171,12 @@
   "active": "d452e553dc325b11",
   "lastOpenFiles": [
     "literature/main.pdf",
+    "vault_rigid-body-manipulation/excitation_trajectory_design.md",
+    "debug-figs/spline_interpolation_test.png",
+    "tests/__pycache__/test_spline_interpolation.cpython-312.pyc",
+    "tests/test_spline_interpolation.py",
+    "debug-figs/Figure_1.png",
+    "debug-figs",
     "experiment_setups/trajectories/_sixth-order-spline.json",
     "experiment_setups/trajectories/_fifth-order-spline.json"
   ]
