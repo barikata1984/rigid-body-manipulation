@@ -1,9 +1,10 @@
+import mujoco
 import numpy as np
 from numpy.typing import ArrayLike
-import mujoco
 from scipy.optimize import minimize
 
 from dynamics.dynamics import calculate_condition_number
+from trajectories.spline_interpolation import generate_spline_trajectory
 
 
 def generate_optimal_excitation_trajectory(
@@ -74,8 +75,8 @@ def generate_optimal_excitation_trajectory(
         fun=_objective_function_wrapper,
         x0=initial_coeffs_flat,
         args=objective_args,
-        method='Nelder-Mead', # A simple, derivative-free method
-        options={'maxiter': 100, 'disp': True} # Limited iterations for testing
+        method="Nelder-Mead", # A simple, derivative-free method
+        options={"maxiter": 100, "disp": True} # Limited iterations for testing
     )
 
     # Reshape the optimized coefficients back to their original shape
@@ -90,7 +91,99 @@ def generate_optimal_excitation_trajectory(
         jointpos_offset=jointpos_offset,
     )
 
-    return t_vec, qpos, qvel, qacc
+    return t_vec, qpos, qvel, qacc, optimized_coeffs
+
+
+def generate_full_trajectory(
+    main_duration: float,
+    transition_duration: float,
+    fps: int,
+    n_harmonics: int,
+    m: mujoco.MjModel,
+    d: mujoco.MjData,
+    base_frequency: float,
+    start_qpos: ArrayLike,
+    ee_body_name: str = "link6",
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Generates a full excitation trajectory including transition splines.
+
+    This function orchestrates the generation of:
+    1. An optimal excitation (main) trajectory.
+    2. A transition spline from a starting configuration to the main trajectory.
+    3. A transition spline from the main trajectory back to the starting configuration.
+
+    Args:
+        main_duration: Duration of the main excitation part in seconds.
+        transition_duration: Duration of each transition spline in seconds.
+        fps: Frames per second for the trajectory.
+        n_harmonics: Number of harmonics for the sinusoidal trajectory.
+        m: MuJoCo MjModel object.
+        d: MuJoCo MjData object.
+        base_frequency: Base frequency for the harmonics.
+        start_qpos: The starting and ending joint positions for the trajectory.
+        ee_body_name: The name of the end-effector body.
+
+    Returns:
+        A tuple (t_vec, qpos, qvel, qacc) for the complete, combined trajectory.
+    """
+    # 1. Generate the optimal excitation (main) trajectory
+    # The main trajectory starts from a zero-offset position.
+    main_t, main_qpos, main_qvel, main_qacc, _ = generate_optimal_excitation_trajectory(
+        duration=main_duration,
+        fps=fps,
+        n_harmonics=n_harmonics,
+        m=m,
+        d=d,
+        base_frequency=base_frequency,
+        jointpos_offset=start_qpos, # Use start_qpos as the offset
+        ee_body_name=ee_body_name,
+    )
+
+    # 2. Generate the first transition spline (start -> main)
+    start_conditions = {"qpos": start_qpos, "qvel": [0]*m.njnt, "qacc": [0]*m.njnt}
+    end_conditions_t1 = {"qpos": main_qpos[:, 0], "qvel": main_qvel[:, 0], "qacc": main_qacc[:, 0]}
+
+    # Note: generate_spline_trajectory returns (n_frames, 3, n_dof)
+    # We need to transpose it to (3, n_dof, n_frames) and then unpack
+    t1_data = generate_spline_trajectory(
+        duration=transition_duration,
+        fps=fps,
+        start_conditions=start_conditions,
+        end_conditions=end_conditions_t1,
+        trajectory_type="fifth"
+    )
+    # Transpose from (n_frames, 3, n_dof) to (n_dof, 3, n_frames) then unpack
+    t1_qpos = t1_data.transpose(2, 1, 0)[:, 0, :]
+    t1_qvel = t1_data.transpose(2, 1, 0)[:, 1, :]
+    t1_qacc = t1_data.transpose(2, 1, 0)[:, 2, :]
+
+    # 3. Generate the second transition spline (main -> end)
+    start_conditions_t2 = {"qpos": main_qpos[:, -1], "qvel": main_qvel[:, -1], "qacc": main_qacc[:, -1]}
+    end_conditions = {"qpos": start_qpos, "qvel": [0]*m.njnt, "qacc": [0]*m.njnt}
+
+    t2_data = generate_spline_trajectory(
+        duration=transition_duration,
+        fps=fps,
+        start_conditions=start_conditions_t2,
+        end_conditions=end_conditions,
+        trajectory_type="fifth"
+    )
+    # Transpose from (n_frames, 3, n_dof) to (n_dof, 3, n_frames) then unpack
+    t2_qpos = t2_data.transpose(2, 1, 0)[:, 0, :]
+    t2_qvel = t2_data.transpose(2, 1, 0)[:, 1, :]
+    t2_qacc = t2_data.transpose(2, 1, 0)[:, 2, :]
+
+    # 4. Concatenate trajectories
+    full_qpos = np.hstack((t1_qpos, main_qpos, t2_qpos))
+    full_qvel = np.hstack((t1_qvel, main_qvel, t2_qvel))
+    full_qacc = np.hstack((t1_qacc, main_qacc, t2_qacc))
+
+    total_duration = 2 * transition_duration + main_duration
+    n_total_frames = full_qpos.shape[1]
+    full_t_vec = np.linspace(0, total_duration, n_total_frames)
+
+    return full_t_vec, full_qpos, full_qvel, full_qacc
 
 
 def generate_sinusoidal_trajectory(
