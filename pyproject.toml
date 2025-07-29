@@ -1,7 +1,11 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "rigid-body-manipulation"
 version = "0.1"
-requires-python = "<= 3.12"
+requires-python = ">= 3.9, <= 3.12"
 dependencies = [
     "numpy",
     "scipy",
@@ -17,11 +21,12 @@ dependencies = [
     "ruff",
     "opencv-python>=4.11.0.86",
     "pyqt6>=6.9.0",
+    "pytest",
 ]
 
 [project.scripts]
 manipulate = "main:main"
-generate-trajectory = "trajectories:generate_trajectory"
+generate-trajectory = "trajectories.spline_interpolation:entry_point"
 
 [tool.setuptools]
 py-modules = ["main"]

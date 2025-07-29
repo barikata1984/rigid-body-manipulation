@@ -112,7 +112,7 @@
     *   `tyro`と`unittest`の併用における`sys.argv`の競合問題を解決するため、`tyro.cli`に`args`を明示的に渡し、`unittest.main`にも`argv`を渡すことで、両者の引数解析が干渉しないようにロジックを調整しました。
     *   これにより、`calculate_condition_number`が、プロジェクトの主要なマニピュレータとオブジェクトの組み合わせで正しく機能することが検証されました。
 
-**検証結果**: 
+**検証結果**:
 *   `python3 tests/test_dynamics.py --manipulator_path xml_models/manipulators/sequential --object_path xml_models/targets/stanford-bunny` コマンドの実行により、テストが成功し、`calculate_condition_number`が`4.5042e+06`という条件数を返しました。この値は非常に大きいですが、これはテストに用いた単純な軌道が慣性パラメータを十分に励起できていないためであり、関数の正常な動作を示すものです。この大きな条件数を最小化することが、今後の最適化の目標となります。
 
 ### マイルストーン 2: 最適化の目的関数実装
@@ -135,7 +135,7 @@
     *   それぞれの`coeffs`に対して`objective_function`を呼び出し、返された条件数が`float`型であり、かつ正の値であることをアサートすることで、関数の基本的な動作を確認します。
     *   特に、ゼロ係数の場合はロボットが全く動かないため、条件数が無限大（`inf`）となることを確認し、`objective_function`が意味のない軌道に対しては非常に大きなコストを返すことを検証しました。
 
-**検証結果**: 
+**検証結果**:
 *   `python3 tests/test_optimal_excitation.py --manipulator_path xml_models/manipulators/sequential --object_path xml_models/targets/stanford-bunny` コマンドの実行により、テストが成功しました。
 *   ランダムな係数では`9.0862e+01`という条件数が、ゼロ係数では`inf`という条件数が返され、`objective_function`が期待通りに機能していることが確認されました。これは、最適化アルゴリズムが「より良い」軌道を見つけるための明確な評価基準が確立されたことを意味します。
 
@@ -145,7 +145,7 @@
 
 **達成内容**:
 
-1.  **`trajectories/optimal_excitation.py`の修正**: 
+1.  **`trajectories/optimal_excitation.py`の修正**:
 
     *   **変更点**: `generate_optimal_excitation_trajectory`関数を最適化ロジックを含むように大幅に修正しました。
     *   **追加インポート**: `from scipy.optimize import minimize`
@@ -237,7 +237,7 @@
     # ... (generate_sinusoidal_trajectory 関数と objective_function 関数は省略) ...
     ```
 
-    *   **実装内容**: 
+    *   **実装内容**:
         *   `generate_optimal_excitation_trajectory`関数は、最適化の対象となる`coeffs`の初期値をランダムに生成します。
         *   `scipy.optimize.minimize`は`x0`（最適化される初期値）を1次元配列として期待するため、`initial_coeffs`を`flatten()`して`initial_coeffs_flat`を作成しました。
         *   `objective_function`が3次元配列の`coeffs`を期待するため、`_objective_function_wrapper`という内部ラッパー関数を定義しました。このラッパー関数内で、`minimize`から渡される1次元配列を元の形状に`reshape`してから`objective_function`に渡すようにしました。
@@ -249,7 +249,7 @@
 
     *   **最適化ループの停止基準**: 現在の最適化ループの主な停止基準は、`minimize`関数の`options`引数で設定された`'maxiter': 100`です。これは、目的関数の評価回数が100回に達すると最適化が停止することを意味します。これはテストの実行時間を短縮するための設定であり、実際の最適化ではより多くのイテレーションが必要となる場合があります。`scipy.optimize.minimize`のNelder-Mead法には、デフォルトで`xatol`（最適化変数の変化の許容誤差）や`fatol`（目的関数の変化の許容誤差）といった停止基準も組み込まれていますが、現在の実装では明示的に上書きされていません。
 
-2.  **`tests/test_optimal_excitation.py`の修正**: 
+2.  **`tests/test_optimal_excitation.py`の修正**:
 
     *   **変更点**: `test_generate_optimal_excitation_trajectory`テストケースを追加しました。
     *   **追加インポート**: `from dynamics.dynamics import calculate_condition_number`
@@ -299,7 +299,7 @@
         print(f"  Optimized Condition Number: {optimized_cond_num:.4e}")
 
         # アサーション: 最適化された条件数が初期条件数よりも小さいことを確認
-        self.assertLess(optimized_cond_num, initial_cond_num, 
+        self.assertLess(optimized_cond_num, initial_cond_num,
                         "Optimized condition number should be less than initial.")
         # 返り値の型が正しいことを確認
         self.assertIsInstance(t_vec, np.ndarray)
@@ -310,7 +310,7 @@
     # ... (if __name__ == '__main__': ブロックは省略) ...
     ```
 
-    *   **実装内容**: 
+    *   **実装内容**:
         *   `test_generate_optimal_excitation_trajectory`テストケースを追加しました。
         *   このテストでは、`generate_optimal_excitation_trajectory`を呼び出す前に、ランダムな初期係数で`objective_function`を一度呼び出し、その条件数`initial_cond_num`を記録します。これにより、最適化の改善度を評価するためのベースラインを設定します。
         *   `generate_optimal_excitation_trajectory`を実行し、最適化された軌道を取得します。
@@ -318,6 +318,132 @@
         *   最も重要なアサーションとして、`self.assertLess(optimized_cond_num, initial_cond_num)`を用いて、最適化された軌道の条件数が、初期のランダムな軌道の条件数よりも**小さくなっていること**を確認します。これにより、最適化が実際に機能していることを検証します。
         *   また、返された軌道データの型が`np.ndarray`であることを確認するアサーションも追加しました。
 
-**検証結果**: 
+**検証結果**:
 *   `python3 tests/test_optimal_excitation.py --manipulator_path xml_models/manipulators/sequential --object_path xml_models/targets/stanford-bunny` コマンドの実行により、テストが成功しました。
 *   最適化後の条件数（例: `7.3578e+01`）が、初期の条件数（例: `1.1083e+02`）よりも小さくなっていることを確認しました。これは、`scipy.optimize.minimize`が目的関数を最小化しようと正しく機能していることを示しています。
+
+---
+
+## テストコードの目的、実装、実行方法、および課題と知見
+
+本プロジェクトのテストコードは、主に`unittest`フレームワークを用いて記述されており、各モジュールや機能の正確性を検証することを目的としています。`pytest`と連携させることで、テストの自動実行と結果の集約を効率的に行っています。
+
+### 1. `tests/test_adjoint_inv_transpose.py`
+
+*   **目的**: `liegroups`ライブラリで表現される`SE3`（特殊ユークリッド群）の随伴表現（Adjoint representation）に関する数学的な性質、特に`Ad(T^-1) = Ad(T)^-1`の関係が正しく実装されていることを検証します。また、随伴表現の逆行列が擬似逆行列と一致することも確認します。
+*   **実装された処理**:
+    *   `unittest.TestCase`を継承したクラス`TestAdjoint`内で、2つのテストメソッドを定義しています。
+    *   `test_adjoint_inverse_transpose_relationship`: 任意の`SE3`要素`pose`を生成し、`pose.inv().adjoint()`と`np.linalg.inv(pose.adjoint())`を計算し、`np.testing.assert_allclose`で両者が数値的に等しいことをアサートします。
+    *   `test_adjoint_inverse_vs_pseudoinverse`: `pose.inv().adjoint()`と`np.linalg.pinv(pose.adjoint())`を計算し、`np.testing.assert_allclose`で両者が数値的に等しいことをアサートします。
+*   **テストの実行方法**: `pytest tests/test_adjoint_inv_transpose.py` または `pytest` (全テスト実行)
+*   **直面した課題と知見**:
+    *   **課題**: 最初の実装では`Ad(T^-1) == Ad(T)^T`を検証しようとしていましたが、これは数学的に誤りでした。`SE3`の随伴表現の性質として`Ad(T^-1) = Ad(T)^-1`が正しい関係です。
+    *   **知見**: 数学的な背景を正確に理解し、それに基づいてテストのロジックを構築することの重要性を再認識しました。特に線形代数や群論の概念が絡む場合、厳密な定義に基づいたアサーションが必要です。
+
+### 2. `tests/test_dynamics.py`
+
+*   **目的**: `dynamics.dynamics`モジュール内の`calculate_condition_number`関数が、与えられたMuJoCoモデルと関節軌道に対して、回帰行列の条件数を正しく計算できることを検証します。
+*   **実装された処理**:
+    *   `unittest.TestCase`を継承したクラス`TestDynamics`内で、`setUpClass`メソッドを使用してテストに必要なMuJoCoモデル（マニピュレータとオブジェクトを結合したもの）をロードします。これにより、各テストメソッドでモデルのロードを繰り返す必要がなくなります。
+    *   `test_calculate_condition_number`メソッドでは、6自由度マニピュレータ用の単純なスプライン軌道を生成し、`calculate_condition_number`関数に渡して結果を取得します。
+    *   返された条件数が浮動小数点数であり、かつ正の値であることをアサートします。
+*   **テストの実行方法**: `pytest tests/test_dynamics.py` または `pytest` (全テスト実行)
+*   **直面した課題と知見**:
+    *   **課題**: `pytest`で実行する際に、`setUpClass`内で`tyro.cli()`が`None`を返してしまう問題が発生しました。これは、`pytest`が`if __name__ == '__main__':`ブロックを実行しないため、`tyro`によるコマンドライン引数のパースが行われないためです。
+    *   **知見**: `unittest.TestCase`の`setUpClass`内で、`tyro`に依存せずに`AppConfig`のデフォルトインスタンスを直接生成するように修正しました。これにより、`pytest`実行時にもテストに必要な設定が提供されるようになりました。
+
+### 3. `tests/test_inertia.py`
+
+*   **目的**: MuJoCoがMJCF（MuJoCo XML Format）ファイルで指定された慣性プロパティ（質量、重心、慣性テンソル）を正しく解釈し、内部的に主慣性モーメントと主軸の向き（クォータニオン）を計算できることを検証します。特に、`fullinertia`属性で慣性テンソルを指定した場合のMuJoCoの挙動を確認します。
+*   **実装された処理**:
+    *   `unittest.TestCase`を継承したクラス`TestInertia`内で、`test_mujoco_inertia_calculation`メソッドを定義しています。
+    *   既知の質量、重心、回転行列、主慣性モーメントから、ボディフレームにおける慣性テンソル（`fullinertia`形式）を計算します。
+    *   この`fullinertia`を用いてMJCFモデルを構築し、MuJoCoモデルを生成します。
+    *   MuJoCoが計算した質量、主慣性モーメント（`body_inertia`）、主軸の向き（`body_iquat`）を取得します。
+    *   質量は直接比較し、主慣性モーメントはソートしてから比較します（MuJoCoが返す順序が不定のため）。
+    *   主軸の向きについては、MuJoCoが返すクォータニオン（`body_iquat`）と主慣性モーメントから、元のボディフレームにおける慣性テンソルを再構築し、それが初期に与えた慣性テンソルと一致することをアサートします。
+*   **テストの実行方法**: `pytest tests/test_inertia.py` または `pytest` (全テスト実行)
+*   **直面した課題と知見**:
+    *   **課題**:
+        *   `mujoco`モジュールのインポート漏れによる`NameError`。
+        *   MuJoCoが返す主慣性モーメントの順序が不定であるため、単純な`assert_allclose`では失敗する問題。
+        *   `fullinertia`属性に渡す非対角項の順序がMuJoCoの期待する順序（`ixy, ixz, iyz`）と異なっていた問題。
+        *   `body_iquat`の解釈の誤り。当初、`body_iquat`がボディフレームから主慣性フレームへの回転を表すクォータニオンであるという理解が不正確でした。
+    *   **知見**:
+        *   外部ライブラリ（特に物理エンジン）のAPIドキュメントを正確に読み込み、そのデータ構造や座標系の定義を深く理解することの重要性。
+        *   浮動小数点数の比較には`np.testing.assert_allclose`を使用し、必要に応じて`atol`や`rtol`を調整すること。
+        *   テストが失敗した場合、エラーメッセージだけでなく、関連するライブラリのドキュメントやソースコードを確認して、根本原因を特定することの重要性。
+
+### 4. `tests/test_inertia_frame.py`
+
+*   **目的**: `test_inertia.py`と同様に、MuJoCoが慣性プロパティを正しく解釈できることを検証しますが、特に`fullinertia`属性で慣性テンソルを指定した場合に、MuJoCoが主慣性モーメントと主軸の向きを正しく逆算できることを確認します。
+*   **実装された処理**:
+    *   `unittest.TestCase`を継承したクラス`TestInertiaFrame`内で、`test_inertia_frame_from_fullinertia`メソッドを定義しています。
+    *   既知の主慣性モーメントと、主慣性フレームからボディフレームへの回転行列を定義し、それらからボディフレームにおける慣性テンソル（`fullinertia`形式）を計算します。
+    *   この`fullinertia`を用いてMJCFモデルを構築し、MuJoCoモデルを生成します。
+    *   MuJoCoが計算した主慣性モーメント（`body_inertia`）と主軸の向き（`body_iquat`）を取得します。
+    *   取得したMuJoCoのデータから元の慣性テンソルを再構築し、それが初期に与えた慣性テンソルと一致することをアサートします。
+*   **テストの実行方法**: `pytest tests/test_inertia_frame.py` または `pytest` (全テスト実行)
+*   **直面した課題と知見**:
+    *   **課題**: `test_inertia.py`と同様の`NameError`、主慣性モーメントの順序不定、`fullinertia`の非対角項の順序誤り、`body_iquat`の解釈誤りに直面しました。特に、`ACTUAL`と`DESIRED`がほぼ同じ値なのにアサーションが失敗するという、浮動小数点数の比較における微細な誤差の問題が顕著でした。
+    *   **知見**: 複雑な数値計算を含むテストでは、`assert_allclose`の許容誤差（`atol`）を慎重に設定する必要があることを学びました。また、テストが失敗した際に、単に値を比較するだけでなく、その値がどのように計算され、どのような物理的意味を持つのかを深く掘り下げて理解することが、問題解決の鍵となることを再確認しました。
+
+### 5. `tests/test_ols_tls.py`
+
+*   **目的**: 最小二乗法（OLS）とトータル最小二乗法（TLS）のパラメータ推定性能を比較し、特に回帰行列にもノイズが含まれる場合にTLSがOLSよりも優れた推定精度を示すことを検証します。
+*   **実装された処理**:
+    *   `unittest.TestCase`を継承したクラス`TestRegression`内で、`setUp`メソッドを使用して、真のパラメータと、ノイズを含む観測行列`A_measured`およびレンチ`w_measured`を生成します。
+    *   `test_ols_estimation`メソッドでは、`np.linalg.lstsq`を用いてOLS推定を行い、その誤差を計算します。
+    *   `test_tls_estimation`メソッドでは、拡張行列の構築、SVD、解の抽出というTLSのアルゴリズムを実装し、その誤差を計算します。
+    *   `test_tls_is_more_accurate_than_ols_with_noisy_regressor`メソッドでは、OLSとTLSの両方を実行し、`self.assertLess(error_tls, error_ols)`を用いて、TLSの誤差がOLSの誤差よりも小さいことをアサートします。
+*   **テストの実行方法**: `pytest tests/test_ols_tls.py` または `pytest` (全テスト実行)
+*   **直面した課題と知見**:
+    *   **課題**: 特になし。このテストは主に数値計算のアルゴリズム検証であり、外部ライブラリとの複雑な連携が少ないため、比較的スムーズに実装できました。
+    *   **知見**: 複雑なアルゴリズムのテストでは、`setUp`メソッドでテストデータを一元的に生成することで、各テストメソッドのコード量を減らし、可読性と保守性を高めることができることを再確認しました。
+
+### 6. `tests/test_optimal_excitation.py`
+
+*   **目的**: 励起軌道最適化の主要なコンポーネントである目的関数（`objective_function`）と最適化ループ（`generate_optimal_excitation_trajectory`）が正しく機能することを検証します。特に、最適化によって回帰行列の条件数が実際に改善されることを確認します。
+*   **実装された処理**:
+    *   `unittest.TestCase`を継承したクラス`TestOptimalExcitation`内で、`setUpClass`メソッドを使用してMuJoCoモデルをロードし、最適化に必要な固定パラメータを設定します。
+    *   `test_objective_function`メソッドでは、ランダムな係数とゼロ係数を与えた場合の目的関数の挙動をテストし、妥当な条件数が返されることを確認します。
+    *   `test_generate_optimal_excitation_trajectory`メソッドでは、最適化前の初期条件数を計算し、`generate_optimal_excitation_trajectory`を実行して最適化された軌道を取得します。その後、最適化された軌道から条件数を再計算し、初期条件数よりも小さくなっていることをアサートします。
+*   **テストの実行方法**: `pytest tests/test_optimal_excitation.py` または `pytest` (全テスト実行)
+*   **直面した課題と知見**:
+    *   **課題**: `test_dynamics.py`と同様に、`setUpClass`内で`tyro.cli()`が`None`を返してしまう問題が発生しました。
+    *   **知見**: `AppConfig`のデフォルトインスタンスを直接生成することで問題を解決しました。最適化のテストでは、初期値と最適化後の結果を比較することで、アルゴリズムが意図通りに機能しているかを検証するアプローチが有効であることを再確認しました。
+
+### 7. `tests/test_spline_interpolation.py`
+
+*   **目的**: `trajectories.spline_interpolation`モジュール内のスプライン補間関数`generate_spline_trajectory`が、指定された境界条件（位置、速度、加速度）を満たす滑らかな軌道を正しく生成できることを検証します。
+*   **実装された処理**:
+    *   `unittest.TestCase`を継承したクラス`TestSplineInterpolation`内で、`test_generate_spline_trajectory`メソッドを定義しています。
+    *   開始条件と終了条件（位置、速度、加速度）を設定し、`generate_spline_trajectory`関数を呼び出して軌道を生成します。
+    *   生成された軌道の形状が期待通りであること、および軌道の開始点と終了点における位置、速度、加速度が指定された境界条件と厳密に一致することを`np.testing.assert_allclose`でアサートします。
+    *   結果を視覚的に確認するため、生成された軌道をプロットし、画像ファイルとして保存する処理も含まれています。
+*   **テストの実行方法**: `pytest tests/test_spline_interpolation.py` または `pytest` (全テスト実行)
+*   **直面した課題と知見**:
+    *   **課題**: 特になし。スプライン補間は数学的に明確な定義を持つため、テストのロジックは比較的シンプルでした。
+    *   **知見**: 境界条件の厳密な検証が、数値計算ライブラリの正確性を保証する上で非常に重要であることを再確認しました。また、プロットによる視覚的な確認は、数値的なアサーションだけでは見落としがちな挙動の異常を発見するのに役立ちます。
+
+---
+
+### 全体的なテストの実行方法
+
+プロジェクト内のすべてのテストは、プロジェクトのルートディレクトリで以下のコマンドを実行することで実行できます。
+
+```bash
+pytest
+```
+
+これにより、`tests/`ディレクトリ内の`test_*.py`ファイルが自動的に検出され、実行されます。各テストの成功/失敗、および詳細な出力がコンソールに表示されます。
+
+### 全体的な課題と知見
+
+*   **`pyproject.toml`とパッケージング**: `pyproject.toml`を用いたPythonプロジェクトのパッケージングとエントリーポイントの設定は、特に`setuptools`の挙動や`uv`のような新しいツールとの連携において複雑な側面があることを学びました。`py-modules`と`packages.find.include`の使い分け、`[build-system]`の定義が重要です。
+*   **`unittest`と`pytest`の併用**: `unittest`で記述されたテストは`pytest`で実行可能ですが、`tyro`のようなコマンドライン引数パーサーを`unittest`の`setUpClass`内で使用する場合、`pytest`のテスト実行フローとの兼ね合いを考慮する必要があります。`sys.argv`の直接操作を避け、引数を明示的に渡すことで問題を回避できます。
+*   **外部ライブラリのAPI理解**: MuJoCoのような複雑な物理エンジンのAPIを扱う場合、ドキュメントを注意深く読み込み、データ構造、座標系、属性の意味を正確に理解することが不可欠です。特に、慣性パラメータのように複数の表現方法がある場合、それぞれの変換関係を明確に把握する必要があります。
+*   **浮動小数点数の比較**: 数値計算を含むテストでは、浮動小数点数の比較における誤差を考慮し、`np.testing.assert_allclose`の`atol`や`rtol`を適切に設定することが重要です。テストが失敗した際に、エラーメッセージの`ACTUAL`と`DESIRED`の値を詳細に比較し、許容誤差の範囲内であるかを確認する習慣が役立ちます。
+*   **デバッグの重要性**: テストが失敗した場合、単にコードを修正するだけでなく、エラーメッセージを深く分析し、必要に応じてデバッガや`print`文を挿入して変数の状態を確認するなど、体系的なデバッグを行うことが問題解決の鍵となります。
+*   **テスト駆動開発 (TDD) の有効性**: 今回の作業を通じて、テストを先に書く（あるいは既存のテストを修正する）ことで、機能の実装がより堅牢になり、予期せぬバグの発生を防ぐことができるというTDDの有効性を再確認しました。
+

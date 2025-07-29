@@ -75,8 +75,8 @@ def generate_optimal_excitation_trajectory(
         fun=_objective_function_wrapper,
         x0=initial_coeffs_flat,
         args=objective_args,
-        method="Nelder-Mead", # A simple, derivative-free method
-        options={"maxiter": 100, "disp": True} # Limited iterations for testing
+        method="Nelder-Mead",  # A simple, derivative-free method
+        options={"maxiter": 100, "disp": True},  # Limited iterations for testing
     )
 
     # Reshape the optimized coefficients back to their original shape
@@ -136,12 +136,12 @@ def generate_full_trajectory(
         m=m,
         d=d,
         base_frequency=base_frequency,
-        jointpos_offset=start_qpos, # Use start_qpos as the offset
+        jointpos_offset=start_qpos,  # Use start_qpos as the offset
         ee_body_name=ee_body_name,
     )
 
     # 2. Generate the first transition spline (start -> main)
-    start_conditions = {"qpos": start_qpos, "qvel": [0]*m.njnt, "qacc": [0]*m.njnt}
+    start_conditions = {"qpos": start_qpos, "qvel": [0] * m.njnt, "qacc": [0] * m.njnt}
     end_conditions_t1 = {"qpos": main_qpos[:, 0], "qvel": main_qvel[:, 0], "qacc": main_qacc[:, 0]}
 
     # Note: generate_spline_trajectory returns (n_frames, 3, n_dof)
@@ -151,7 +151,7 @@ def generate_full_trajectory(
         fps=fps,
         start_conditions=start_conditions,
         end_conditions=end_conditions_t1,
-        trajectory_type="fifth"
+        trajectory_type="fifth",
     )
     # Transpose from (n_frames, 3, n_dof) to (n_dof, 3, n_frames) then unpack
     t1_qpos = t1_data.transpose(2, 1, 0)[:, 0, :]
@@ -160,14 +160,14 @@ def generate_full_trajectory(
 
     # 3. Generate the second transition spline (main -> end)
     start_conditions_t2 = {"qpos": main_qpos[:, -1], "qvel": main_qvel[:, -1], "qacc": main_qacc[:, -1]}
-    end_conditions = {"qpos": start_qpos, "qvel": [0]*m.njnt, "qacc": [0]*m.njnt}
+    end_conditions = {"qpos": start_qpos, "qvel": [0] * m.njnt, "qacc": [0] * m.njnt}
 
     t2_data = generate_spline_trajectory(
         duration=transition_duration,
         fps=fps,
         start_conditions=start_conditions_t2,
         end_conditions=end_conditions,
-        trajectory_type="fifth"
+        trajectory_type="fifth",
     )
     # Transpose from (n_frames, 3, n_dof) to (n_dof, 3, n_frames) then unpack
     t2_qpos = t2_data.transpose(2, 1, 0)[:, 0, :]

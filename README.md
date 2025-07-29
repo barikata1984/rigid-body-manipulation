@@ -24,3 +24,13 @@ parent's body id of:
      object.xml (body_id==7): 6,
   target/object (body_id==8): 7,
 ```
+
+## Running Tests
+
+To run all tests in the project, navigate to the project root directory and execute the following command:
+
+```bash
+pytest
+```
+
+This command will automatically discover and execute all test files (e.g., `test_*.py`) located in the `tests/` directory. The test results, including successes, failures, and any errors, will be displayed in your console.

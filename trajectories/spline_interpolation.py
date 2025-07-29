@@ -1,4 +1,8 @@
+import json
+from typing import Literal
+
 import numpy as np
+import tyro
 from numpy import linalg as la
 from numpy.typing import NDArray
 
@@ -134,3 +138,61 @@ def generate_spline_trajectory(
             raise ValueError("Invalid trajectory_type. Must be 'fifth' or 'sixth'.")
 
     return np.stack([qposs, qvels, qaccs], axis=1)
+
+
+def main(
+    trajectory_type: Literal["fifth-order-spline", "sixth-order-spline"],
+    duration: float,
+    fps: int,
+    displacement: tuple[float, float, float, float, float, float],
+    jointpos_offset: tuple[float, float, float, float, float, float],
+):
+    """
+    Generates a spline trajectory and saves it to a JSON file.
+
+    Args:
+        trajectory_type: The type of spline to generate.
+        duration: The duration of the trajectory in seconds.
+        fps: The frames per second of the trajectory.
+        displacement: The displacement of the trajectory.
+        jointpos_offset: The joint position offset of the trajectory.
+    """
+    start_conditions = {
+        "qpos": list(jointpos_offset),
+        "qvel": [0.0] * 6,
+        "qacc": [0.0] * 6,
+    }
+    end_conditions = {
+        "qpos": (np.array(jointpos_offset) + np.array(displacement)).tolist(),
+        "qvel": [0.0] * 6,
+        "qacc": [0.0] * 6,
+    }
+
+    trajectory = generate_spline_trajectory(
+        duration=duration,
+        fps=fps,
+        start_conditions=start_conditions,
+        end_conditions=end_conditions,
+        trajectory_type=trajectory_type,
+    )
+
+    output_filename = f"{trajectory_type}.json"
+    with open(output_filename, "w") as f:
+        json.dump(
+            {
+                "qpos": trajectory[:, 0, :].tolist(),
+                "qvel": trajectory[:, 1, :].tolist(),
+                "qacc": trajectory[:, 2, :].tolist(),
+            },
+            f,
+            indent=4,
+        )
+    print(f"Trajectory saved to {output_filename}")
+
+
+def entry_point():
+    tyro.cli(main)
+
+
+if __name__ == "__main__":
+    entry_point()

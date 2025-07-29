@@ -1,11 +1,12 @@
 import unittest
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
 
 from trajectories.spline_interpolation import generate_spline_trajectory
 
-class TestSplineInterpolation(unittest.TestCase):
 
+class TestSplineInterpolation(unittest.TestCase):
     def test_generate_spline_trajectory(self):
         # Test case for a 6-DOF manipulator
         duration = 5.0  # seconds
@@ -56,9 +57,9 @@ class TestSplineInterpolation(unittest.TestCase):
         fig.suptitle("6-DOF Spline Trajectory Verification")
 
         for i in range(n_dof):
-            axs[0].plot(time, qpos[:, i], label=f"Joint {i+1}")
-            axs[1].plot(time, qvel[:, i], label=f"Joint {i+1}")
-            axs[2].plot(time, qacc[:, i], label=f"Joint {i+1}")
+            axs[0].plot(time, qpos[:, i], label=f"Joint {i + 1}")
+            axs[1].plot(time, qvel[:, i], label=f"Joint {i + 1}")
+            axs[2].plot(time, qacc[:, i], label=f"Joint {i + 1}")
 
         axs[0].set_ylabel("Position (rad)")
         axs[0].legend()
@@ -78,5 +79,6 @@ class TestSplineInterpolation(unittest.TestCase):
         fig.savefig("debug-figs/spline_interpolation_test.png")
         plt.close(fig)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()
