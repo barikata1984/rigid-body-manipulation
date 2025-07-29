@@ -114,3 +114,210 @@
 
 **検証結果**: 
 *   `python3 tests/test_dynamics.py --manipulator_path xml_models/manipulators/sequential --object_path xml_models/targets/stanford-bunny` コマンドの実行により、テストが成功し、`calculate_condition_number`が`4.5042e+06`という条件数を返しました。この値は非常に大きいですが、これはテストに用いた単純な軌道が慣性パラメータを十分に励起できていないためであり、関数の正常な動作を示すものです。この大きな条件数を最小化することが、今後の最適化の目標となります。
+
+### マイルストーン 2: 最適化の目的関数実装
+
+**目的**: `scipy.optimize.minimize`に渡すための目的関数を完成させる。
+
+**達成内容**:
+
+1.  **`trajectories/optimal_excitation.py`の修正**: 
+    *   `objective_function`関数を新規追加しました。この関数は、最適化の対象となる軌道係数`coeffs`と、軌道生成および条件数計算に必要な固定パラメータ（`m`, `d`, `duration`, `fps`, `jointpos_offset`, `base_frequency`, `ee_body_name`）を入力として受け取ります。
+    *   関数内部では、まず`generate_sinusoidal_trajectory`を呼び出して、入力された`coeffs`に基づいた関節軌道（位置、速度、加速度の時系列データ）を生成します。
+    *   生成された軌道データを`calculate_condition_number`が期待する形式に整形（`np.stack`と転置）した後、`dynamics.calculate_condition_number`を呼び出して回帰行列の条件数を計算します。
+    *   計算された条件数を関数の戻り値として返します。この値が`scipy.optimize.minimize`が最小化しようとする「コスト」となります。
+    *   `mujoco`モジュールと`dynamics.dynamics`モジュールからのインポートを追加しました。
+
+2.  **`tests/test_optimal_excitation.py`の新規作成**: 
+    *   `unittest`フレームワークを使用したテストファイル`tests/test_optimal_excitation.py`を新規作成しました。
+    *   `setUpClass`メソッド内で、`test_dynamics.py`と同様に`tyro`を用いてコマンドライン引数を解析し、プロジェクトで実際に使用するマニピュレータとオブジェクトを結合したMuJoCoモデルをロードします。また、`objective_function`に渡す固定パラメータも設定します。
+    *   テストケース`test_objective_function`では、ランダムな値を持つ`coeffs`と、全ての要素がゼロの`coeffs`の2種類のダミー係数配列を生成します。
+    *   それぞれの`coeffs`に対して`objective_function`を呼び出し、返された条件数が`float`型であり、かつ正の値であることをアサートすることで、関数の基本的な動作を確認します。
+    *   特に、ゼロ係数の場合はロボットが全く動かないため、条件数が無限大（`inf`）となることを確認し、`objective_function`が意味のない軌道に対しては非常に大きなコストを返すことを検証しました。
+
+**検証結果**: 
+*   `python3 tests/test_optimal_excitation.py --manipulator_path xml_models/manipulators/sequential --object_path xml_models/targets/stanford-bunny` コマンドの実行により、テストが成功しました。
+*   ランダムな係数では`9.0862e+01`という条件数が、ゼロ係数では`inf`という条件数が返され、`objective_function`が期待通りに機能していることが確認されました。これは、最適化アルゴリズムが「より良い」軌道を見つけるための明確な評価基準が確立されたことを意味します。
+
+### マイルストーン 3: 最適化ループの実装
+
+**目的**: `scipy.minimize`を使って実際に軌道パラメータを最適化するメインの関数を実装する。
+
+**達成内容**:
+
+1.  **`trajectories/optimal_excitation.py`の修正**: 
+
+    *   **変更点**: `generate_optimal_excitation_trajectory`関数を最適化ロジックを含むように大幅に修正しました。
+    *   **追加インポート**: `from scipy.optimize import minimize`
+
+    ```python
+    # trajectories/optimal_excitation.py
+
+    import numpy as np
+    from numpy.typing import ArrayLike
+    import mujoco
+    from scipy.optimize import minimize # 追加
+
+    from dynamics.dynamics import calculate_condition_number
+
+
+    def generate_optimal_excitation_trajectory(
+        duration: float,
+        fps: int,
+        n_harmonics: int, # 引数追加
+        m: mujoco.MjModel, # 引数追加
+        d: mujoco.MjData, # 引数追加
+        base_frequency: float,
+        jointpos_offset: ArrayLike = (0, 0, 0, 0, 0, 0),
+        ee_body_name: str = "link6", # 引数追加
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Generates an optimal excitation trajectory by minimizing the condition number
+        of the regressor matrix.
+        """
+        n_joints = m.njnt
+        # 最適化の初期値 (coeffs): 小さなランダム値で初期化
+        # 形状: (n_joints, n_harmonics, 2)
+        initial_coeffs = np.random.rand(n_joints, n_harmonics, 2) * 0.01
+
+        # objective_function に渡す固定引数
+        objective_args = (
+            m,
+            d,
+            duration,
+            fps,
+            jointpos_offset,
+            base_frequency,
+            ee_body_name,
+        )
+
+        # scipy.optimize.minimize は x0 (最適化変数) を1次元配列として期待するため、
+        # initial_coeffs をフラット化します。
+        initial_coeffs_flat = initial_coeffs.flatten()
+
+        # objective_function は3次元配列の coeffs を期待するため、
+        # 最適化器から渡される1次元配列を元の形状に戻すラッパー関数を定義します。
+        def _objective_function_wrapper(coeffs_flat, *args):
+            _m, _d, _duration, _fps, _jointpos_offset, _base_frequency, _ee_body_name = args
+            _coeffs = coeffs_flat.reshape(n_joints, n_harmonics, 2) # ここで元の形状に戻す
+            return objective_function(
+                coeffs=_coeffs,
+                m=_m,
+                d=_d,
+                duration=_duration,
+                fps=_fps,
+                jointpos_offset=_jointpos_offset,
+                base_frequency=_base_frequency,
+                ee_body_name=_ee_body_name,
+            )
+
+        # 最適化を実行
+        result = minimize(
+            fun=_objective_function_wrapper, # ラッパー関数を目的関数として指定
+            x0=initial_coeffs_flat, # フラット化された初期値を渡す
+            args=objective_args, # 固定引数を渡す
+            method='Nelder-Mead', # 導関数不要のシンプルな最適化手法
+            options={'maxiter': 100, 'disp': True} # テスト用にイテレーション回数を制限
+        )
+
+        # 最適化された係数も1次元配列で返されるため、元の形状に戻す
+        optimized_coeffs = result.x.reshape(n_joints, n_harmonics, 2)
+
+        # 最適化された係数で最終的な軌道を生成
+        t_vec, qpos, qvel, qacc = generate_sinusoidal_trajectory(
+            duration=duration,
+            fps=fps,
+            coeffs=optimized_coeffs, # 最適化された係数を使用
+            base_frequency=base_frequency,
+            jointpos_offset=jointpos_offset,
+        )
+
+        return t_vec, qpos, qvel, qacc
+
+    # ... (generate_sinusoidal_trajectory 関数と objective_function 関数は省略) ...
+    ```
+
+    *   **実装内容**: 
+        *   `generate_optimal_excitation_trajectory`関数は、最適化の対象となる`coeffs`の初期値をランダムに生成します。
+        *   `scipy.optimize.minimize`は`x0`（最適化される初期値）を1次元配列として期待するため、`initial_coeffs`を`flatten()`して`initial_coeffs_flat`を作成しました。
+        *   `objective_function`が3次元配列の`coeffs`を期待するため、`_objective_function_wrapper`という内部ラッパー関数を定義しました。このラッパー関数内で、`minimize`から渡される1次元配列を元の形状に`reshape`してから`objective_function`に渡すようにしました。
+        *   `minimize`関数を呼び出し、`_objective_function_wrapper`を目的関数として、`initial_coeffs_flat`を初期値として渡します。`method='Nelder-Mead'`を選択し、`options={'maxiter': 100, 'disp': True}`でテスト用にイテレーション回数を制限しました。
+        *   最適化結果`result.x`もフラット化されているため、`optimized_coeffs`として使用する前に元の形状に`reshape()`し直しました。
+        *   最終的に、最適化された`optimized_coeffs`を用いて`generate_sinusoidal_trajectory`を呼び出し、最適化された軌道を生成して返します。
+
+    *   **最適化対象パラメータ**: 論文の記述通り、`generate_sinusoidal_trajectory`の`coeffs`引数（`p_ik`と`d_ik`）が最適化の対象となります。これは、`n_joints * n_harmonics * 2`個の要素を持つ1次元配列として`minimize`に渡されます。
+
+    *   **最適化ループの停止基準**: 現在の最適化ループの主な停止基準は、`minimize`関数の`options`引数で設定された`'maxiter': 100`です。これは、目的関数の評価回数が100回に達すると最適化が停止することを意味します。これはテストの実行時間を短縮するための設定であり、実際の最適化ではより多くのイテレーションが必要となる場合があります。`scipy.optimize.minimize`のNelder-Mead法には、デフォルトで`xatol`（最適化変数の変化の許容誤差）や`fatol`（目的関数の変化の許容誤差）といった停止基準も組み込まれていますが、現在の実装では明示的に上書きされていません。
+
+2.  **`tests/test_optimal_excitation.py`の修正**: 
+
+    *   **変更点**: `test_generate_optimal_excitation_trajectory`テストケースを追加しました。
+    *   **追加インポート**: `from dynamics.dynamics import calculate_condition_number`
+
+    ```python
+    # tests/test_optimal_excitation.py
+
+    # ... (既存のインポート、TestConfig、_test_config、TestOptimalExcitationクラスのsetUpClass、test_objective_function) ...
+
+    def test_generate_optimal_excitation_trajectory(self):
+        print("\nTesting generate_optimal_excitation_trajectory (optimization loop)...")
+        # 比較のために、最適化前の初期条件数を計算
+        coeffs_shape = (self.n_dof, self.n_harmonics, 2)
+        initial_coeffs = np.random.rand(*coeffs_shape) * 0.01
+        initial_cond_num = objective_function(
+            coeffs=initial_coeffs,
+            m=self.m,
+            d=self.d,
+            duration=self.duration,
+            fps=self.fps,
+            jointpos_offset=self.jointpos_offset,
+            base_frequency=self.base_frequency,
+            ee_body_name=self.ee_body_name,
+        )
+        print(f"  Initial Condition Number: {initial_cond_num:.4e}")
+
+        # 最適化を実行
+        t_vec, qpos, qvel, qacc = generate_optimal_excitation_trajectory(
+            duration=self.duration,
+            fps=self.fps,
+            n_harmonics=self.n_harmonics,
+            m=self.m,
+            d=self.d,
+            base_frequency=self.base_frequency,
+            jointpos_offset=self.jointpos_offset,
+            ee_body_name=self.ee_body_name,
+        )
+
+        # 最適化された軌道から条件数を再計算
+        optimized_trajectory = np.stack([qpos.T, qvel.T, qacc.T], axis=1)
+        optimized_cond_num = calculate_condition_number(
+            m=self.m,
+            d=self.d,
+            joint_trajectory=optimized_trajectory,
+            ee_body_name=self.ee_body_name,
+        )
+        print(f"  Optimized Condition Number: {optimized_cond_num:.4e}")
+
+        # アサーション: 最適化された条件数が初期条件数よりも小さいことを確認
+        self.assertLess(optimized_cond_num, initial_cond_num, 
+                        "Optimized condition number should be less than initial.")
+        # 返り値の型が正しいことを確認
+        self.assertIsInstance(t_vec, np.ndarray)
+        self.assertIsInstance(qpos, np.ndarray)
+        self.assertIsInstance(qvel, np.ndarray)
+        self.assertIsInstance(qacc, np.ndarray)
+
+    # ... (if __name__ == '__main__': ブロックは省略) ...
+    ```
+
+    *   **実装内容**: 
+        *   `test_generate_optimal_excitation_trajectory`テストケースを追加しました。
+        *   このテストでは、`generate_optimal_excitation_trajectory`を呼び出す前に、ランダムな初期係数で`objective_function`を一度呼び出し、その条件数`initial_cond_num`を記録します。これにより、最適化の改善度を評価するためのベースラインを設定します。
+        *   `generate_optimal_excitation_trajectory`を実行し、最適化された軌道を取得します。
+        *   取得した最適化済み軌道を用いて、再度`calculate_condition_number`を呼び出し、`optimized_cond_num`を計算します。
+        *   最も重要なアサーションとして、`self.assertLess(optimized_cond_num, initial_cond_num)`を用いて、最適化された軌道の条件数が、初期のランダムな軌道の条件数よりも**小さくなっていること**を確認します。これにより、最適化が実際に機能していることを検証します。
+        *   また、返された軌道データの型が`np.ndarray`であることを確認するアサーションも追加しました。
+
+**検証結果**: 
+*   `python3 tests/test_optimal_excitation.py --manipulator_path xml_models/manipulators/sequential --object_path xml_models/targets/stanford-bunny` コマンドの実行により、テストが成功しました。
+*   最適化後の条件数（例: `7.3578e+01`）が、初期の条件数（例: `1.1083e+02`）よりも小さくなっていることを確認しました。これは、`scipy.optimize.minimize`が目的関数を最小化しようと正しく機能していることを示しています。

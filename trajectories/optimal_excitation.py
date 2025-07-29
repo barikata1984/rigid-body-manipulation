@@ -1,21 +1,96 @@
 import numpy as np
 from numpy.typing import ArrayLike
+import mujoco
+from scipy.optimize import minimize
+
+from dynamics.dynamics import calculate_condition_number
 
 
 def generate_optimal_excitation_trajectory(
     duration: float,
     fps: int,
-    coeffs: ArrayLike,
+    n_harmonics: int,
+    m: mujoco.MjModel,
+    d: mujoco.MjData,
     base_frequency: float,
     jointpos_offset: ArrayLike = (0, 0, 0, 0, 0, 0),
+    ee_body_name: str = "link6",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    return generate_sinusoidal_trajectory(
+    """
+    Generates an optimal excitation trajectory by minimizing the condition number
+    of the regressor matrix.
+
+    Args:
+        duration: The total duration of the trajectory in seconds.
+        fps: The frequency (frames per second) to generate trajectory points.
+        n_harmonics: The number of harmonics to use for the sinusoidal trajectory.
+        m: MuJoCo MjModel object.
+        d: MuJoCo MjData object.
+        base_frequency: The base frequency 'f' [Hz] for the harmonics.
+        jointpos_offset: A 1D numpy array representing the constant offset angle for each joint.
+        ee_body_name: The name of the end-effector body in the MuJoCo model.
+
+    Returns:
+        A tuple (t_vec, qpos, qvel, qacc) representing the optimized trajectory.
+    """
+    n_joints = m.njnt
+    # Initial guess for coeffs: small random values
+    # Shape: (n_joints, n_harmonics, 2)
+    initial_coeffs = np.random.rand(n_joints, n_harmonics, 2) * 0.01
+
+    # Define the arguments to be passed to the objective function
+    objective_args = (
+        m,
+        d,
+        duration,
+        fps,
+        jointpos_offset,
+        base_frequency,
+        ee_body_name,
+    )
+
+    # Perform the optimization
+    # We need to flatten the coeffs for the optimizer and then reshape inside the objective function
+    # Flatten the initial_coeffs for the optimizer
+    initial_coeffs_flat = initial_coeffs.flatten()
+
+    # Define a wrapper objective function that reshapes coeffs
+    def _objective_function_wrapper(coeffs_flat, *args):
+        _m, _d, _duration, _fps, _jointpos_offset, _base_frequency, _ee_body_name = args
+        _coeffs = coeffs_flat.reshape(n_joints, n_harmonics, 2)
+        return objective_function(
+            coeffs=_coeffs,
+            m=_m,
+            d=_d,
+            duration=_duration,
+            fps=_fps,
+            jointpos_offset=_jointpos_offset,
+            base_frequency=_base_frequency,
+            ee_body_name=_ee_body_name,
+        )
+
+    # Perform the optimization
+    result = minimize(
+        fun=_objective_function_wrapper,
+        x0=initial_coeffs_flat,
+        args=objective_args,
+        method='Nelder-Mead', # A simple, derivative-free method
+        options={'maxiter': 100, 'disp': True} # Limited iterations for testing
+    )
+
+    # Reshape the optimized coefficients back to their original shape
+    optimized_coeffs = result.x.reshape(n_joints, n_harmonics, 2)
+
+    # Generate the final trajectory with optimized coefficients
+    t_vec, qpos, qvel, qacc = generate_sinusoidal_trajectory(
         duration=duration,
         fps=fps,
-        coeffs=coeffs,
+        coeffs=optimized_coeffs,
         base_frequency=base_frequency,
         jointpos_offset=jointpos_offset,
     )
+
+    return t_vec, qpos, qvel, qacc
 
 
 def generate_sinusoidal_trajectory(
@@ -54,8 +129,7 @@ def generate_sinusoidal_trajectory(
         - qacc: 2D array of joint accelerations `q_ddot(t)` of shape (n_joints, n_timesteps).
     """
     n_joints, n_harmonics, _ = coeffs.shape
-    n_joints, n_harmonics, _ = coeffs.shape
-    if jointpos_offset.shape[0] != n_joints:
+    if np.array(jointpos_offset).shape[0] != n_joints:
         raise ValueError("Shape mismatch between coeffs and jointpos_offset.")
 
     # 1. Create the time vector
@@ -90,6 +164,60 @@ def generate_sinusoidal_trajectory(
         qacc += qacc_k
 
     # 4. Add the constant offset to the final position trajectory
-    qpos += jointpos_offset[:, np.newaxis]
+    qpos += np.array(jointpos_offset)[:, np.newaxis]
 
     return t_vec, qpos, qvel, qacc
+
+
+def objective_function(
+    coeffs: np.ndarray,
+    m: mujoco.MjModel,
+    d: mujoco.MjData,
+    duration: float,
+    fps: int,
+    jointpos_offset: ArrayLike,
+    base_frequency: float,
+    ee_body_name: str,
+) -> float:
+    """
+    Calculates the condition number of the regressor matrix for a given set of
+    excitation trajectory coefficients. This function serves as the objective
+    function for the optimization process.
+
+    Args:
+        coeffs: A 3D numpy array of shape (n_joints, n_harmonics, 2) representing
+                the coefficients (p_ik, d_ik) for the sinusoidal trajectory.
+                This is the variable to be optimized.
+        m: MuJoCo MjModel object.
+        d: MuJoJo MjData object.
+        duration: The total duration of the trajectory in seconds.
+        fps: The frequency (frames per second) to generate trajectory points.
+        jointpos_offset: A 1D numpy array representing the constant offset angle for each joint.
+        base_frequency: The base frequency 'f' [Hz] for the harmonics.
+        ee_body_name: The name of the end-effector body in the MuJoCo model.
+
+    Returns:
+        The condition number of the stacked regressor matrix, which is to be minimized.
+    """
+    # 1. Generate the excitation trajectory
+    t_vec, qpos, qvel, qacc = generate_sinusoidal_trajectory(
+        duration=duration,
+        fps=fps,
+        coeffs=coeffs,
+        base_frequency=base_frequency,
+        jointpos_offset=jointpos_offset,
+    )
+
+    # Reshape qpos, qvel, qacc from (n_joints, n_timesteps) to (n_timesteps, 3, n_joints)
+    # as expected by calculate_condition_number
+    joint_trajectory = np.stack([qpos.T, qvel.T, qacc.T], axis=1)
+
+    # 2. Calculate the condition number
+    condition_number = calculate_condition_number(
+        m=m,
+        d=d,
+        joint_trajectory=joint_trajectory,
+        ee_body_name=ee_body_name,
+    )
+
+    return condition_number

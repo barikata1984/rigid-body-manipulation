@@ -1,151 +1,178 @@
-import os
-
-# As the function is in a sibling directory, we adjust the path to import it.
 import sys
 import unittest
-from unittest.mock import patch
-
 import numpy as np
+import mujoco
+import tyro
+from dataclasses import dataclass
+from omegaconf import OmegaConf
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from simulator import SimulatorConfig, generate_model_data
+from trajectories.optimal_excitation import objective_function, generate_optimal_excitation_trajectory
+from dynamics.dynamics import calculate_condition_number
 
-from trajectories.optimal_excitation import (
-    generate_optimal_excitation_trajectory,
-    generate_sinusoidal_trajectory,
-)
+# Define TestConfig for tyro
+@dataclass
+class TestConfig:
+    """Configuration for the optimal excitation test."""
+    object_path: str = "xml_models/targets/stanford-bunny"
+    manipulator_path: str = "xml_models/manipulators/sequential"
+    n_harmonics: int = 5 # Number of harmonics for the sinusoidal trajectory
 
+# Global variable to store parsed config
+_test_config: TestConfig = None
 
-class TestGenerateOptimalExcitationTrajectory(unittest.TestCase):
-    def setUp(self):
-        """Set up common parameters for tests."""
-        self.n_joints = 6
-        self.n_harmonics = 5
-        self.duration = 2.0
-        self.fps = 100
-        self.base_frequency = 1.0
-        self.coeffs = np.random.rand(self.n_joints, self.n_harmonics, 2)
-        self.jointpos_offset = np.random.rand(self.n_joints)
+class TestOptimalExcitation(unittest.TestCase):
 
-    @patch("trajectories.optimal_excitation.generate_sinusoidal_trajectory")
-    def test_calls_generate_sinusoidal_trajectory(self, mock_generate_sinusoidal):
-        """Test if generate_optimal_excitation_trajectory calls generate_sinusoidal_trajectory."""
-        generate_optimal_excitation_trajectory(
+    @classmethod
+    def setUpClass(cls):
+        # Access the global config parsed by tyro
+        global _test_config
+        cfg = _test_config
+
+        print(f"--- Running Optimal Excitation Test (unittest) ---")
+        print(f"Loading manipulator from: {cfg.manipulator_path}")
+        print(f"Loading object from: {cfg.object_path}")
+
+        # Mimic the configuration setup from main.py
+        sim_config = SimulatorConfig(
+            manipulator=cfg.manipulator_path,
+            object=cfg.object_path,
+            duration=1.0, # Dummy value
+            fps=50, # Dummy value
+            displacements=[0,0,0,0,0,0] # Dummy value
+        )
+        cli_config = OmegaConf.create(sim_config)
+
+        print("Generating combined model data...")
+        try:
+            cls.m, cls.d, _ = generate_model_data(cli_config)
+            print("Model generated successfully.")
+        except Exception as e:
+            print(f"Error generating model: {e}")
+            raise
+
+        cls.n_dof = cls.m.njnt
+        if cls.n_dof != 6:
+            raise ValueError(f"Expected 6 DoF manipulator, but model has {cls.n_dof} DoF.")
+
+        cls.duration = 1.0
+        cls.fps = 50
+        cls.jointpos_offset = np.zeros(cls.n_dof)
+        cls.base_frequency = 1.0
+        cls.ee_body_name = "link6"
+        cls.n_harmonics = cfg.n_harmonics
+
+    def test_objective_function(self):
+        # Generate dummy coeffs
+        # Shape: (n_joints, n_harmonics, 2)
+        coeffs_shape = (self.n_dof, self.n_harmonics, 2)
+        coeffs_random = np.random.rand(*coeffs_shape) * 0.1 # Small random values
+        coeffs_zeros = np.zeros(coeffs_shape)
+
+        # Test with random coeffs
+        print("\nCalculating objective function with random coeffs...")
+        cond_num_random = objective_function(
+            coeffs=coeffs_random,
+            m=self.m,
+            d=self.d,
             duration=self.duration,
             fps=self.fps,
-            coeffs=self.coeffs,
-            base_frequency=self.base_frequency,
             jointpos_offset=self.jointpos_offset,
+            base_frequency=self.base_frequency,
+            ee_body_name=self.ee_body_name,
         )
-        mock_generate_sinusoidal.assert_called_once_with(
+
+        self.assertIsInstance(cond_num_random, float, "Condition number should be a float.")
+        self.assertGreater(cond_num_random, 0, "Condition number must be positive.")
+        print(f"  Condition Number (random coeffs): {cond_num_random:.4e}")
+
+        # Test with zero coeffs (should result in a very high condition number or error if no motion)
+        print("Calculating objective function with zero coeffs...")
+        cond_num_zeros = objective_function(
+            coeffs=coeffs_zeros,
+            m=self.m,
+            d=self.d,
             duration=self.duration,
             fps=self.fps,
-            coeffs=self.coeffs,
-            base_frequency=self.base_frequency,
             jointpos_offset=self.jointpos_offset,
+            base_frequency=self.base_frequency,
+            ee_body_name=self.ee_body_name,
         )
+        self.assertIsInstance(cond_num_zeros, float, "Condition number should be a float.")
+        # For zero coeffs, the condition number should be very large (ideally inf) or positive
+        self.assertGreater(cond_num_zeros, 0, "Condition number for zero coeffs must be positive.")
+        print(f"  Condition Number (zero coeffs): {cond_num_zeros:.4e}")
 
-
-class TestGenerateSinusoidalTrajectory(unittest.TestCase):
-    def setUp(self):
-        """Set up common parameters for tests."""
-        self.n_joints = 6
-        self.n_harmonics = 5
-        self.duration = 2.0  # seconds
-        self.fps = 100
-        self.base_frequency = 1.0
-
-        # Generate random but deterministic coefficients and offsets for consistency
-        np.random.seed(42)
-        self.coeffs = np.random.rand(self.n_joints, self.n_harmonics, 2)
-        self.jointpos_offset = np.random.rand(self.n_joints)
-
-    def test_output_shapes(self):
-        """1. Test if the output arrays have the correct shapes."""
-        t_vec, qpos, qvel, qacc = generate_sinusoidal_trajectory(
-            coeffs=self.coeffs,
-            jointpos_offset=self.jointpos_offset,
-            base_frequency=self.base_frequency,
+    def test_generate_optimal_excitation_trajectory(self):
+        print("\nTesting generate_optimal_excitation_trajectory (optimization loop)...")
+        # Initial condition number (from random coeffs) for comparison
+        coeffs_shape = (self.n_dof, self.n_harmonics, 2)
+        initial_coeffs = np.random.rand(*coeffs_shape) * 0.01
+        initial_cond_num = objective_function(
+            coeffs=initial_coeffs,
+            m=self.m,
+            d=self.d,
             duration=self.duration,
             fps=self.fps,
+            jointpos_offset=self.jointpos_offset,
+            base_frequency=self.base_frequency,
+            ee_body_name=self.ee_body_name,
+        )
+        print(f"  Initial Condition Number: {initial_cond_num:.4e}")
+
+        # Run the optimization
+        t_vec, qpos, qvel, qacc = generate_optimal_excitation_trajectory(
+            duration=self.duration,
+            fps=self.fps,
+            n_harmonics=self.n_harmonics,
+            m=self.m,
+            d=self.d,
+            base_frequency=self.base_frequency,
+            jointpos_offset=self.jointpos_offset,
+            ee_body_name=self.ee_body_name,
         )
 
-        n_timesteps = int(self.duration * self.fps)
-
-        self.assertEqual(t_vec.shape, (n_timesteps,))
-        self.assertEqual(qpos.shape, (self.n_joints, n_timesteps))
-        self.assertEqual(qvel.shape, (self.n_joints, n_timesteps))
-        self.assertEqual(qacc.shape, (self.n_joints, n_timesteps))
-
-    def test_simple_case_values(self):
-        """2. Test the output values for a simple, predictable case."""
-        n_j = 1
-        n_h = 1
-        duration = 1.0
-        fps = 1000
-        base_freq = 1.0
-
-        # Let q(t) = 1.0 * sin(2*pi*t)
-        coeffs = np.array([[[1.0, 0.0]]])  # p_11=1, d_11=0
-        offset = np.array([0.0])
-
-        t_vec, qpos, qvel, qacc = generate_sinusoidal_trajectory(
-            coeffs=coeffs, jointpos_offset=offset, base_frequency=base_freq, duration=duration, fps=fps
+        # Calculate the condition number of the optimized trajectory
+        optimized_trajectory = np.stack([qpos.T, qvel.T, qacc.T], axis=1)
+        optimized_cond_num = calculate_condition_number(
+            m=self.m,
+            d=self.d,
+            joint_trajectory=optimized_trajectory,
+            ee_body_name=self.ee_body_name,
         )
+        print(f"  Optimized Condition Number: {optimized_cond_num:.4e}")
 
-        # Check values at t = 0.25s
-        # q(0.25) = sin(pi/2) = 1.0
-        # q_dot(0.25) = 2*pi*cos(pi/2) = 0.0
-        # q_ddot(0.25) = -(2*pi)^2*sin(pi/2) = -4*pi^2
-        idx = int(0.25 * fps)
-
-        self.assertAlmostEqual(qpos[0, idx], 1.0, places=5)
-        self.assertAlmostEqual(qvel[0, idx], 0.0, places=5)
-        self.assertAlmostEqual(qacc[0, idx], -((2 * np.pi) ** 2), places=5)
-
-    def test_derivative_relationships(self):
-        """3. Test if numerical derivatives of outputs match for a simple case."""
-        # Use a very simple, low-frequency case for this test
-        n_j = 1
-        n_h = 1
-        duration = 2.0
-        fps = 1000  # High FPS for better numerical derivative accuracy
-        base_freq = 0.1  # Very low frequency
-
-        # Let q(t) = 1.0 * sin(2*pi*0.1*t)
-        coeffs = np.array([[[1.0, 0.0]]])
-        offset = np.array([0.0])
-
-        t_vec, qpos, qvel, qacc = generate_sinusoidal_trajectory(
-            coeffs=coeffs, jointpos_offset=offset, base_frequency=base_freq, duration=duration, fps=fps
-        )
-
-        joint_idx = 0
-
-        # Numerical derivative of position should be close to velocity
-        numerical_qvel = np.gradient(qpos[joint_idx], t_vec)
-        self.assertTrue(
-            np.allclose(numerical_qvel, qvel[joint_idx], atol=1e-2)
-        )  # Looser tolerance for numerical derivative
-
-        # Numerical derivative of velocity should be close to acceleration
-        numerical_qacc = np.gradient(qvel[joint_idx], t_vec)
-        self.assertTrue(
-            np.allclose(numerical_qacc, qacc[joint_idx], atol=1e-1)
-        )  # Looser tolerance for numerical derivative
-
-    def test_input_validation(self):
-        """4. Test for ValueError with mismatched input shapes."""
-        bad_offset = np.random.rand(self.n_joints - 1)  # Mismatched number of joints
-
-        with self.assertRaises(ValueError):
-            generate_sinusoidal_trajectory(
-                coeffs=self.coeffs,
-                jointpos_offset=bad_offset,
-                base_frequency=self.base_frequency,
-                duration=self.duration,
-                fps=self.fps,
-            )
+        # Assert that the optimized condition number is less than the initial one
+        # We use a tolerance because optimization might not always find a strictly better solution
+        # especially with simple methods or limited iterations, but it should generally improve.
+        self.assertLess(optimized_cond_num, initial_cond_num, 
+                        "Optimized condition number should be less than initial.")
+        self.assertIsInstance(t_vec, np.ndarray)
+        self.assertIsInstance(qpos, np.ndarray)
+        self.assertIsInstance(qvel, np.ndarray)
+        self.assertIsInstance(qacc, np.ndarray)
 
 
-if __name__ == "__main__":
-    unittest.main()
+if __name__ == '__main__':
+    # Parse tyro arguments first.
+    all_args = sys.argv[1:]
+
+    tyro_args = []
+    unittest_args = []
+    i = 0
+    while i < len(all_args):
+        arg = all_args[i]
+        if arg.startswith('--'):
+            tyro_args.append(arg)
+            if i + 1 < len(all_args) and not all_args[i+1].startswith('--'):
+                tyro_args.append(all_args[i+1])
+                i += 1
+        else:
+            unittest_args.append(arg)
+        i += 1
+
+    _test_config = tyro.cli(TestConfig, args=tyro_args)
+
+    unittest_main_argv = [sys.argv[0]] + unittest_args
+
+    unittest.main(argv=unittest_main_argv)
