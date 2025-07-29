@@ -217,22 +217,22 @@ def generate_sinusoidal_trajectory(
     Returns:
         tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         - t_vec: 1D array of time points.
-        - qpos: 2D array of joint positions `q(t)` of shape (n_joints, n_timesteps).
-        - qvel: 2D array of joint velocities `q_dot(t)` of shape (n_joints, n_timesteps).
-        - qacc: 2D array of joint accelerations `q_ddot(t)` of shape (n_joints, n_timesteps).
+        - qpos: 2D array of joint positions `q(t)` of shape (n_joints, n_frames).
+        - qvel: 2D array of joint velocities `q_dot(t)` of shape (n_joints, n_frames).
+        - qacc: 2D array of joint accelerations `q_ddot(t)` of shape (n_joints, n_frames).
     """
     n_joints, n_harmonics, _ = coeffs.shape
     if np.array(jointpos_offset).shape[0] != n_joints:
         raise ValueError("Shape mismatch between coeffs and jointpos_offset.")
 
     # 1. Create the time vector
-    n_timesteps = int(duration * fps)
-    t_vec = np.arange(n_timesteps) / fps
+    n_frames = int(duration * fps)
+    t_vec = np.arange(n_frames) / fps
 
     # 2. Initialize output arrays
-    qpos = np.zeros((n_joints, n_timesteps))
-    qvel = np.zeros((n_joints, n_timesteps))
-    qacc = np.zeros((n_joints, n_timesteps))
+    qpos = np.zeros((n_joints, n_frames))
+    qvel = np.zeros((n_joints, n_frames))
+    qacc = np.zeros((n_joints, n_frames))
 
     # 3. Calculate the sum of sinusoids for each harmonic
     for k in range(1, n_harmonics + 1):
@@ -301,7 +301,7 @@ def objective_function(
         jointpos_offset=jointpos_offset,
     )
 
-    # Reshape qpos, qvel, qacc from (n_joints, n_timesteps) to (n_timesteps, 3, n_joints)
+    # Reshape qpos, qvel, qacc from (n_joints, n_frames) to (n_frames, 3, n_joints)
     # as expected by calculate_condition_number
     joint_trajectory = np.stack([qpos.T, qvel.T, qacc.T], axis=1)
 
