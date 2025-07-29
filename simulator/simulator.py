@@ -1,22 +1,24 @@
 from dataclasses import dataclass, field
-from functools import partial
 
 import matplotlib as mpl
 import numpy as np
-from liegroups import SE3
 from matplotlib import pyplot as plt
 from mujoco._functions import mj_differentiatePos, mj_step
 from mujoco._structs import MjData, MjModel, MjOption
 from omegaconf import MISSING
 from tqdm import tqdm
 
-import dynamics as dyn
 from configurations import instantiate
 from controllers import LinearQuadraticRegulatorConfig
+from dynamics.dynamics import (
+    _calculate_frame_dynamics,
+    _setup_robot_dynamics_parameters,
+    get_linacc,
+    get_regressor_matrix,
+)
 from recorders import StandardRecorderConfig
 from sensors import Sensors
 from transformations import Poses
-from utilities import get_element_id
 from visualization import ax_plot_lines, ax_plot_lines_w_tgt
 
 from .base_simulator import BaseSimulatorConfig
@@ -135,69 +137,18 @@ class Simulator:
         self.poses = Poses(self.m, self.d)
         self.sensors = Sensors(self.m, self.d, cfg.fps)
 
-        # Get ids and indices
-        self.id_ll = get_element_id(self.m, "body", "link6")
-        self.id_x2ll = slice(0, self.id_ll + 1)
+        (
+            self.poses,
+            self.id_ll,
+            self.pose_ll_llj,
+            self.uscrews_lj,
+            self.simats_lj_l,
+            self.hposes_lj_kj,
+            self.inverse,
+        ) = _setup_robot_dynamics_parameters(self.m, self.d)
 
-        # Store static poses
+        # Store static poses (pose_obj_obji is still needed here)
         self.pose_obj_obji = self.poses.get_b_biof("target/object")
-        self.pose_ll_llj = self.poses.l_lj[self.id_ll]
-
-        # Get unit screws wr2 link joints
-        uscrews_lj = []
-        for t, ax in zip(self.m.jnt_type, self.m.jnt_axis, strict=False):
-            us_lj = np.zeros(6)
-            if 2 == t:  # slider joint
-                us_lj[:3] += ax
-            elif 3 == t:  # hinge joint
-                us_lj[3:] += ax
-            else:
-                raise TypeError(
-                    "Only slide or hinge joints, represented as 2 or 3 for an element of m.jnt_type, are supported."
-                )
-            uscrews_lj.append(us_lj)
-        self.uscrews_lj = np.array(uscrews_lj)
-
-        # Transfer spatial inertia matrices and join them
-        simats_bi_b = dyn.get_spatial_inertia_matrix(
-            self.m.body_mass,
-            self.m.body_inertia,
-        )
-        simats_lj_l = []
-        for pose_lj_li, simat_li_l in zip(self.poses.lj_li, simats_bi_b[self.id_x2ll], strict=False):
-            simats_lj_l.append(dyn.transfer_simat(pose_lj_li, simat_li_l))
-        simats_lj_l = np.array(simats_lj_l)
-
-        pose_x_ll = self.poses.x_b[self.id_ll]  # Use initial pose for setup
-        for pose_x_bi, simat_bi_b in zip(
-            self.poses.x_bi[self.id_ll + 1 :], simats_bi_b[self.id_ll + 1 :], strict=False
-        ):
-            pose_x_llj = pose_x_ll.dot(self.pose_ll_llj)  # type: ignore
-            pose_bi_llj = pose_x_bi.inv().dot(pose_x_llj)
-            simat_llj_b = dyn.transfer_simat(pose_bi_llj.inv(), simat_bi_b)  # type: ignore
-            simats_lj_l[self.id_ll] += simat_llj_b
-        self.simats_lj_l = simats_lj_l
-
-        # Get link joints' home poses
-        hposes_lj_kj = [SE3.identity()]
-        for k in range(self.m.njnt):
-            hpose_kj_k = self.poses.l_lj[k].inv()
-            hpose_l_lj = self.poses.l_lj[k + 1]
-            hpose_k_l = self.poses.a_b[k + 1]
-            hpose_kj_lj = hpose_kj_k.dot(hpose_k_l.dot(hpose_l_lj))
-            hposes_lj_kj.append(hpose_kj_lj.inv())  # type: ignore
-        self.hposes_lj_kj = hposes_lj_kj
-
-        # Partially initialize inverse dynamics function
-        gacc_x = -1 * np.array([*MjOption().gravity, 0, 0, 0])
-        self.inverse = partial(
-            dyn.inverse,
-            hposes_body_parent=self.hposes_lj_kj,
-            simats_body=self.simats_lj_l,
-            uscrews_body=self.uscrews_lj,
-            twist_0=np.zeros(6),
-            dtwist_0=gacc_x,
-        )
 
         # Accessors to the registers that store the data of poses in interest.
         # NOTE: Maybe MuJoco overrives the data on registers once step() is called.
@@ -252,12 +203,9 @@ class Simulator:
         self.tgt_trajectory.append(tgt_traj)  # type: ignore
 
         # Get (d)twist_sen, and linacc_sen_obj for verification
-        _, _, twists_lj_l, dtwists_lj_l = self.inverse(act_traj)
-        twist_llj = twists_lj_l[self.id_ll]
-        twist_sen = self.pose_sen_llj.adjoint() @ twist_llj  # type: ignore
-        dtwist_llj = dtwists_lj_l[self.id_ll]
-        pose_sen_llj_dadjoint = SE3.curlywedge(twist_sen) @ self.pose_sen_llj.adjoint()  # type: ignore
-        dtwist_sen = pose_sen_llj_dadjoint @ twist_llj + self.pose_sen_llj.adjoint() @ dtwist_llj  # type: ignore
+        twist_sen, dtwist_sen, regressor = _calculate_frame_dynamics(
+            act_traj, self.inverse, self.id_ll, self.pose_x_ll, self.pose_ll_llj, self.pose_x_sen
+        )
 
         # Compute the residuals and control signals, and set the control singals
         mj_differentiatePos(self.m, self.res_qpos, self.m.nu, act_qpos, tgt_traj[0])
@@ -266,11 +214,11 @@ class Simulator:
         self.d.ctrl = tgt_ctrl - self.controller.gain_matrix @ res_state
 
         # Get and log the regressor matrix for Least Squares-based identification of the target object's iparams
-        regressor = dyn.get_regressor_matrix(twist_sen, dtwist_sen)
+        regressor = get_regressor_matrix(twist_sen, dtwist_sen)
         self.regressors.append(regressor)  # type: ignore
 
         # Get and log the linear acceleration at the target object's inertial center w.r.t. the sensor frame
-        linacc_sen_obji = dyn.get_linacc(twist_sen, dtwist_sen, self.pose_sen_obji)
+        linacc_sen_obji = get_linacc(twist_sen, dtwist_sen, self.pose_sen_obji)
         self.linaccs_sen_obji.append(linacc_sen_obji)
 
         # Measure and log the force and torque measurements
