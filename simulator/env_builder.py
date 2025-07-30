@@ -49,7 +49,8 @@ def generate_model_data(
 
     show_comparison(m, "target/object", ground_truth, mode="diaginertia")
 
-    mj_resetDataKeyframe(m, d, get_element_id(m, "keyframe", cfg.reset_keyframe))
+    if cfg.reset_keyframe is not None:
+        mj_resetDataKeyframe(m, d, get_element_id(m, "keyframe", cfg.reset_keyframe))
 
     return m, d, ground_truth
 

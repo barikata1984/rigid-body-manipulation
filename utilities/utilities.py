@@ -9,7 +9,7 @@ def categorize_dict_kargs(dict_kargs):
     others = {}
 
     for k, v in dict_kargs.items():
-        if isinstance(v, Iterable):
+        if isinstance(v, Iterable) and not isinstance(v, str):
             arr_like[k] = v
         else:
             others[k] = v

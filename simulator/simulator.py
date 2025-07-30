@@ -34,11 +34,10 @@ class SimulatorConfig(BaseSimulatorConfig):
     target_class: str = "Simulator"  # type: ignore
     manipulator: str = "xml_models/manipulators/sequential"
     object: str = MISSING
-    reset_keyframe: str = "initial_state"
+    reset_keyframe: str | None = None
     duration: float = MISSING
     fps: int = MISSING
     recorder: StandardRecorderConfig = field(default_factory=StandardRecorderConfig)
-    # planner: JointPositionPlannerConfig = field(default_factory=JointPositionPlannerConfig)
     controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
     exp_setup: str = "experiment_setups/simulators/base.yaml"
     config_export_path: str | None = None
@@ -119,19 +118,9 @@ class Simulator:
                 )
                 return
 
-        # self.fps = cfg.fps
         self.n_steps = int(cfg.duration / MjOption().timestep)
         self.recorder = instantiate(cfg.recorder, m, d, fps=self.fps)
-        # self.planner = instantiate(cfg.planner, m, d, duration=cfg.duration, fps=self.fps)
         self.controller = instantiate(cfg.controller, m, d)
-
-        #        pos_offset = d.qpos.copy().tolist() if cfg.planner.pos_offset is None else cfg.planner.pos_offset
-        #        self.trajectories = get_trajectory_interpolated_with_fifth_order_spline(
-        #            cfg.duration,
-        #            self.fps,
-        #            pos_offset,  # [m, m, m, rad, rad, rad]
-        #            cfg.displacements,  # [m, m, m, rad, rad, rad]
-        #        )
 
         # Instantiate register classes
         self.poses = Poses(self.m, self.d)
@@ -163,21 +152,18 @@ class Simulator:
         self.pose_sen_llj = self.pose_x_sen.inv().dot(self.pose_x_ll.dot(self.pose_ll_llj))  # type: ignore
 
         # Prepare data containers
-        self.dtwists_sen = []
         self.file_paths = []
         self.frames = []
         self.fts_sen = []
         self.linaccs_sen_obji = []
         self.n_processed_frames = 0
-        self.poses_sen_obj = []
-        self.poses_sen_obji = []
+        self.poses_sen_obj, self.poses_sen_obji = [], []
         self.regressors = []
         self.res_qpos = np.empty(self.m.nu)
-        self.tgt_trajectory = []
         self.time = []
-        self.trajectory = []
+        self.trajectory, self.tgt_trajectory = [], []
         self.transform_matrices = []
-        self.twists_sen = []
+        self.twists_sen, self.dtwists_sen = [], []
 
     def run(self):
         for _ in tqdm(range(self.n_steps), desc="Simulation Progress"):
@@ -269,12 +255,15 @@ class Simulator:
         frame_iter = np.arange(self.n_processed_frames)
 
         # Actual and target joint positions
-        qpos_fig, qpos_axes = plt.subplots(2, 1, sharex="col", tight_layout=True)
+        n_row = 2
+        n_col = 1
+        qpos_fig, qpos_axes = plt.subplots(n_row, n_col, sharex="col", tight_layout=True)
         qpos_fig.suptitle("qpos")
         qpos_axes[1].set(xlabel="time [s]")
         yls = ["q0-2 [m]", "q3-5 [rad]"]
-        for i in range(len(qpos_axes)):
-            slcr = slice(i * 3, (i + 1) * 3)
+
+        for i in range(n_row):
+            slcr = slice(i * 3, (i + 1) * 3)  # (0:3), (3:6)
             ax_plot_lines_w_tgt(
                 qpos_axes[i],
                 self.time,
