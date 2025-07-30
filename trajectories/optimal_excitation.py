@@ -16,7 +16,7 @@ def generate_optimal_excitation_trajectory(
     base_frequency: float,
     jointpos_offset: ArrayLike = (0, 0, 0, 0, 0, 0),
     ee_body_name: str = "link6",
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Generates an optimal excitation trajectory by minimizing the condition number
     of the regressor matrix.
@@ -32,7 +32,7 @@ def generate_optimal_excitation_trajectory(
         ee_body_name: The name of the end-effector body in the MuJoCo model.
 
     Returns:
-        A tuple (t_vec, qpos, qvel, qacc) representing the optimized trajectory.
+        A tuple (t_vec, qpos, qvel, qacc, qjerk, optimized_coeffs) representing the optimized trajectory and coefficients.
     """
     n_joints = m.njnt
     # Initial guess for coeffs: small random values
@@ -76,14 +76,14 @@ def generate_optimal_excitation_trajectory(
         x0=initial_coeffs_flat,
         args=objective_args,
         method="Nelder-Mead",  # A simple, derivative-free method
-        options={"maxiter": 100, "disp": True},  # Limited iterations for testing
+        options={"maxiter": 1000, "disp": True},  # Increased iterations for better convergence,
     )
 
     # Reshape the optimized coefficients back to their original shape
     optimized_coeffs = result.x.reshape(n_joints, n_harmonics, 2)
 
     # Generate the final trajectory with optimized coefficients
-    t_vec, qpos, qvel, qacc = generate_sinusoidal_trajectory(
+    t_vec, qpos, qvel, qacc, qjerk = generate_sinusoidal_trajectory(
         duration=duration,
         fps=fps,
         coeffs=optimized_coeffs,
@@ -91,7 +91,7 @@ def generate_optimal_excitation_trajectory(
         jointpos_offset=jointpos_offset,
     )
 
-    return t_vec, qpos, qvel, qacc, optimized_coeffs
+    return t_vec, qpos, qvel, qacc, qjerk, optimized_coeffs
 
 
 def generate_full_trajectory(
@@ -104,7 +104,25 @@ def generate_full_trajectory(
     base_frequency: float,
     start_qpos: ArrayLike,
     ee_body_name: str = "link6",
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,  # full trajectory
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,  # t1 trajectory
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,  # main trajectory
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,  # t2 trajectory
+]:
     """
     Generates a full excitation trajectory including transition splines.
 
@@ -129,7 +147,7 @@ def generate_full_trajectory(
     """
     # 1. Generate the optimal excitation (main) trajectory
     # The main trajectory starts from a zero-offset position.
-    main_t, main_qpos, main_qvel, main_qacc, _ = generate_optimal_excitation_trajectory(
+    main_t, main_qpos, main_qvel, main_qacc, main_qjerk, _ = generate_optimal_excitation_trajectory(
         duration=main_duration,
         fps=fps,
         n_harmonics=n_harmonics,
@@ -139,51 +157,99 @@ def generate_full_trajectory(
         jointpos_offset=start_qpos,  # Use start_qpos as the offset
         ee_body_name=ee_body_name,
     )
+    print(f"DEBUG: main_qjerk shape: {main_qjerk.shape}")
+    print(f"DEBUG: main_qjerk[:, 0] shape: {main_qjerk[:, 0].shape}")
+    print(
+        f"DEBUG: main_qjerk[:, 0].tolist() type: {type(main_qjerk[:, 0].tolist())}, value: {main_qjerk[:, 0].tolist()}"
+    )
 
     # 2. Generate the first transition spline (start -> main)
-    start_conditions = {"qpos": start_qpos, "qvel": [0] * m.njnt, "qacc": [0] * m.njnt}
-    end_conditions_t1 = {"qpos": main_qpos[:, 0], "qvel": main_qvel[:, 0], "qacc": main_qacc[:, 0]}
+    start_conditions = {
+        "qpos": start_qpos,
+        "qvel": [0] * m.njnt,
+        "qacc": [0] * m.njnt,
+        "qjerk": [0.0] * m.njnt,
+    }
+    end_conditions_t1 = {
+        "qpos": main_qpos[:, 0],
+        "qvel": main_qvel[:, 0],
+        "qacc": main_qacc[:, 0],
+        "qjerk": main_qjerk[:, 0].tolist(),
+    }
 
-    # Note: generate_spline_trajectory returns (n_frames, 3, n_dof)
-    # We need to transpose it to (3, n_dof, n_frames) and then unpack
     t1_data = generate_spline_trajectory(
         duration=transition_duration,
         fps=fps,
         start_conditions=start_conditions,
         end_conditions=end_conditions_t1,
-        trajectory_type="fifth",
+        trajectory_type="seventh",
     )
-    # Transpose from (n_frames, 3, n_dof) to (n_dof, 3, n_frames) then unpack
     t1_qpos = t1_data.transpose(2, 1, 0)[:, 0, :]
     t1_qvel = t1_data.transpose(2, 1, 0)[:, 1, :]
     t1_qacc = t1_data.transpose(2, 1, 0)[:, 2, :]
+    t1_qjerk = t1_data.transpose(2, 1, 0)[:, 3, :]
 
     # 3. Generate the second transition spline (main -> end)
-    start_conditions_t2 = {"qpos": main_qpos[:, -1], "qvel": main_qvel[:, -1], "qacc": main_qacc[:, -1]}
-    end_conditions = {"qpos": start_qpos, "qvel": [0] * m.njnt, "qacc": [0] * m.njnt}
+    start_conditions_t2 = {
+        "qpos": main_qpos[:, -1],
+        "qvel": main_qvel[:, -1],
+        "qacc": main_qacc[:, -1],
+        "qjerk": main_qjerk[:, -1].tolist(),
+    }
+    end_conditions = {
+        "qpos": start_qpos,
+        "qvel": [0] * m.njnt,
+        "qacc": [0] * m.njnt,
+        "qjerk": [0.0] * m.njnt,
+    }
 
     t2_data = generate_spline_trajectory(
         duration=transition_duration,
         fps=fps,
         start_conditions=start_conditions_t2,
         end_conditions=end_conditions,
-        trajectory_type="fifth",
+        trajectory_type="seventh",
     )
-    # Transpose from (n_frames, 3, n_dof) to (n_dof, 3, n_frames) then unpack
     t2_qpos = t2_data.transpose(2, 1, 0)[:, 0, :]
     t2_qvel = t2_data.transpose(2, 1, 0)[:, 1, :]
     t2_qacc = t2_data.transpose(2, 1, 0)[:, 2, :]
+    t2_qjerk = t2_data.transpose(2, 1, 0)[:, 3, :]
 
-    # 4. Concatenate trajectories
-    full_qpos = np.hstack((t1_qpos, main_qpos, t2_qpos))
-    full_qvel = np.hstack((t1_qvel, main_qvel, t2_qvel))
-    full_qacc = np.hstack((t1_qacc, main_qacc, t2_qacc))
+    # 4. Concatenate trajectories, removing duplicate points at boundaries
+    full_qpos = np.hstack((t1_qpos[:, :-1], main_qpos, t2_qpos[:, 1:]))
+    full_qvel = np.hstack((t1_qvel[:, :-1], main_qvel, t2_qvel[:, 1:]))
+    full_qacc = np.hstack((t1_qacc[:, :-1], main_qacc, t2_qacc[:, 1:]))
+    full_qjerk = np.hstack((t1_qjerk[:, :-1], main_qjerk, t2_qjerk[:, 1:]))
 
     total_duration = 2 * transition_duration + main_duration
-    n_total_frames = full_qpos.shape[1]
+    # Calculate total frames based on non-overlapping segments
+    n_trans_frames = int(transition_duration * fps)
+    n_main_frames = int(main_duration * fps)
+    # t1_qpos[:, :-1] has (n_trans_frames - 1) frames
+    # main_qpos has n_main_frames frames
+    # t2_qpos[:, 1:] has (n_trans_frames - 1) frames
+    n_total_frames = (n_trans_frames - 1) + n_main_frames + (n_trans_frames - 1)
     full_t_vec = np.linspace(0, total_duration, n_total_frames)
 
-    return full_t_vec, full_qpos, full_qvel, full_qacc
+    return (
+        full_t_vec,
+        full_qpos,
+        full_qvel,
+        full_qacc,
+        full_qjerk,
+        t1_qpos,
+        t1_qvel,
+        t1_qacc,
+        t1_qjerk,
+        main_qpos,
+        main_qvel,
+        main_qacc,
+        main_qjerk,
+        t2_qpos,
+        t2_qvel,
+        t2_qacc,
+        t2_qjerk,
+    )
 
 
 def generate_sinusoidal_trajectory(
@@ -192,7 +258,7 @@ def generate_sinusoidal_trajectory(
     coeffs: ArrayLike,
     base_frequency: float,
     jointpos_offset: ArrayLike = (0, 0, 0, 0, 0, 0),
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Generates a trajectory for multiple joints based on a sum of sinusoids.
 
@@ -215,11 +281,12 @@ def generate_sinusoidal_trajectory(
             The frequency (frames per second) to generate trajectory points.
 
     Returns:
-        tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         - t_vec: 1D array of time points.
         - qpos: 2D array of joint positions `q(t)` of shape (n_joints, n_frames).
         - qvel: 2D array of joint velocities `q_dot(t)` of shape (n_joints, n_frames).
         - qacc: 2D array of joint accelerations `q_ddot(t)` of shape (n_joints, n_frames).
+        - qjerk: 2D array of joint jerks `q_dddot(t)` of shape (n_joints, n_frames).
     """
     n_joints, n_harmonics, _ = coeffs.shape
     if np.array(jointpos_offset).shape[0] != n_joints:
@@ -233,6 +300,7 @@ def generate_sinusoidal_trajectory(
     qpos = np.zeros((n_joints, n_frames))
     qvel = np.zeros((n_joints, n_frames))
     qacc = np.zeros((n_joints, n_frames))
+    qjerk = np.zeros((n_joints, n_frames))  # Added qjerk initialization
 
     # 3. Calculate the sum of sinusoids for each harmonic
     for k in range(1, n_harmonics + 1):
@@ -256,10 +324,14 @@ def generate_sinusoidal_trajectory(
         qacc_k = -(omega**2) * qpos_k
         qacc += qacc_k
 
+        # Jerk contribution (derivative of acceleration)
+        qjerk_k = -(omega**2) * qvel_k
+        qjerk += qjerk_k
+
     # 4. Add the constant offset to the final position trajectory
     qpos += np.array(jointpos_offset)[:, np.newaxis]
 
-    return t_vec, qpos, qvel, qacc
+    return t_vec, qpos, qvel, qacc, qjerk
 
 
 def objective_function(
@@ -293,7 +365,7 @@ def objective_function(
         The condition number of the stacked regressor matrix, which is to be minimized.
     """
     # 1. Generate the excitation trajectory
-    t_vec, qpos, qvel, qacc = generate_sinusoidal_trajectory(
+    t_vec, qpos, qvel, qacc, _ = generate_sinusoidal_trajectory(
         duration=duration,
         fps=fps,
         coeffs=coeffs,
