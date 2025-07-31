@@ -3,7 +3,7 @@ import unittest
 import matplotlib.pyplot as plt
 import numpy as np
 
-from trajectories.spline_interpolation import generate_spline_trajectory, BoundaryCondition
+from trajectories.spline_interpolation import BoundaryCondition, generate_spline_trajectory
 
 
 class TestSplineInterpolation(unittest.TestCase):
@@ -26,7 +26,11 @@ class TestSplineInterpolation(unittest.TestCase):
 
         # Generate the trajectory
         trajectory = generate_spline_trajectory(
-            duration=duration, fps=fps, start_conditions=start_conditions, end_conditions=end_conditions, trajectory_type="fifth"
+            duration=duration,
+            fps=fps,
+            start_conditions=start_conditions,
+            end_conditions=end_conditions,
+            trajectory_type="fifth",
         )
 
         # Check the shape of the output
@@ -36,11 +40,9 @@ class TestSplineInterpolation(unittest.TestCase):
         qpos_start = trajectory[0, 0, :]
         qvel_start = trajectory[0, 1, :]
         qacc_start = trajectory[0, 2, :]
-        qjerk_start = trajectory[0, 3, :]
         qpos_end = trajectory[-1, 0, :]
         qvel_end = trajectory[-1, 1, :]
         qacc_end = trajectory[-1, 2, :]
-        qjerk_end = trajectory[-1, 3, :]
 
         np.testing.assert_allclose(qpos_start, start_conditions.qpos, atol=1e-6)
         np.testing.assert_allclose(qvel_start, start_conditions.qvel, atol=1e-6)

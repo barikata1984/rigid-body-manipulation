@@ -30,6 +30,49 @@ class Sensors:
             stddev,
         )
 
+    def _get_jointpos(self, perturbed: bool) -> np.ndarray:
+        if perturbed:
+            return self.d.qpos + self.get_noise(self.jointpos_stddev)
+        else:
+            return self.d.qpos
+
+    def _get_jointvel(self, perturbed: bool) -> np.ndarray:
+        if perturbed:
+            return self.d.qvel + self.get_noise(self.jointpos_stddev * self.jointvar_noise_scaler)
+        else:
+            return self.d.qvel
+
+    def _get_jointacc(self, perturbed: bool) -> np.ndarray:
+        if perturbed:
+            return self.d.qacc + self.get_noise(self.jointpos_stddev * self.jointvar_noise_scaler**2)
+        else:
+            return self.d.qvel
+
+    def _get_jointvars(self, perturbed: bool) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        qpos = self._get_jointpos(perturbed)
+        qvel = self._get_jointvel(perturbed)
+        qacc = self._get_jointacc(perturbed)
+        return qpos, qvel, qacc
+
+    def _get_force(self, perturbed: bool) -> np.ndarray:
+        idx = get_sensor_measurement_idx(self.m, name="force")
+        if perturbed:
+            return self._sensordata[idx] + self.get_noise(self.force_stddev)
+        else:
+            return self._sensordata[idx]
+
+    def _get_torque(self, perturbed: bool) -> np.ndarray:
+        idx = get_sensor_measurement_idx(self.m, name="torque")
+        if perturbed:
+            return self._sensordata[idx] + self.get_noise(self.torque_stddev)
+        else:
+            return self._sensordata[idx]
+
+    def _get_ft(self) -> np.ndarray:
+        force = self._get_force(perturbed=True)
+        torque = self._get_torque(perturbed=True)
+        return np.concatenate([force, torque], axis=None)
+
     def get(
         self,
         key,
@@ -44,49 +87,22 @@ class Sensors:
         Returns:
             np.ndarray | tuple[np.ndarray, ...]: _description_
         """
-        match key:
-            case "jointpos":
-                if perturbed:
-                    return self.d.qpos + self.get_noise(self.jointpos_stddev)
-                else:
-                    return self.d.qpos
-
-            case "jointvel":
-                if perturbed:
-                    return self.d.qvel + self.get_noise(self.jointpos_stddev * self.jointvar_noise_scaler)
-                else:
-                    return self.d.qvel
-
-            case "jointacc":
-                if perturbed:
-                    return self.d.qacc + self.get_noise(self.jointpos_stddev * self.jointvar_noise_scaler**2)
-                else:
-                    return self.d.qvel
-
-            case "jointvars":
-                qpos = self.get("jointpos", perturbed)
-                qvel = self.get("jointvel", perturbed)
-                qacc = self.get("jointacc", perturbed)
-                return qpos, qvel, qacc  # shape: (6,), (6,), (6,)
-
-            case "force":
-                idx = get_sensor_measurement_idx(self.m, name=key)
-                if perturbed:
-                    return self._sensordata[idx] + self.get_noise(self.force_stddev)
-                else:
-                    return self._sensordata[idx]
-
-            case "torque":
-                idx = get_sensor_measurement_idx(self.m, name=key)
-                if perturbed:
-                    return self._sensordata[idx] + self.get_noise(self.torque_stddev)
-                else:
-                    return self._sensordata[idx]
-
-            case "ft":
-                force = self.get("force", perturbed=True)
-                torque = self.get("torque", perturbed=True)
-                return np.concatenate([force, torque], axis=None)
+        if key == "jointpos":
+            return self._get_jointpos(perturbed)
+        elif key == "jointvel":
+            return self._get_jointvel(perturbed)
+        elif key == "jointacc":
+            return self._get_jointacc(perturbed)
+        elif key == "jointvars":
+            return self._get_jointvars(perturbed)
+        elif key == "force":
+            return self._get_force(perturbed)
+        elif key == "torque":
+            return self._get_torque(perturbed)
+        elif key == "ft":
+            return self._get_ft()
+        else:
+            raise ValueError(f"Unknown sensor key: {key}")
 
 
 def get_sensor_measurement_idx(

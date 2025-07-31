@@ -16,12 +16,12 @@ class TestInertiaFrame(unittest.TestCase):
         the inertial frame orientation when given a `fullinertia` tensor.
         """
         # --- 1. Define Inertial Properties in a Rotated Frame ---
-        l, w, h = 0.1, 0.2, 0.4
+        length, w, h = 0.1, 0.2, 0.4
         mass_density = 2700
-        mass = mass_density * l * w * h
+        mass = mass_density * length * w * h
         pixx = mass * (w**2 + h**2) / 12
-        piyy = mass * (l**2 + h**2) / 12
-        pizz = mass * (l**2 + w**2) / 12
+        piyy = mass * (length**2 + h**2) / 12
+        pizz = mass * (length**2 + w**2) / 12
         diaginertia_gt = np.array([pixx, piyy, pizz])
         imat_bodyi_gt = np.diag(diaginertia_gt)
 

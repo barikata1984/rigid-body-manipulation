@@ -1,0 +1,6 @@
+feat: Add spline trajectory visualization and fix test interfaces
+
+- Implement Matplotlib visualization for spline trajectories in `generate-trajectory` command.
+- Ensure x-axis labels and ticks are only displayed on the bottom-most subplots.
+- Refactor test files (`test_spline_interpolation.py`, `test_seventh_order_spline.py`) to use `BoundaryCondition` objects for spline generation, aligning with the updated function interface.
+- Fix `TypeError` in `generate_spline_trajectory` calls in tests by correctly passing `trajectory_type` as a keyword argument.

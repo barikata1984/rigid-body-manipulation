@@ -5,7 +5,7 @@ from omegaconf import OmegaConf
 
 from dynamics.dynamics import calculate_condition_number
 from simulator import SimulatorConfig, generate_model_data
-from trajectories.spline_interpolation import generate_spline_trajectory
+from trajectories.spline_interpolation import BoundaryCondition, generate_spline_trajectory
 
 
 @dataclass
@@ -65,7 +65,24 @@ class TestDynamics(unittest.TestCase):
             "qacc": [0.0] * n_dof,
         }
 
-        trajectory = generate_spline_trajectory(duration, fps, start_conditions, end_conditions)
+        start_conditions_obj = BoundaryCondition(
+            qpos=start_conditions["qpos"],
+            qvel=start_conditions["qvel"],
+            qacc=start_conditions["qacc"],
+        )
+        end_conditions_obj = BoundaryCondition(
+            qpos=end_conditions["qpos"],
+            qvel=end_conditions["qvel"],
+            qacc=end_conditions["qacc"],
+        )
+
+        trajectory = generate_spline_trajectory(
+            trajectory_type="fifth",
+            duration=duration,
+            fps=fps,
+            start_conditions=start_conditions_obj,
+            end_conditions=end_conditions_obj,
+        )
 
         print("Calculating condition number...")
         condition_number = calculate_condition_number(m, d, trajectory)

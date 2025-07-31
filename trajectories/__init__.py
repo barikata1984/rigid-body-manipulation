@@ -1,2 +1,3 @@
-from .base_trajectory import *
-from .spline_interpolation import *
+from .base_trajectory import TrajectoryConfig, generate_trajectory
+
+__all__ = ["TrajectoryConfig", "generate_trajectory"]

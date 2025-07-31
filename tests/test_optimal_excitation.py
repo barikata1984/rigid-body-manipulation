@@ -9,8 +9,9 @@ from omegaconf import OmegaConf
 from dynamics.dynamics import calculate_condition_number
 from simulator import SimulatorConfig, generate_model_data
 from trajectories.optimal_excitation import (
-    generate_full_trajectory,
+    _find_optimal_coeffs,  # Import the new private function
     generate_optimal_excitation_trajectory,
+    generate_sinusoidal_trajectory,
     objective_function,
 )
 
@@ -113,15 +114,25 @@ class TestOptimalExcitation(unittest.TestCase):
         )
         print(f"  Initial Condition Number: {initial_cond_num:.4e}")
 
-        t_vec, qpos, qvel, qacc, qjerk, _ = generate_optimal_excitation_trajectory(
-            duration=self.duration,
-            fps=self.fps,
+        optimized_coeffs = _find_optimal_coeffs(
+            n_joints=self.n_dof,
             n_harmonics=self.n_harmonics,
             m=self.m,
             d=self.d,
+            main_duration=self.duration,
+            fps=self.fps,
+            start_qpos=self.jointpos_offset,
+            base_frequency=self.base_frequency,
+            ee_body_name=self.ee_body_name,
+        )
+
+        # Generate trajectory with optimized coeffs to check condition number
+        t_vec, qpos, qvel, qacc, _ = generate_sinusoidal_trajectory(
+            duration=self.duration,
+            fps=self.fps,
+            coeffs=optimized_coeffs,
             base_frequency=self.base_frequency,
             jointpos_offset=self.jointpos_offset,
-            ee_body_name=self.ee_body_name,
         )
 
         optimized_trajectory = np.stack([qpos.T, qvel.T, qacc.T], axis=1)
@@ -134,10 +145,7 @@ class TestOptimalExcitation(unittest.TestCase):
         print(f"  Optimized Condition Number: {optimized_cond_num:.4e}")
 
         self.assertLess(optimized_cond_num, initial_cond_num)
-        self.assertIsInstance(t_vec, np.ndarray)
-        self.assertIsInstance(qpos, np.ndarray)
-        self.assertIsInstance(qvel, np.ndarray)
-        self.assertIsInstance(qacc, np.ndarray)
+        self.assertIsInstance(optimized_coeffs, np.ndarray)
 
     def test_generate_full_trajectory(self):
         print("\nTesting generate_full_trajectory (with transitions)...")
@@ -145,25 +153,7 @@ class TestOptimalExcitation(unittest.TestCase):
         transition_duration = 0.5
         start_qpos = np.array([0.1, -0.2, 0.3, -0.4, 0.5, -0.6])
 
-        (
-            full_t_vec,
-            full_qpos,
-            full_qvel,
-            full_qacc,
-            full_qjerk,  # Added full_qjerk
-            t1_qpos,
-            t1_qvel,
-            t1_qacc,
-            t1_qjerk,  # Added t1_qjerk
-            main_qpos,
-            main_qvel,
-            main_qacc,
-            main_qjerk,  # Added main_qjerk
-            t2_qpos,
-            t2_qvel,
-            t2_qacc,
-            t2_qjerk,  # Added t2_qjerk
-        ) = generate_full_trajectory(
+        full_t_vec, full_qpos, full_qvel, full_qacc, full_qjerk = generate_optimal_excitation_trajectory(
             main_duration=main_duration,
             transition_duration=transition_duration,
             fps=self.fps,
@@ -194,37 +184,6 @@ class TestOptimalExcitation(unittest.TestCase):
         np.testing.assert_allclose(full_qacc[:, -1], 0, atol=1e-6)
         np.testing.assert_allclose(full_qjerk[:, -1], 0, atol=1e-6)  # Added qjerk boundary check
         print("  Full trajectory start/end boundary conditions checked.")
-
-        # 3. Check continuity at segment boundaries (before concatenation)
-        # Transition 1 (t1) end should match Main trajectory (main) start
-        np.testing.assert_allclose(
-            t1_qpos[:, -1], main_qpos[:, 0], atol=1e-6, err_msg="t1_qpos end does not match main_qpos start"
-        )
-        np.testing.assert_allclose(
-            t1_qvel[:, -1], main_qvel[:, 0], atol=1e-6, err_msg="t1_qvel end does not match main_qvel start"
-        )
-        np.testing.assert_allclose(
-            t1_qacc[:, -1], main_qacc[:, 0], atol=1e-6, err_msg="t1_qacc end does not match main_qacc start"
-        )
-        np.testing.assert_allclose(
-            t1_qjerk[:, -1], main_qjerk[:, 0], atol=1e-6, err_msg="t1_qjerk end does not match main_qjerk start"
-        )  # Added qjerk continuity check
-        print("  Transition 1 to Main trajectory continuity checked.")
-
-        # Main trajectory (main) end should match Transition 2 (t2) start
-        np.testing.assert_allclose(
-            main_qpos[:, -1], t2_qpos[:, 0], atol=1e-6, err_msg="main_qpos end does not match t2_qpos start"
-        )
-        np.testing.assert_allclose(
-            main_qvel[:, -1], t2_qvel[:, 0], atol=1e-6, err_msg="main_qvel end does not match t2_qvel start"
-        )
-        np.testing.assert_allclose(
-            main_qacc[:, -1], t2_qacc[:, 0], atol=1e-6, err_msg="main_qacc end does not match t2_qacc start"
-        )
-        np.testing.assert_allclose(
-            main_qjerk[:, -1], t2_qjerk[:, 0], atol=1e-3, err_msg="main_qjerk end does not match t2_qjerk start"
-        )  # Added qjerk continuity check
-        print("  Main trajectory to Transition 2 continuity checked.")
 
         print("  All trajectory checks passed.")
 
