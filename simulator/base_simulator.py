@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from configurations import InstantiateConfig
+from base_config import InstantiateConfig
 
 
 @dataclass

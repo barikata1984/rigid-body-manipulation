@@ -4,7 +4,7 @@ import unittest
 import matplotlib.pyplot as plt
 import numpy as np
 
-from trajectories.spline_interpolation import generate_spline_trajectory
+from trajectories.spline_interpolation import generate_spline_trajectory, BoundaryCondition
 
 
 def plot_jerk_trajectory(t, qjerk, title, save_path, n_dof):
@@ -31,21 +31,21 @@ class TestSeventhOrderSpline(unittest.TestCase):
     def test_seventh_order_spline_scenario_1_start_jerk_zero(self):
         """Scenario 1: Start jerk is constrained to zero, end jerk is arbitrary."""
         print("\n--- Scenario 1: Start Jerk Zero (7th Order Spline) ---")
-        start_conditions = {
-            "qpos": [0.0] * self.n_dof,
-            "qvel": [0.0] * self.n_dof,
-            "qacc": [0.0] * self.n_dof,
-            "qjerk": [0.0] * self.n_dof,  # Constrain start jerk to zero
-        }
-        end_conditions = {
-            "qpos": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
-            "qvel": [0.0] * self.n_dof,
-            "qacc": [0.0] * self.n_dof,
-            "qjerk": [10.0] * self.n_dof,  # Arbitrary end jerk
-        }
+        start_conditions = BoundaryCondition(
+            qpos=[0.0] * self.n_dof,
+            qvel=[0.0] * self.n_dof,
+            qacc=[0.0] * self.n_dof,
+            qjerk=[0.0] * self.n_dof,  # Constrain start jerk to zero
+        )
+        end_conditions = BoundaryCondition(
+            qpos=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+            qvel=[0.0] * self.n_dof,
+            qacc=[0.0] * self.n_dof,
+            qjerk=[10.0] * self.n_dof,  # Arbitrary end jerk
+        )
 
         trajectory = generate_spline_trajectory(
-            self.duration, self.fps, start_conditions, end_conditions,
+            duration=self.duration, fps=self.fps, start_conditions=start_conditions, end_conditions=end_conditions,
             trajectory_type="seventh",
         )
 
@@ -53,7 +53,7 @@ class TestSeventhOrderSpline(unittest.TestCase):
 
         # Assert that the start jerk is close to zero
         np.testing.assert_allclose(
-            qjerk[:, 0], start_conditions["qjerk"], atol=1e-6,
+            qjerk[:, 0], start_conditions.qjerk, atol=1e-6,
             err_msg="Scenario 1: Start jerk should be zero."
         )
         # Assert that the end jerk is NOT necessarily zero (it's unconstrained in this scenario)
@@ -75,21 +75,21 @@ class TestSeventhOrderSpline(unittest.TestCase):
     def test_seventh_order_spline_scenario_2_end_jerk_zero(self):
         """Scenario 2: End jerk is constrained to zero, start jerk is arbitrary."""
         print("\n--- Scenario 2: End Jerk Zero (7th Order Spline) ---")
-        start_conditions = {
-            "qpos": [0.0] * self.n_dof,
-            "qvel": [0.0] * self.n_dof,
-            "qacc": [0.0] * self.n_dof,
-            "qjerk": [10.0] * self.n_dof,  # Arbitrary start jerk
-        }
-        end_conditions = {
-            "qpos": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
-            "qvel": [0.0] * self.n_dof,
-            "qacc": [0.0] * self.n_dof,
-            "qjerk": [0.0] * self.n_dof,  # Constrain end jerk to zero
-        }
+        start_conditions = BoundaryCondition(
+            qpos=[0.0] * self.n_dof,
+            qvel=[0.0] * self.n_dof,
+            qacc=[0.0] * self.n_dof,
+            qjerk=[10.0] * self.n_dof,  # Arbitrary start jerk
+        )
+        end_conditions = BoundaryCondition(
+            qpos=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+            qvel=[0.0] * self.n_dof,
+            qacc=[0.0] * self.n_dof,
+            qjerk=[0.0] * self.n_dof,  # Constrain end jerk to zero
+        )
 
         trajectory = generate_spline_trajectory(
-            self.duration, self.fps, start_conditions, end_conditions,
+            duration=self.duration, fps=self.fps, start_conditions=start_conditions, end_conditions=end_conditions,
             trajectory_type="seventh",
         )
 
@@ -97,7 +97,7 @@ class TestSeventhOrderSpline(unittest.TestCase):
 
         # Assert that the end jerk is close to zero
         np.testing.assert_allclose(
-            qjerk[:, -1], end_conditions["qjerk"], atol=1e-6,
+            qjerk[:, -1], end_conditions.qjerk, atol=1e-6,
             err_msg="Scenario 2: End jerk should be zero."
         )
         # Assert that the start jerk is NOT necessarily zero (it's unconstrained in this scenario)
@@ -119,21 +119,21 @@ class TestSeventhOrderSpline(unittest.TestCase):
     def test_seventh_order_spline_scenario_3_both_jerks_zero(self):
         """Scenario 3: Both start and end jerks are constrained to zero."""
         print("\n--- Scenario 3: Both Jerks Zero (7th Order Spline) ---")
-        start_conditions = {
-            "qpos": [0.0] * self.n_dof,
-            "qvel": [0.0] * self.n_dof,
-            "qacc": [0.0] * self.n_dof,
-            "qjerk": [0.0] * self.n_dof,  # Constrain start jerk to zero
-        }
-        end_conditions = {
-            "qpos": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
-            "qvel": [0.0] * self.n_dof,
-            "qacc": [0.0] * self.n_dof,
-            "qjerk": [0.0] * self.n_dof,  # Constrain end jerk to zero
-        }
+        start_conditions = BoundaryCondition(
+            qpos=[0.0] * self.n_dof,
+            qvel=[0.0] * self.n_dof,
+            qacc=[0.0] * self.n_dof,
+            qjerk=[0.0] * self.n_dof,  # Constrain start jerk to zero
+        )
+        end_conditions = BoundaryCondition(
+            qpos=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+            qvel=[0.0] * self.n_dof,
+            qacc=[0.0] * self.n_dof,
+            qjerk=[0.0] * self.n_dof,  # Constrain end jerk to zero
+        )
 
         trajectory = generate_spline_trajectory(
-            self.duration, self.fps, start_conditions, end_conditions,
+            duration=self.duration, fps=self.fps, start_conditions=start_conditions, end_conditions=end_conditions,
             trajectory_type="seventh",
         )
 
@@ -141,11 +141,11 @@ class TestSeventhOrderSpline(unittest.TestCase):
 
         # Assert that both start and end jerks are close to zero
         np.testing.assert_allclose(
-            qjerk[:, 0], start_conditions["qjerk"], atol=1e-6,
+            qjerk[:, 0], start_conditions.qjerk, atol=1e-6,
             err_msg="Scenario 3: Start jerk should be zero."
         )
         np.testing.assert_allclose(
-            qjerk[:, -1], end_conditions["qjerk"], atol=1e-6,
+            qjerk[:, -1], end_conditions.qjerk, atol=1e-6,
             err_msg="Scenario 3: End jerk should be zero."
         )
 

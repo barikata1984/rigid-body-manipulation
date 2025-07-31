@@ -10,7 +10,7 @@
 
   <worldbody>
     <light name="top" pos="0 0 3"/>
-    <body name="link1" euler="0 90 0" pos="1 2 3">  <!-- euler in deg -->
+    <body name="link1" euler="0 90 0" pos="1 1 1">  <!-- euler in deg -->
       <joint name="x" type="slide" axis="0 0 1"/>
       <inertial pos="0 0 0" mass="8." diaginertia=".05333333 .05333333 .05333333"/>  <!-- balancing load mimicking the water block whose size is 2x2x2 [m] -->
       <body name="link2" euler="-90 0 0">

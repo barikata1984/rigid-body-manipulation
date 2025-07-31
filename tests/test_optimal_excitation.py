@@ -19,8 +19,8 @@ from trajectories.optimal_excitation import (
 class AppConfig:
     """Configuration for the optimal excitation test."""
 
-    object_path: str = "xml_models/targets/stanford-bunny" # Default value, can be overridden
-    manipulator_path: str = "xml_models/manipulators/sequential" # Default value, can be overridden
+    object_path: str = "xml_models/targets/stanford-bunny"  # Default value, can be overridden
+    manipulator_path: str = "xml_models/manipulators/sequential"  # Default value, can be overridden
     n_harmonics: int = 5
 
 
@@ -146,10 +146,23 @@ class TestOptimalExcitation(unittest.TestCase):
         start_qpos = np.array([0.1, -0.2, 0.3, -0.4, 0.5, -0.6])
 
         (
-            full_t_vec, full_qpos, full_qvel, full_qacc, full_qjerk, # Added full_qjerk
-            t1_qpos, t1_qvel, t1_qacc, t1_qjerk, # Added t1_qjerk
-            main_qpos, main_qvel, main_qacc, main_qjerk, # Added main_qjerk
-            t2_qpos, t2_qvel, t2_qacc, t2_qjerk, # Added t2_qjerk
+            full_t_vec,
+            full_qpos,
+            full_qvel,
+            full_qacc,
+            full_qjerk,  # Added full_qjerk
+            t1_qpos,
+            t1_qvel,
+            t1_qacc,
+            t1_qjerk,  # Added t1_qjerk
+            main_qpos,
+            main_qvel,
+            main_qacc,
+            main_qjerk,  # Added main_qjerk
+            t2_qpos,
+            t2_qvel,
+            t2_qacc,
+            t2_qjerk,  # Added t2_qjerk
         ) = generate_full_trajectory(
             main_duration=main_duration,
             transition_duration=transition_duration,
@@ -168,47 +181,70 @@ class TestOptimalExcitation(unittest.TestCase):
         self.assertEqual(full_qpos.shape, (self.n_dof, full_t_vec.shape[0]))
         self.assertEqual(full_qvel.shape, (self.n_dof, full_t_vec.shape[0]))
         self.assertEqual(full_qacc.shape, (self.n_dof, full_t_vec.shape[0]))
-        self.assertEqual(full_qjerk.shape, (self.n_dof, full_t_vec.shape[0])) # Added qjerk shape check
+        self.assertEqual(full_qjerk.shape, (self.n_dof, full_t_vec.shape[0]))  # Added qjerk shape check
         print("  Full trajectory shapes checked.")
 
         # 2. Check boundary conditions of the full trajectory
         np.testing.assert_allclose(full_qpos[:, 0], start_qpos, atol=1e-6)
         np.testing.assert_allclose(full_qvel[:, 0], 0, atol=1e-6)
         np.testing.assert_allclose(full_qacc[:, 0], 0, atol=1e-6)
-        np.testing.assert_allclose(full_qjerk[:, 0], 0, atol=1e-6) # Added qjerk boundary check
+        np.testing.assert_allclose(full_qjerk[:, 0], 0, atol=1e-6)  # Added qjerk boundary check
         np.testing.assert_allclose(full_qpos[:, -1], start_qpos, atol=1e-6)
         np.testing.assert_allclose(full_qvel[:, -1], 0, atol=1e-6)
         np.testing.assert_allclose(full_qacc[:, -1], 0, atol=1e-6)
-        np.testing.assert_allclose(full_qjerk[:, -1], 0, atol=1e-6) # Added qjerk boundary check
+        np.testing.assert_allclose(full_qjerk[:, -1], 0, atol=1e-6)  # Added qjerk boundary check
         print("  Full trajectory start/end boundary conditions checked.")
 
         # 3. Check continuity at segment boundaries (before concatenation)
         # Transition 1 (t1) end should match Main trajectory (main) start
-        np.testing.assert_allclose(t1_qpos[:, -1], main_qpos[:, 0], atol=1e-6, err_msg="t1_qpos end does not match main_qpos start")
-        np.testing.assert_allclose(t1_qvel[:, -1], main_qvel[:, 0], atol=1e-6, err_msg="t1_qvel end does not match main_qvel start")
-        np.testing.assert_allclose(t1_qacc[:, -1], main_qacc[:, 0], atol=1e-6, err_msg="t1_qacc end does not match main_qacc start")
-        np.testing.assert_allclose(t1_qjerk[:, -1], main_qjerk[:, 0], atol=1e-6, err_msg="t1_qjerk end does not match main_qjerk start") # Added qjerk continuity check
+        np.testing.assert_allclose(
+            t1_qpos[:, -1], main_qpos[:, 0], atol=1e-6, err_msg="t1_qpos end does not match main_qpos start"
+        )
+        np.testing.assert_allclose(
+            t1_qvel[:, -1], main_qvel[:, 0], atol=1e-6, err_msg="t1_qvel end does not match main_qvel start"
+        )
+        np.testing.assert_allclose(
+            t1_qacc[:, -1], main_qacc[:, 0], atol=1e-6, err_msg="t1_qacc end does not match main_qacc start"
+        )
+        np.testing.assert_allclose(
+            t1_qjerk[:, -1], main_qjerk[:, 0], atol=1e-6, err_msg="t1_qjerk end does not match main_qjerk start"
+        )  # Added qjerk continuity check
         print("  Transition 1 to Main trajectory continuity checked.")
 
         # Main trajectory (main) end should match Transition 2 (t2) start
-        np.testing.assert_allclose(main_qpos[:, -1], t2_qpos[:, 0], atol=1e-6, err_msg="main_qpos end does not match t2_qpos start")
-        np.testing.assert_allclose(main_qvel[:, -1], t2_qvel[:, 0], atol=1e-6, err_msg="main_qvel end does not match t2_qvel start")
-        np.testing.assert_allclose(main_qacc[:, -1], t2_qacc[:, 0], atol=1e-6, err_msg="main_qacc end does not match t2_qacc start")
-        np.testing.assert_allclose(main_qjerk[:, -1], t2_qjerk[:, 0], atol=1e-3, err_msg="main_qjerk end does not match t2_qjerk start") # Added qjerk continuity check
+        np.testing.assert_allclose(
+            main_qpos[:, -1], t2_qpos[:, 0], atol=1e-6, err_msg="main_qpos end does not match t2_qpos start"
+        )
+        np.testing.assert_allclose(
+            main_qvel[:, -1], t2_qvel[:, 0], atol=1e-6, err_msg="main_qvel end does not match t2_qvel start"
+        )
+        np.testing.assert_allclose(
+            main_qacc[:, -1], t2_qacc[:, 0], atol=1e-6, err_msg="main_qacc end does not match t2_qacc start"
+        )
+        np.testing.assert_allclose(
+            main_qjerk[:, -1], t2_qjerk[:, 0], atol=1e-3, err_msg="main_qjerk end does not match t2_qjerk start"
+        )  # Added qjerk continuity check
         print("  Main trajectory to Transition 2 continuity checked.")
 
         print("  All trajectory checks passed.")
 
-        plot_trajectory(full_t_vec, full_qpos, full_qvel, full_qacc, full_qjerk, # Added full_qjerk
-                        "debug-figs/combined_optimal_excitation_trajectory.png",
-                        transition_duration, main_duration)
+        plot_trajectory(
+            full_t_vec,
+            full_qpos,
+            full_qvel,
+            full_qacc,
+            full_qjerk,  # Added full_qjerk
+            "debug-figs/combined_optimal_excitation_trajectory.png",
+            transition_duration,
+            main_duration,
+        )
 
 
 def plot_trajectory(t, qpos, qvel, qacc, qjerk, save_path, transition_duration, main_duration):
     print(f"  Plotting trajectory to {save_path}...")
     n_dof = qpos.shape[0]
 
-    fig, axes = plt.subplots(4, 1, figsize=(12, 16), sharex=True) # Changed to 4 rows for pos, vel, acc, jerk
+    fig, axes = plt.subplots(4, 1, figsize=(12, 16), sharex=True)  # Changed to 4 rows for pos, vel, acc, jerk
     fig.suptitle("Combined Optimal Excitation Trajectory", fontsize=16)
 
     # Calculate main trajectory start and end times
@@ -221,9 +257,9 @@ def plot_trajectory(t, qpos, qvel, qacc, qjerk, save_path, transition_duration, 
     axes[0].set_ylabel("Position (rad)")
     axes[0].set_title("Joint Positions")
     axes[0].grid(True)
-    axes[0].axvline(main_start_time, color='r', linestyle='--', label='Main Trajectory Start')
-    axes[0].axvline(main_end_time, color='g', linestyle='--', label='Main Trajectory End')
-    axes[0].legend(loc='upper right', bbox_to_anchor=(1.2, 1)) # Adjust legend position
+    axes[0].axvline(main_start_time, color="r", linestyle="--", label="Main Trajectory Start")
+    axes[0].axvline(main_end_time, color="g", linestyle="--", label="Main Trajectory End")
+    axes[0].legend(loc="upper right", bbox_to_anchor=(1.2, 1))  # Adjust legend position
 
     # Plot Joint Velocities
     for i in range(n_dof):
@@ -231,9 +267,9 @@ def plot_trajectory(t, qpos, qvel, qacc, qjerk, save_path, transition_duration, 
     axes[1].set_ylabel("Velocity (rad/s)")
     axes[1].set_title("Joint Velocities")
     axes[1].grid(True)
-    axes[1].axvline(main_start_time, color='r', linestyle='--')
-    axes[1].axvline(main_end_time, color='g', linestyle='--')
-    axes[1].legend(loc='upper right', bbox_to_anchor=(1.2, 1)) # Adjust legend position
+    axes[1].axvline(main_start_time, color="r", linestyle="--")
+    axes[1].axvline(main_end_time, color="g", linestyle="--")
+    axes[1].legend(loc="upper right", bbox_to_anchor=(1.2, 1))  # Adjust legend position
 
     # Plot Joint Accelerations
     for i in range(n_dof):
@@ -241,9 +277,9 @@ def plot_trajectory(t, qpos, qvel, qacc, qjerk, save_path, transition_duration, 
     axes[2].set_ylabel("Acceleration (rad/s^2)")
     axes[2].set_title("Joint Accelerations")
     axes[2].grid(True)
-    axes[2].axvline(main_start_time, color='r', linestyle='--')
-    axes[2].axvline(main_end_time, color='g', linestyle='--')
-    axes[2].legend(loc='upper right', bbox_to_anchor=(1.2, 1)) # Adjust legend position
+    axes[2].axvline(main_start_time, color="r", linestyle="--")
+    axes[2].axvline(main_end_time, color="g", linestyle="--")
+    axes[2].legend(loc="upper right", bbox_to_anchor=(1.2, 1))  # Adjust legend position
 
     # Plot Joint Jerks # Added Jerk plot
     for i in range(n_dof):
@@ -251,11 +287,11 @@ def plot_trajectory(t, qpos, qvel, qacc, qjerk, save_path, transition_duration, 
     axes[3].set_ylabel("Jerk (rad/s^3)")
     axes[3].set_title("Joint Jerks")
     axes[3].grid(True)
-    axes[3].axvline(main_start_time, color='r', linestyle='--')
-    axes[3].axvline(main_end_time, color='g', linestyle='--')
-    axes[3].legend(loc='upper right', bbox_to_anchor=(1.2, 1)) # Adjust legend position
+    axes[3].axvline(main_start_time, color="r", linestyle="--")
+    axes[3].axvline(main_end_time, color="g", linestyle="--")
+    axes[3].legend(loc="upper right", bbox_to_anchor=(1.2, 1))  # Adjust legend position
 
-    for ax in axes: # All subplots share x-axis, so only last one needs xlabel
+    for ax in axes:  # All subplots share x-axis, so only last one needs xlabel
         ax.set_xlabel("Time (s)")
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.96])

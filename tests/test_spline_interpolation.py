@@ -3,7 +3,7 @@ import unittest
 import matplotlib.pyplot as plt
 import numpy as np
 
-from trajectories.spline_interpolation import generate_spline_trajectory
+from trajectories.spline_interpolation import generate_spline_trajectory, BoundaryCondition
 
 
 class TestSplineInterpolation(unittest.TestCase):
@@ -13,53 +13,62 @@ class TestSplineInterpolation(unittest.TestCase):
         fps = 100  # Hz
         n_dof = 6
 
-        start_conditions = {
-            "qpos": [0.0] * n_dof,
-            "qvel": [0.0] * n_dof,
-            "qacc": [0.0] * n_dof,
-        }
-        end_conditions = {
-            "qpos": [np.pi / 2, np.pi / 4, np.pi / 3, np.pi, np.pi / 2, np.pi],
-            "qvel": [0.0] * n_dof,
-            "qacc": [0.0] * n_dof,
-        }
+        start_conditions = BoundaryCondition(
+            qpos=[0.0] * n_dof,
+            qvel=[0.0] * n_dof,
+            qacc=[0.0] * n_dof,
+        )
+        end_conditions = BoundaryCondition(
+            qpos=[np.pi / 2, np.pi / 4, np.pi / 3, np.pi, np.pi / 2, np.pi],
+            qvel=[0.0] * n_dof,
+            qacc=[0.0] * n_dof,
+        )
 
         # Generate the trajectory
         trajectory = generate_spline_trajectory(
-            duration, fps, start_conditions, end_conditions, trajectory_type="fifth"
+            duration=duration, fps=fps, start_conditions=start_conditions, end_conditions=end_conditions, trajectory_type="fifth"
         )
 
         # Check the shape of the output
-        self.assertEqual(trajectory.shape, (int(duration * fps), 3, n_dof))
+        self.assertEqual(trajectory.shape, (int(duration * fps), 4, n_dof))
 
         # Check boundary conditions
         qpos_start = trajectory[0, 0, :]
         qvel_start = trajectory[0, 1, :]
         qacc_start = trajectory[0, 2, :]
+        qjerk_start = trajectory[0, 3, :]
         qpos_end = trajectory[-1, 0, :]
         qvel_end = trajectory[-1, 1, :]
         qacc_end = trajectory[-1, 2, :]
+        qjerk_end = trajectory[-1, 3, :]
 
-        np.testing.assert_allclose(qpos_start, start_conditions["qpos"], atol=1e-6)
-        np.testing.assert_allclose(qvel_start, start_conditions["qvel"], atol=1e-6)
-        np.testing.assert_allclose(qacc_start, start_conditions["qacc"], atol=1e-6)
-        np.testing.assert_allclose(qpos_end, end_conditions["qpos"], atol=1e-6)
-        np.testing.assert_allclose(qvel_end, end_conditions["qvel"], atol=1e-6)
-        np.testing.assert_allclose(qacc_end, end_conditions["qacc"], atol=1e-6)
+        np.testing.assert_allclose(qpos_start, start_conditions.qpos, atol=1e-6)
+        np.testing.assert_allclose(qvel_start, start_conditions.qvel, atol=1e-6)
+        np.testing.assert_allclose(qacc_start, start_conditions.qacc, atol=1e-6)
+        # For fifth-order spline, jerk is not explicitly constrained to zero at boundaries
+        # np.testing.assert_allclose(qjerk_start, [0.0] * n_dof, atol=1e-6)
+
+        np.testing.assert_allclose(qpos_end, end_conditions.qpos, atol=1e-6)
+        np.testing.assert_allclose(qvel_end, end_conditions.qvel, atol=1e-6)
+        np.testing.assert_allclose(qacc_end, end_conditions.qacc, atol=1e-6)
+        # For fifth-order spline, jerk is not explicitly constrained to zero at boundaries
+        # np.testing.assert_allclose(qjerk_end, [0.0] * n_dof, atol=1e-6)
 
         # Plot the results for visual inspection
         time = np.linspace(0, duration, int(duration * fps))
         qpos = trajectory[:, 0, :]
         qvel = trajectory[:, 1, :]
         qacc = trajectory[:, 2, :]
+        qjerk = trajectory[:, 3, :]
 
-        fig, axs = plt.subplots(3, 1, figsize=(10, 15), sharex=True)
+        fig, axs = plt.subplots(4, 1, figsize=(10, 20), sharex=True)
         fig.suptitle("6-DOF Spline Trajectory Verification")
 
         for i in range(n_dof):
             axs[0].plot(time, qpos[:, i], label=f"Joint {i + 1}")
             axs[1].plot(time, qvel[:, i], label=f"Joint {i + 1}")
             axs[2].plot(time, qacc[:, i], label=f"Joint {i + 1}")
+            axs[3].plot(time, qjerk[:, i], label=f"Joint {i + 1}")
 
         axs[0].set_ylabel("Position (rad)")
         axs[0].legend()
@@ -70,9 +79,13 @@ class TestSplineInterpolation(unittest.TestCase):
         axs[1].grid(True)
 
         axs[2].set_ylabel("Acceleration (rad/s^2)")
-        axs[2].set_xlabel("Time (s)")
         axs[2].legend()
         axs[2].grid(True)
+
+        axs[3].set_ylabel("Jerk (rad/s^3)")
+        axs[3].set_xlabel("Time (s)")
+        axs[3].legend()
+        axs[3].grid(True)
 
         plt.tight_layout(rect=[0, 0.03, 1, 0.96])
         # plt.show() # Comment out to prevent blocking in non-interactive environments

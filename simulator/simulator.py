@@ -8,7 +8,7 @@ from mujoco._structs import MjData, MjModel, MjOption
 from omegaconf import MISSING
 from tqdm import tqdm
 
-from configurations import instantiate
+from base_config import instantiate
 from controllers import LinearQuadraticRegulatorConfig
 from dynamics.dynamics import (
     _calculate_frame_dynamics,
@@ -39,12 +39,11 @@ class SimulatorConfig(BaseSimulatorConfig):
     fps: int = MISSING
     recorder: StandardRecorderConfig = field(default_factory=StandardRecorderConfig)
     controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
-    exp_setup: str = "experiment_setups/simulators/base.yaml"
+    exp_setup: str = "configurations/simulations/base.yaml"
     config_export_path: str | None = None
     displacements: list[float] = MISSING
     target_trajectory: str | None = None
     generate_trajectory: str | None = None
-    pos_offset: list[float] | None = None
 
 
 # Naming convention of spatial and dynamics variables:

@@ -26,13 +26,14 @@ dependencies = [
 
 [project.scripts]
 manipulate = "main:main"
-generate-trajectory = "trajectories.spline_interpolation:entry_point"
+generate-trajectory = "trajectories:generate_trajectory"
 
 [tool.setuptools]
 py-modules = ["main"]
 
 [tool.setuptools.packages.find]
 include = [
+    "base_config*",
     "configurations*",
     "controllers*",
     "dynamics*",
