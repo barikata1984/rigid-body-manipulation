@@ -53,7 +53,7 @@ def _find_optimal_coeffs(
         x0=initial_coeffs_flat,
         args=objective_args,
         method="Nelder-Mead",
-        options={"maxiter": 1000, "disp": True},
+        options={"maxiter": 5000, "disp": True, "adaptive": True},
     )
 
     return result.x.reshape(n_joints, n_harmonics, 2)
