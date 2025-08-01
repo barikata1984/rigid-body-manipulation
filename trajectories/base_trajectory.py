@@ -6,12 +6,34 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tyro
 from numpy.typing import NDArray
-from omegaconf import DictConfig
+from omegaconf import MISSING, DictConfig, OmegaConf
 
+from omegaconf_custom_resolvers import pi_converter
 from simulator.env_builder import generate_model_data
 
 from .optimal_excitation import generate_optimal_excitation_trajectory
 from .spline_interpolation import BoundaryCondition, generate_spline_trajectory
+
+OmegaConf.register_new_resolver("pi", pi_converter)
+
+
+@dataclass
+class TrajectoryConfig:
+    trajectory_type: str
+    duration: float
+    fps: int
+    trajectory_config: str | None = None
+    start_conditions: BoundaryCondition = MISSING
+    end_conditions: BoundaryCondition = MISSING
+    jointpos_offset: list[float] = field(default_factory=lambda: [0.0] * 6)
+    coeffs: list[float] | None = None
+    base_frequency: float = 1.0
+    # New fields for optimal_excitation
+    n_harmonics: int = 5
+    transition_duration: float = 0.5
+    manipulator_path: str = "xml_models/manipulators/sequential"
+    object_path: str = "xml_models/targets/stanford-bunny"
+    ee_body_name: str = "link6"
 
 
 def save_trajectory_to_json(
@@ -22,42 +44,36 @@ def save_trajectory_to_json(
     time_points: NDArray,
     trajectory_type: str,
     duration: float,
+    fps: int,
+    n_dof: int,
 ):
     output_dir = "configurations/trajectories"
     os.makedirs(output_dir, exist_ok=True)
     output_filename = os.path.join(output_dir, f"{trajectory_type}.json")
 
+    jointvars = []
+    for i in range(len(time_points)):
+        jointvars.append(
+            {
+                "time_point": time_points[i].item(),
+                "qpos": qposs[i, :].tolist(),
+                "qvel": qvels[i, :].tolist(),
+                "qacc": qaccs[i, :].tolist(),
+                "qjerk": qjerks[i, :].tolist(),
+            }
+        )
+
     with open(output_filename, "w") as f:
         json.dump(
             {
-                "time_points": time_points.tolist(),
-                "qpos": qposs.tolist(),
-                "qvel": qvels.tolist(),
-                "qacc": qaccs.tolist(),
-                "qjerk": qjerks.tolist(),
+                "duration": duration,
+                "fps": fps,
+                "jointvars": jointvars,
             },
             f,
             indent=4,
         )
     print(f"Trajectory saved to {output_filename}")
-
-
-@dataclass
-class TrajectoryConfig:
-    trajectory_type: str
-    duration: float
-    fps: int
-    start_conditions: BoundaryCondition = field(default_factory=BoundaryCondition)
-    end_conditions: BoundaryCondition = field(default_factory=BoundaryCondition)
-    jointpos_offset: list[float] = field(default_factory=lambda: [0.0] * 6)
-    coeffs: list[float] | None = None
-    base_frequency: float = 1.0
-    # New fields for optimal_excitation
-    n_harmonics: int = 5
-    transition_duration: float = 0.5
-    manipulator_path: str = "xml_models/manipulators/sequential"
-    object_path: str = "xml_models/targets/stanford-bunny"
-    ee_body_name: str = "link6"
 
 
 def visualize_trajectory(
@@ -105,38 +121,11 @@ def visualize_trajectory(
     plt.show()
 
 
-# def generate_trajectory():
-#    cfg = tyro.cli(TrajectoryConfig)
-#
-#    if "spline" in cfg.trajectory_type:
-#        # Convert displacement and pos_offset to numpy arrays, handling 'pi' conversion
-#        # displacement_converted = [pi_converter(val) for val in displacement]
-#        # pos_offset_converted = [pi_converter(val) for val in jointpos_offset]
-#
-#        trajectory = generate_spline_trajectory(
-#            trajectory_type=cfg.trajectory_type,
-#            duration=cfg.duration,
-#            fps=cfg.fps,
-#            jointpos_offset=cfg.jointpos_offset,
-#            displacement=cfg.displacement,
-#        )
-#    elif "optimal_excitation" == cfg.trajectory_type:
-#        trajectory = generate_optimal_excitation_trajectory(
-#            duration=cfg.duration,
-#            fps=cfg.fps,
-#            jointpos_offset=cfg.jointpos_offset,
-#            coeffs=cfg.coeffs,
-#            base_frequency=cfg.base_frequency,
-#        )
-#    else:
-#        raise ValueError(f"Unknown trajectory type: {cfg.trajectory_type}")
-#
-#    import pdb
-#
-#    pdb.set_trace()
+def generate_trajectory():
+    cli_cfg = tyro.cli(TrajectoryConfig)
+    yaml_cfg = OmegaConf.load(cli_cfg.trajectory_config)
+    cfg = OmegaConf.merge(yaml_cfg, cli_cfg)  # priority: yaml > cli
 
-
-def generate_trajectory(cfg: TrajectoryConfig):
     if "spline" in cfg.trajectory_type:
         trajectory_data = generate_spline_trajectory(
             trajectory_type=cfg.trajectory_type,
@@ -207,8 +196,6 @@ def generate_trajectory(cfg: TrajectoryConfig):
             time_points,
             cfg.trajectory_type,
             cfg.duration,
+            cfg.fps,
+            n_dof,
         )
-
-
-if __name__ == "__main__":
-    tyro.cli(generate_trajectory)

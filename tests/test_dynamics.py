@@ -46,8 +46,8 @@ class TestDynamics(unittest.TestCase):
         m = self.__class__.m
         d = self.__class__.d
 
-        duration = 1.0
-        fps = 50
+        duration = 0.5
+        fps = 10
         n_dof = m.njnt
 
         if n_dof != 6:

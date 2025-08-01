@@ -117,6 +117,9 @@ class Simulator:
                 )
                 return
 
+        # Offset the joint pos according to the initial target trajcttory
+        self.d.qpos = self.target_jointvars[0]["qpos"]
+
         self.n_steps = int(cfg.duration / MjOption().timestep)
         self.recorder = instantiate(cfg.recorder, m, d, fps=self.fps)
         self.controller = instantiate(cfg.controller, m, d)
@@ -183,7 +186,7 @@ class Simulator:
         act_traj = np.stack((act_qpos, act_qvel, act_qacc))
         self.trajectory.append(act_traj)  # type: ignore
 
-        tgt_qpos, tgt_qvel, tgt_qacc = self.target_jointvars[current_frame_idx].values()
+        _, tgt_qpos, tgt_qvel, tgt_qacc, _ = self.target_jointvars[current_frame_idx].values()
         tgt_traj = np.stack((tgt_qpos, tgt_qvel, tgt_qacc))
         self.tgt_trajectory.append(tgt_traj)  # type: ignore
 

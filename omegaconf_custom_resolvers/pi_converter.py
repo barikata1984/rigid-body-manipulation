@@ -8,7 +8,7 @@ def pi_converter(value: str | float | int):
     """
     if isinstance(value, str):
         value = value.lower().replace(" ", "")
-        match = re.match(r"^(-?[\d\.]*)pi$", value)
+        match = re.match(r"^(-?[+]?[\d\.]*)pi$", value)
         if not match:
             raise ValueError(f"Invalid format for pi conversion: {value}")
         coefficient_str = match.group(1)

@@ -52,8 +52,8 @@ def _find_optimal_coeffs(
         fun=_objective_function_wrapper,
         x0=initial_coeffs_flat,
         args=objective_args,
-        method="Nelder-Mead",
-        options={"maxiter": 5000, "disp": True, "adaptive": True},
+        method="BFGS",
+        options={"disp": False, "maxiter": 50},
     )
 
     return result.x.reshape(n_joints, n_harmonics, 2)
@@ -81,6 +81,7 @@ def generate_optimal_excitation_trajectory(
         with open(manipulator_path) as f:
             xml_string = f.read()
         import re
+
         xml_string_no_sensors = re.sub(r"<sensor>.*?</sensor>", "", xml_string, flags=re.DOTALL)
         m = mujoco.MjModel.from_xml_string(xml_string_no_sensors)
         d = mujoco.MjData(m)
