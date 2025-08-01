@@ -17,6 +17,7 @@ def _find_optimal_coeffs(
     start_qpos: ArrayLike,
     base_frequency: float,
     ee_body_name: str,
+    optimization_max_iter: int,
 ) -> np.ndarray:
     """
     Finds the optimal coefficients for the sinusoidal trajectory by minimizing the condition number.
@@ -48,12 +49,53 @@ def _find_optimal_coeffs(
             ee_body_name=_ee_body_name,
         )
 
+    # コールバック関数を定義
+    def _optimization_callback(coeffs_flat):
+        _m, _d, _duration, _fps, _jointpos_offset, _base_frequency, _ee_body_name = objective_args
+        _coeffs = coeffs_flat.reshape(n_joints, n_harmonics, 2)
+        current_condition_number = objective_function(
+            coeffs=_coeffs,
+            m=_m,
+            d=_d,
+            duration=_duration,
+            fps=_fps,
+            jointpos_offset=_jointpos_offset,
+            base_frequency=_base_frequency,
+            ee_body_name=_ee_body_name,
+        )
+        print(f"  Optimization Iteration Condition Number: {current_condition_number:.4e}")
+
+    def _joint_position_constraint(coeffs_flat, *args):
+        _m, _d, _duration, _fps, _jointpos_offset, _base_frequency, _ee_body_name = args
+        _coeffs = coeffs_flat.reshape(n_joints, n_harmonics, 2)
+
+        _, qpos, _, _, _ = generate_sinusoidal_trajectory(
+            duration=_duration,
+            fps=_fps,
+            coeffs=_coeffs,
+            base_frequency=_base_frequency,
+            jointpos_offset=_jointpos_offset,
+        )
+
+        # Extract qpos_min and qpos_max from m.jnt_range
+        _qpos_min = _m.jnt_range[:, 0]
+        _qpos_max = _m.jnt_range[:, 1]
+
+        lower_bound_violation = qpos - _qpos_min[:, np.newaxis]
+        upper_bound_violation = _qpos_max[:, np.newaxis] - qpos
+
+        return np.concatenate((lower_bound_violation.flatten(), upper_bound_violation.flatten()))
+
+    constraints = {"type": "ineq", "fun": _joint_position_constraint, "args": objective_args}
+
     result = minimize(
         fun=_objective_function_wrapper,
         x0=initial_coeffs_flat,
         args=objective_args,
-        method="BFGS",
-        options={"disp": False, "maxiter": 50},
+        method="SLSQP",
+        options={"disp": False, "maxiter": optimization_max_iter},
+        constraints=constraints,
+        callback=_optimization_callback,
     )
 
     return result.x.reshape(n_joints, n_harmonics, 2)
@@ -70,6 +112,7 @@ def generate_optimal_excitation_trajectory(
     start_qpos: ArrayLike,
     ee_body_name: str = "link6",
     manipulator_path: str | None = None,
+    optimization_max_iter: int = 10,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Generates an optimal excitation trajectory by minimizing the condition number
@@ -96,6 +139,7 @@ def generate_optimal_excitation_trajectory(
         start_qpos=start_qpos,
         base_frequency=base_frequency,
         ee_body_name=ee_body_name,
+        optimization_max_iter=optimization_max_iter,
     )
 
     main_t, main_qpos, main_qvel, main_qacc, main_qjerk = generate_sinusoidal_trajectory(
@@ -109,6 +153,9 @@ def generate_optimal_excitation_trajectory(
     if transition_duration < 1e-6:
         return main_t, main_qpos, main_qvel, main_qacc, main_qjerk
 
+    # "+ 1.0 / fps" is to add a buffer frame that is sliced out later to make the full trajectory smooth
+    _transition_duration = transition_duration + 1.0 / fps
+
     start_cond_t1 = BoundaryCondition(
         qpos=start_qpos.tolist(), qvel=[0.0] * m.njnt, qacc=[0.0] * m.njnt, qjerk=[0.0] * m.njnt
     )
@@ -120,7 +167,7 @@ def generate_optimal_excitation_trajectory(
     )
     t1_data = generate_spline_trajectory(
         trajectory_type="seventh",
-        duration=transition_duration,
+        duration=_transition_duration,
         fps=fps,
         start_conditions=start_cond_t1,
         end_conditions=end_cond_t1,
@@ -143,7 +190,7 @@ def generate_optimal_excitation_trajectory(
     )
     t2_data = generate_spline_trajectory(
         trajectory_type="seventh",
-        duration=transition_duration,
+        duration=_transition_duration,
         fps=fps,
         start_conditions=start_cond_t2,
         end_conditions=end_cond_t2,
@@ -155,6 +202,7 @@ def generate_optimal_excitation_trajectory(
         t2_data[:, 3, :].T,
     )
 
+    # slice out the first and last frame of the fore and rear transition directory, respectively
     full_qpos = np.hstack((t1_qpos[:, :-1], main_qpos, t2_qpos[:, 1:]))
     full_qvel = np.hstack((t1_qvel[:, :-1], main_qvel, t2_qvel[:, 1:]))
     full_qacc = np.hstack((t1_qacc[:, :-1], main_qacc, t2_qacc[:, 1:]))

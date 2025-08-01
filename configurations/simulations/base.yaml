@@ -14,14 +14,12 @@ controller:
     epsilon: 1.0e-08
     centered: true
   input_gain:
-  - 10.0
-  - 10.0
-  - 10.0
-  - 100000.0
-  - 100000.0
-  - 100000.0
-duration: 3.0
-fps: 60
+  - 100.0
+  - 100.0
+  - 100.0
+  - 10000.0
+  - 10000.0
+  - 10000.0
 displacements:
 - 0.2
 - 1.4

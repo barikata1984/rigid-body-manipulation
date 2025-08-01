@@ -35,8 +35,8 @@ class SimulatorConfig(BaseSimulatorConfig):
     manipulator: str = "xml_models/manipulators/sequential"
     object: str = MISSING
     reset_keyframe: str | None = None
-    duration: float = MISSING
-    fps: int = MISSING
+    # duration: float = MISSING
+    # fps: int = MISSING
     recorder: StandardRecorderConfig = field(default_factory=StandardRecorderConfig)
     controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
     exp_setup: str = "configurations/simulations/base.yaml"
@@ -120,13 +120,17 @@ class Simulator:
         # Offset the joint pos according to the initial target trajcttory
         self.d.qpos = self.target_jointvars[0]["qpos"]
 
-        self.n_steps = int(cfg.duration / MjOption().timestep)
+        import pdb
+
+        pdb.set_trace()
+
+        self.n_steps = int(self.duration / MjOption().timestep)
         self.recorder = instantiate(cfg.recorder, m, d, fps=self.fps)
         self.controller = instantiate(cfg.controller, m, d)
 
         # Instantiate register classes
         self.poses = Poses(self.m, self.d)
-        self.sensors = Sensors(self.m, self.d, cfg.fps)
+        self.sensors = Sensors(self.m, self.d, self.fps)
 
         (
             self.poses,

@@ -34,6 +34,7 @@ class TrajectoryConfig:
     manipulator_path: str = "xml_models/manipulators/sequential"
     object_path: str = "xml_models/targets/stanford-bunny"
     ee_body_name: str = "link6"
+    optimization_max_iter: int = 10
 
 
 def save_trajectory_to_json(
@@ -83,6 +84,8 @@ def visualize_trajectory(
     qaccs: NDArray,
     qjerks: NDArray,
     n_dof: int,
+    transition_duration: float = 0.0,
+    main_duration: float = 0.0,
 ):
     """
     Visualizes the generated spline trajectory (position, velocity, acceleration, jerk).
@@ -116,15 +119,25 @@ def visualize_trajectory(
             if row_idx < 3:
                 axes[row_idx, col_idx].tick_params(labelbottom=False)
 
+            # Add vertical lines for optimal excitation trajectory
+            if transition_duration > 0 or main_duration > 0:
+                axes[row_idx, col_idx].axvline(transition_duration, color='r', linestyle='--', label='Main Start')
+                axes[row_idx, col_idx].axvline(transition_duration + main_duration, color='g', linestyle='--', label='Main End')
+                # Update legend to include new labels
+                handles, labels = axes[row_idx, col_idx].get_legend_handles_labels()
+                by_label = dict(zip(labels, handles))
+                axes[row_idx, col_idx].legend(by_label.values(), by_label.keys())
+
     # Adjust layout and display
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.show()
 
 
 def generate_trajectory():
-    cli_cfg = tyro.cli(TrajectoryConfig)
-    yaml_cfg = OmegaConf.load(cli_cfg.trajectory_config)
-    cfg = OmegaConf.merge(yaml_cfg, cli_cfg)  # priority: yaml > cli
+    cfg = tyro.cli(TrajectoryConfig)
+    if cfg.trajectory_config is not None:
+        yaml_cfg = OmegaConf.load(cfg.trajectory_config)
+        cfg = OmegaConf.merge(yaml_cfg, cfg)  # priority: yaml > cli
 
     if "spline" in cfg.trajectory_type:
         trajectory_data = generate_spline_trajectory(
@@ -141,7 +154,7 @@ def generate_trajectory():
         time_points = np.linspace(0, cfg.duration, int(cfg.duration * cfg.fps))
         n_dof = len(cfg.start_conditions.qpos)
 
-    elif "optimal_excitation" == cfg.trajectory_type:
+    elif cfg.trajectory_type.strip() == "optimal-excitation":
         # generate_model_data に渡すための設定オブジェクトを構築
         m, d = None, None
         if cfg.object_path:
@@ -166,7 +179,8 @@ def generate_trajectory():
             base_frequency=cfg.base_frequency,
             start_qpos=np.array(cfg.jointpos_offset),
             ee_body_name=cfg.ee_body_name,
-            manipulator_path=cfg.manipulator_path,  # Pass the manipulator path
+            manipulator_path=cfg.manipulator_path,
+            optimization_max_iter=cfg.optimization_max_iter,
         )
         qposs = full_qpos.T
         qvels = full_qvel.T
@@ -187,6 +201,8 @@ def generate_trajectory():
             qaccs,
             qjerks,
             n_dof,
+            transition_duration=cfg.transition_duration,
+            main_duration=cfg.duration,
         )
         save_trajectory_to_json(
             qposs,
@@ -195,7 +211,7 @@ def generate_trajectory():
             qjerks,
             time_points,
             cfg.trajectory_type,
-            cfg.duration,
+            cfg.duration + 2 * cfg.transition_duration,  # duration と transition_duration を足し合わせたものを設定
             cfg.fps,
             n_dof,
         )
