@@ -38,19 +38,18 @@ class TrajectoryConfig:
 
 
 def save_trajectory_to_json(
-    qposs: NDArray,
-    qvels: NDArray,
-    qaccs: NDArray,
-    qjerks: NDArray,
-    time_points: NDArray,
+    trajectory_dict: dict,
     trajectory_type: str,
-    duration: float,
-    fps: int,
-    n_dof: int,
 ):
     output_dir = "configurations/trajectories"
     os.makedirs(output_dir, exist_ok=True)
     output_filename = os.path.join(output_dir, f"{trajectory_type}.json")
+
+    time_points = trajectory_dict["t"]
+    qposs = trajectory_dict["qpos"].T  # Transpose to (n_frames, n_dof)
+    qvels = trajectory_dict["qvel"].T
+    qaccs = trajectory_dict["qacc"].T
+    qjerks = trajectory_dict["qjerk"].T
 
     jointvars = []
     for i in range(len(time_points)):
@@ -64,16 +63,17 @@ def save_trajectory_to_json(
             }
         )
 
+    output_data = {
+        "duration": time_points[-1],
+        "fps": int(1.0 / (time_points[1] - time_points[0])),
+        "jointvars": jointvars,
+    }
+
+    if "excitation" in trajectory_dict:
+        output_data["excitation"] = trajectory_dict["excitation"]
+
     with open(output_filename, "w") as f:
-        json.dump(
-            {
-                "duration": duration,
-                "fps": fps,
-                "jointvars": jointvars,
-            },
-            f,
-            indent=4,
-        )
+        json.dump(output_data, f, indent=4)
     print(f"Trajectory saved to {output_filename}")
 
 
@@ -154,6 +154,15 @@ def generate_trajectory():
         time_points = np.linspace(0, cfg.duration, int(cfg.duration * cfg.fps))
         n_dof = len(cfg.start_conditions.qpos)
 
+        # Create dictionary for saving
+        trajectory_dict = {
+            "t": time_points,
+            "qpos": qposs.T,
+            "qvel": qvels.T,
+            "qacc": qaccs.T,
+            "qjerk": qjerks.T,
+        }
+
     elif cfg.trajectory_type.strip() == "optimal-excitation":
         # generate_model_data に渡すための設定オブジェクトを構築
         m, d = None, None
@@ -169,7 +178,7 @@ def generate_trajectory():
             m, d, _ = generate_model_data(model_cfg)  # _ は ground_truth
 
         # 拡張された generate_optimal_excitation_trajectory を呼び出す
-        full_t_vec, full_qpos, full_qvel, full_qacc, full_qjerk = generate_optimal_excitation_trajectory(
+        trajectory_dict = generate_optimal_excitation_trajectory(
             main_duration=cfg.duration,
             transition_duration=cfg.transition_duration,
             fps=cfg.fps,
@@ -182,6 +191,11 @@ def generate_trajectory():
             manipulator_path=cfg.manipulator_path,
             optimization_max_iter=cfg.optimization_max_iter,
         )
+        full_qpos = trajectory_dict["qpos"]
+        full_qvel = trajectory_dict["qvel"]
+        full_qacc = trajectory_dict["qacc"]
+        full_qjerk = trajectory_dict["qjerk"]
+        full_t_vec = trajectory_dict["t"]
         qposs = full_qpos.T
         qvels = full_qvel.T
         qaccs = full_qacc.T
@@ -192,8 +206,15 @@ def generate_trajectory():
     else:
         raise ValueError(f"Unknown trajectory type: {cfg.trajectory_type}")
 
-    # 統一された可視化処理
-    if qposs is not None and qvels is not None and qaccs is not None and qjerks is not None:
+    # 統一された可視化と保存処理
+    if trajectory_dict:
+        qposs = trajectory_dict["qpos"].T
+        qvels = trajectory_dict["qvel"].T
+        qaccs = trajectory_dict["qacc"].T
+        qjerks = trajectory_dict["qjerk"].T
+        time_points = trajectory_dict["t"]
+        n_dof = qposs.shape[1]
+
         visualize_trajectory(
             time_points,
             qposs,
@@ -201,17 +222,9 @@ def generate_trajectory():
             qaccs,
             qjerks,
             n_dof,
-            transition_duration=cfg.transition_duration,
+            transition_duration=cfg.transition_duration if cfg.trajectory_type == "optimal-excitation" else 0.0,
             main_duration=cfg.duration,
         )
         save_trajectory_to_json(
-            qposs,
-            qvels,
-            qaccs,
-            qjerks,
-            time_points,
-            cfg.trajectory_type,
-            cfg.duration + 2 * cfg.transition_duration,  # duration と transition_duration を足し合わせたものを設定
-            cfg.fps,
-            n_dof,
+            trajectory_dict, cfg.trajectory_type
         )

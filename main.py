@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from shutil import copy
 
@@ -51,6 +52,17 @@ def main():
     else:
         copy(object_gt, dataset_gt)
 
+    # Load trajectory and extract excitation indices if available
+    excitation_slice = slice(None)  # Default to full trajectory
+    if cfg.target_trajectory:
+        with open(cfg.target_trajectory) as f:
+            trajectory_data = json.load(f)
+        if "excitation" in trajectory_data and "start_index" in trajectory_data["excitation"]:
+            start = trajectory_data["excitation"]["start_index"]
+            end = trajectory_data["excitation"]["end_index"]
+            excitation_slice = slice(start, end)
+            print(f"Excitation trajectory slice found: {start} to {end}")
+
     simulator_cfg = OmegaConf.to_object(cfg)
     simulator = instantiate(simulator_cfg, m, d)
 
@@ -63,8 +75,8 @@ def main():
     gt_iparams = [gt_total_mass, *gt_f_moms, *gt_moms_i]  # type: ignore
 
     # Ordinal/Total least squares
-    regressors = result["regressors"].reshape((-1, 10))
-    fts_sen = result["fts_sen"].reshape(-1)
+    regressors = result["regressors"][excitation_slice].reshape((-1, 10))
+    fts_sen = result["fts_sen"][excitation_slice].reshape(-1)
     ls_iparams = lstsq(regressors, fts_sen)[0]  # test
     tls_iparams = total_lstsq(regressors, fts_sen)[0]  # test
     l2_ls = norm(ls_iparams - np.array(gt_iparams), 2)

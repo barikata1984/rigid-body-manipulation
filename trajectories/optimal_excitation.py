@@ -113,10 +113,16 @@ def generate_optimal_excitation_trajectory(
     ee_body_name: str = "link6",
     manipulator_path: str | None = None,
     optimization_max_iter: int = 10,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> dict:
     """
     Generates an optimal excitation trajectory by minimizing the condition number
     of the regressor matrix, including transition splines.
+
+    Returns:
+        A dictionary containing the trajectory data and metadata.
+        - t: Time vector
+        - qpos, qvel, qacc, qjerk: Joint trajectory data
+        - excitation: Dictionary with start and end indices of the excitation phase.
     """
     if m is None:
         if manipulator_path is None:
@@ -151,7 +157,17 @@ def generate_optimal_excitation_trajectory(
     )
 
     if transition_duration < 1e-6:
-        return main_t, main_qpos, main_qvel, main_qacc, main_qjerk
+        return {
+            "t": main_t,
+            "qpos": main_qpos,
+            "qvel": main_qvel,
+            "qacc": main_qacc,
+            "qjerk": main_qjerk,
+            "excitation": {
+                "start_index": 0,
+                "end_index": main_qpos.shape[1],
+            },
+        }
 
     # "+ 1.0 / fps" is to add a buffer frame that is sliced out later to make the full trajectory smooth
     _transition_duration = transition_duration + 1.0 / fps
@@ -203,7 +219,8 @@ def generate_optimal_excitation_trajectory(
     )
 
     # slice out the first and last frame of the fore and rear transition directory, respectively
-    full_qpos = np.hstack((t1_qpos[:, :-1], main_qpos, t2_qpos[:, 1:]))
+    transition1_qpos = t1_qpos[:, :-1]
+    full_qpos = np.hstack((transition1_qpos, main_qpos, t2_qpos[:, 1:]))
     full_qvel = np.hstack((t1_qvel[:, :-1], main_qvel, t2_qvel[:, 1:]))
     full_qacc = np.hstack((t1_qacc[:, :-1], main_qacc, t2_qacc[:, 1:]))
     full_qjerk = np.hstack((t1_qjerk[:, :-1], main_qjerk, t2_qjerk[:, 1:]))
@@ -212,7 +229,20 @@ def generate_optimal_excitation_trajectory(
     n_total_frames = full_qpos.shape[1]
     full_t_vec = np.linspace(0, total_duration, n_total_frames)
 
-    return full_t_vec, full_qpos, full_qvel, full_qacc, full_qjerk
+    start_index = transition1_qpos.shape[1]
+    end_index = start_index + main_qpos.shape[1]
+
+    return {
+        "t": full_t_vec,
+        "qpos": full_qpos,
+        "qvel": full_qvel,
+        "qacc": full_qacc,
+        "qjerk": full_qjerk,
+        "excitation": {
+            "start_index": start_index,
+            "end_index": end_index,
+        },
+    }
 
 
 def generate_sinusoidal_trajectory(

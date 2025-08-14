@@ -1,4 +1,6 @@
 from dataclasses import dataclass, field
+from pathlib import Path
+from datetime import datetime
 
 import matplotlib as mpl
 import numpy as np
@@ -119,10 +121,6 @@ class Simulator:
 
         # Offset the joint pos according to the initial target trajcttory
         self.d.qpos = self.target_jointvars[0]["qpos"]
-
-        import pdb
-
-        pdb.set_trace()
 
         self.n_steps = int(self.duration / MjOption().timestep)
         self.recorder = instantiate(cfg.recorder, m, d, fps=self.fps)
@@ -285,5 +283,16 @@ class Simulator:
         ax_plot_lines(acc_ft_axes[2], frame_iter, self.fts_sen[:, 3:], "trq_sen [N*m]")  # type: ignore
         for ax in acc_ft_axes:
             ax.hlines(0.0, frame_iter[0], frame_iter[-1], ls="dashed", alpha=0.5)
+
+        # Save qpos figure to debug_log directory
+        debug_dir = Path("debug_log")
+        debug_dir.mkdir(exist_ok=True)
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            fname = f"qpos_{timestamp}.png"
+            qpos_fig.savefig(debug_dir / fname)
+            print(f"Saved qpos figure: {debug_dir / fname}")
+        except Exception as e:
+            print(f"Failed to save qpos figure: {e}")
 
         plt.show()
