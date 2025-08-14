@@ -1,10 +1,11 @@
 from dataclasses import dataclass, field
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 import matplotlib as mpl
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.lines import Line2D
 from mujoco._functions import mj_differentiatePos, mj_step
 from mujoco._structs import MjData, MjModel, MjOption
 from omegaconf import MISSING
@@ -22,6 +23,7 @@ from recorders import StandardRecorderConfig
 from sensors import Sensors
 from transformations import Poses
 from visualization import ax_plot_lines, ax_plot_lines_w_tgt
+from visualization.visualization import cb_rgb  # color palette for consistency
 
 from .base_simulator import BaseSimulatorConfig
 
@@ -275,6 +277,14 @@ class Simulator:
                 self.tgt_trajectory[:, 0, slcr],  # type: ignore
                 yls[i],  # type: ignore
             )
+            # Add legend mapping joint index to color (solid=actual, dashed=target)
+            joint_indices = range(slcr.start, slcr.stop)
+            legend_handles: list[Line2D] = []
+            for local_j, j in enumerate(joint_indices):
+                color = cb_rgb[local_j % len(cb_rgb)]
+                legend_handles.append(Line2D([0], [0], color=color, linestyle="-", label=f"q{j} act"))
+                legend_handles.append(Line2D([0], [0], color=color, linestyle="--", label=f"q{j} tgt"))
+            qpos_axes[i].legend(handles=legend_handles, ncol=3, fontsize="x-small")
 
         # Object linear acceleration and ft sensor measurements
         acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)
