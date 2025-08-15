@@ -39,8 +39,9 @@ class SimulatorConfig(BaseSimulatorConfig):
     manipulator: str = "xml_models/manipulators/sequential"
     object: str = MISSING
     reset_keyframe: str | None = None
-    # duration: float = MISSING
-    # fps: int = MISSING
+    # Some tests pass these explicitly; keep them optional for trajectory-driven runs
+    duration: float | None = None
+    fps: int | None = None
     recorder: StandardRecorderConfig = field(default_factory=StandardRecorderConfig)
     controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
     exp_setup: str = "configurations/simulations/base.yaml"
@@ -121,8 +122,16 @@ class Simulator:
                 )
                 return
 
-        # Offset the joint pos according to the initial target trajcttory
-        self.d.qpos = self.target_jointvars[0]["qpos"]
+        if cfg.target_trajectory is not None:
+            # Offset the joint pos according to the initial target trajcttory
+            self.d.qpos = self.target_jointvars[0]["qpos"]
+        else:
+            # Fall back to provided duration/fps if no trajectory file
+            if cfg.duration is None or cfg.fps is None:
+                raise ValueError("Either target_trajectory or (duration & fps) must be provided in SimulatorConfig")
+            self.duration = cfg.duration
+            self.fps = cfg.fps
+            self.target_jointvars = []  # placeholder; controller logic may expect list
 
         self.n_steps = int(self.duration / MjOption().timestep)
         self.recorder = instantiate(cfg.recorder, m, d, fps=self.fps)
