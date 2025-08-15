@@ -7,7 +7,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 from mujoco._functions import mj_differentiatePos, mj_step
-from mujoco._structs import MjData, MjModel, MjOption
+from mujoco._structs import MjData, MjModel
 from omegaconf import MISSING
 from tqdm import tqdm
 
@@ -133,7 +133,8 @@ class Simulator:
             self.fps = cfg.fps
             self.target_jointvars = []  # placeholder; controller logic may expect list
 
-        self.n_steps = int(self.duration / MjOption().timestep)
+        self.timestep = self.m.opt.timestep
+        self.n_steps = int(self.duration / self.timestep)
         self.recorder = instantiate(cfg.recorder, m, d, fps=self.fps)
         self.controller = instantiate(cfg.controller, m, d)
 
@@ -195,7 +196,7 @@ class Simulator:
         return {"frames": self.frames, "regressors": self.regressors, "fts_sen": self.fts_sen}
 
     def procoess_frame(self, current_frame_idx):
-        act_qpos, act_qvel, act_qacc = self.sensors.get("jointvars", perturbed=True)  # # shape: (6,), (6,), (6,)
+        act_qpos, act_qvel, act_qacc = self.sensors.get("jointvars", perturbed=False)  # # shape: (6,), (6,), (6,)
         act_traj = np.stack((act_qpos, act_qvel, act_qacc))
         self.trajectory.append(act_traj)  # type: ignore
 
@@ -209,8 +210,9 @@ class Simulator:
         )
 
         # Compute the residuals and control signals, and set the control singals
-        mj_differentiatePos(self.m, self.res_qpos, self.m.nu, act_qpos, tgt_traj[0])
-        res_state = np.concatenate((self.res_qpos, tgt_traj[1] - act_qvel))
+        mj_differentiatePos(self.m, self.res_qpos, 1.0, act_qpos, tgt_traj[0])
+        vel_res = tgt_traj[1] - act_qvel
+        res_state = np.concatenate((self.res_qpos, vel_res))
         tgt_ctrl, _, _, _ = self.inverse(tgt_traj)
         self.d.ctrl = tgt_ctrl - self.controller.gain_matrix @ res_state
 
@@ -223,7 +225,7 @@ class Simulator:
         self.linaccs_sen_obji.append(linacc_sen_obji)
 
         # Measure and log the force and torque measurements
-        ft = self.sensors.get("ft", perturbed=True)
+        ft = self.sensors.get("ft", perturbed=False)
         self.fts_sen.append(ft)  # type: ignore
 
         # Render the camera observatio
