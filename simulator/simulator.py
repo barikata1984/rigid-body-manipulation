@@ -304,7 +304,7 @@ class Simulator:
             ax.hlines(0.0, frame_iter[0], frame_iter[-1], ls="dashed", alpha=0.5)
 
         # Save qpos figure to debug_log directory
-        debug_dir = Path("debug_log")
+        debug_dir = Path("debug_log/dev-improve_trajectory_tracking")
         debug_dir.mkdir(exist_ok=True)
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
