@@ -121,11 +121,15 @@ def visualize_trajectory(
 
             # Add vertical lines for optimal excitation trajectory
             if transition_duration > 0 or main_duration > 0:
-                axes[row_idx, col_idx].axvline(transition_duration, color='r', linestyle='--', label='Main Start')
-                axes[row_idx, col_idx].axvline(transition_duration + main_duration, color='g', linestyle='--', label='Main End')
+                axes[row_idx, col_idx].axvline(transition_duration, color="r", linestyle="--", label="Main Start")
+                axes[row_idx, col_idx].axvline(
+                    transition_duration + main_duration, color="g", linestyle="--", label="Main End"
+                )
                 # Update legend to include new labels
                 handles, labels = axes[row_idx, col_idx].get_legend_handles_labels()
-                by_label = dict(zip(labels, handles))
+                by_label = dict(zip(labels, handles, strict=False))
+                handles, labels = axes[row_idx, col_idx].get_legend_handles_labels()
+                by_label = dict(zip(labels, handles, strict=False))
                 axes[row_idx, col_idx].legend(by_label.values(), by_label.keys())
 
     # Adjust layout and display
@@ -225,6 +229,4 @@ def generate_trajectory():
             transition_duration=cfg.transition_duration if cfg.trajectory_type == "optimal-excitation" else 0.0,
             main_duration=cfg.duration,
         )
-        save_trajectory_to_json(
-            trajectory_dict, cfg.trajectory_type
-        )
+        save_trajectory_to_json(trajectory_dict, cfg.trajectory_type)

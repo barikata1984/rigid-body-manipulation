@@ -180,6 +180,7 @@ class Simulator:
         self.trajectory, self.tgt_trajectory = [], []
         self.transform_matrices = []
         self.twists_sen, self.dtwists_sen = [], []
+        self.feedforward_ctrls, self.feedback_ctrls = [], []
 
     def run(self):
         for _ in tqdm(range(self.n_steps), desc="Simulation Progress"):
@@ -213,8 +214,13 @@ class Simulator:
         mj_differentiatePos(self.m, self.res_qpos, 1.0, act_qpos, tgt_traj[0])
         vel_res = tgt_traj[1] - act_qvel
         res_state = np.concatenate((self.res_qpos, vel_res))
-        tgt_ctrl, _, _, _ = self.inverse(tgt_traj)
-        self.d.ctrl = tgt_ctrl - self.controller.gain_matrix @ res_state
+        feedforward_ctrl, _, _, _ = self.inverse(tgt_traj)
+        feedback_ctrl = self.controller.gain_matrix @ res_state
+        ctrl = feedforward_ctrl - feedback_ctrl
+        self.d.ctrl = ctrl
+
+        self.feedforward_ctrls.append(feedforward_ctrl)
+        self.feedback_ctrls.append(feedback_ctrl)
 
         # Get and log the regressor matrix for Least Squares-based identification of the target object's iparams
         regressor = get_regressor_matrix(twist_sen, dtwist_sen)
@@ -248,6 +254,8 @@ class Simulator:
         self.trajectory = np.array(self.trajectory)
         self.fts_sen = np.array(self.fts_sen)
         self.regressors = np.array(self.regressors)
+        self.feedforward_ctrls = np.array(self.feedforward_ctrls)
+        self.feedback_ctrls = np.array(self.feedback_ctrls)
 
         data_containers = [
             self.file_paths,
@@ -316,4 +324,26 @@ class Simulator:
         except Exception as e:
             print(f"Failed to save qpos figure: {e}")
 
-        plt.show()
+        # Control signals (feedforward vs feedback) for each joint
+        n_joints = self.m.nu
+        ctrl_fig, ctrl_axes = plt.subplots(n_joints, 1, sharex="col", tight_layout=True, figsize=(8, 12))
+        ctrl_fig.suptitle("Control Signals (Feedforward vs. Feedback)")
+        ctrl_axes[-1].set(xlabel="time [s]")
+
+        for i in range(n_joints):
+            ax = ctrl_axes[i]
+            ax.plot(self.time, self.feedforward_ctrls[:, i], label=f"q{i} FF", color=cb_rgb[0])
+            ax.plot(self.time, self.feedback_ctrls[:, i], label=f"q{i} FB", color=cb_rgb[1], linestyle="--")
+            ax.set_ylabel(f"q{i} ctrl [Nm]")
+            ax.legend(fontsize="x-small")
+            ax.grid(True)
+
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            fname = f"ctrl_{timestamp}.png"
+            ctrl_fig.savefig(debug_dir / fname)
+            print(f"Saved ctrl figure: {debug_dir / fname}")
+        except Exception as e:
+            print(f"Failed to save ctrl figure: {e}")
+
+        # plt.show()

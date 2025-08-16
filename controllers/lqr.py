@@ -16,6 +16,7 @@ class LinearQuadraticRegulatorConfig(BaseControllerConfig):
     target_class: str = "LinearQuadraticRegulator"  # type: ignore
     state_space: StateSpaceConfig = field(default_factory=StateSpaceConfig)
     input_gain: list[float] = MISSING
+    state_gain: list[float] = MISSING
 
 
 class LinearQuadraticRegulator:
@@ -28,6 +29,7 @@ class LinearQuadraticRegulator:
         # Fill a potentially missing field of a planner configuration
         try:
             self.input_gain = np.array(cfg.input_gain)
+            self.state_gain = np.array(cfg.state_gain)
         except ValueError as e:
             # 変換に失敗した場合、ValueErrorが発生し、このブロックが実行される
             print(
@@ -44,10 +46,18 @@ class LinearQuadraticRegulator:
     ) -> NDArray:
         self.ss.update_matrices(m, d)
 
-        Q = np.eye(self.ss.ns)  # Initial state cost matrix R = np.diag(self.input_gains)  # Input gain matrix
+        Q = np.diag(self.state_gain)
         R = np.diag(self.input_gain)  # Input gain matrix
         # Compute the feedback gain matrix K
         P = linalg.solve_discrete_are(self.ss.A, self.ss.B, Q, R)
         K = linalg.pinv(R + self.ss.B.T @ P @ self.ss.B) @ self.ss.B.T @ P @ self.ss.A
+
+        # ===== DEBUG PRINT =====
+        print("\n===== LQR GAIN DEBUG =====")
+        print(f"Q matrix (diagonal):\n{np.diag(Q)}")
+        print(f"R matrix (diagonal):\n{np.diag(R)}")
+        print(f"Resulting K matrix (first 5x5 part):\n{K[:5, :5]}")
+        print("==========================\n")
+        # =======================
 
         return K
