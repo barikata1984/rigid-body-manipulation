@@ -156,4 +156,10 @@ def generate_spline_trajectory(
         else:
             raise ValueError("Invalid trajectory_type. Must be 'fifth', 'sixth' or 'seventh'.")
 
-    return np.stack([qposs, qvels, qaccs, qjerks], axis=1)
+    return {
+        "t": time_points,
+        "qpos": qposs.T,
+        "qvel": qvels.T,
+        "qacc": qaccs.T,
+        "qjerk": qjerks.T,
+    }

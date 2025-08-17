@@ -197,7 +197,7 @@ class Simulator:
         return {"frames": self.frames, "regressors": self.regressors, "fts_sen": self.fts_sen}
 
     def procoess_frame(self, current_frame_idx):
-        act_qpos, act_qvel, act_qacc = self.sensors.get("jointvars", perturbed=False)  # # shape: (6,), (6,), (6,)
+        act_qpos, act_qvel, act_qacc = self.sensors.get("jointvars", perturbed=True)  # # shape: (6,), (6,), (6,)
         act_traj = np.stack((act_qpos, act_qvel, act_qacc))
         self.trajectory.append(act_traj)  # type: ignore
 
@@ -231,7 +231,7 @@ class Simulator:
         self.linaccs_sen_obji.append(linacc_sen_obji)
 
         # Measure and log the force and torque measurements
-        ft = self.sensors.get("ft", perturbed=False)
+        ft = self.sensors.get("ft", perturbed=True)
         self.fts_sen.append(ft)  # type: ignore
 
         # Render the camera observatio

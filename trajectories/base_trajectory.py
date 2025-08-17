@@ -144,28 +144,13 @@ def generate_trajectory():
         cfg = OmegaConf.merge(yaml_cfg, cfg)  # priority: yaml > cli
 
     if "spline" in cfg.trajectory_type:
-        trajectory_data = generate_spline_trajectory(
+        trajectory_dict = generate_spline_trajectory(
             trajectory_type=cfg.trajectory_type,
             duration=cfg.duration,
             fps=cfg.fps,
             start_conditions=cfg.start_conditions,
             end_conditions=cfg.end_conditions,
         )
-        qposs = trajectory_data[:, 0, :]
-        qvels = trajectory_data[:, 1, :]
-        qaccs = trajectory_data[:, 2, :]
-        qjerks = trajectory_data[:, 3, :]
-        time_points = np.linspace(0, cfg.duration, int(cfg.duration * cfg.fps))
-        n_dof = len(cfg.start_conditions.qpos)
-
-        # Create dictionary for saving
-        trajectory_dict = {
-            "t": time_points,
-            "qpos": qposs.T,
-            "qvel": qvels.T,
-            "qacc": qaccs.T,
-            "qjerk": qjerks.T,
-        }
 
     elif cfg.trajectory_type.strip() == "optimal-excitation":
         # generate_model_data に渡すための設定オブジェクトを構築
@@ -195,17 +180,6 @@ def generate_trajectory():
             manipulator_path=cfg.manipulator_path,
             optimization_max_iter=cfg.optimization_max_iter,
         )
-        full_qpos = trajectory_dict["qpos"]
-        full_qvel = trajectory_dict["qvel"]
-        full_qacc = trajectory_dict["qacc"]
-        full_qjerk = trajectory_dict["qjerk"]
-        full_t_vec = trajectory_dict["t"]
-        qposs = full_qpos.T
-        qvels = full_qvel.T
-        qaccs = full_qacc.T
-        qjerks = full_qjerk.T
-        time_points = full_t_vec
-        n_dof = full_qpos.shape[0]
 
     else:
         raise ValueError(f"Unknown trajectory type: {cfg.trajectory_type}")

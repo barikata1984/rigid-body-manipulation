@@ -11,22 +11,25 @@
   <worldbody>
     <light name="top" pos="0 0 3"/>
     <body name="link1" euler="0 90 0" pos="1 1 1">  <!-- euler in deg -->
-      <joint name="x" type="slide" axis="0 0 1" range="-1 1" damping="0.1"/>
+      <!-- joint name="x" type="slide" axis="0 0 1" range="-1 1" damping="1"/ -->
+      <joint name="x" type="slide" axis="0 0 1" range="-0.001 0.001" damping="1"/>
       <inertial pos="0 0 0" mass="8." diaginertia=".05333333 .05333333 .05333333"/>  <!-- balancing load mimicking the water block whose size is 2x2x2 [m] -->
       <body name="link2" euler="-90 0 0">
-        <joint name="y" type="slide" axis="0 0 1" range="-1 1" damping="0.1"/>
+        <!-- joint name="y" type="slide" axis="0 0 1" range="-1 1" damping="1"/ -->
+        <joint name="y" type="slide" axis="0 0 1" range="-0.001 0.001" damping="1"/>
         <inertial pos="0 0 0" mass="8." diaginertia=".05333333 .05333333 .05333333"/>
         <body name="link3" euler="0 -90 0">
-          <joint name="z" type="slide" axis="0 0 1" range="-1 1" damping="0.1"/>
+          <!-- joint name="z" type="slide" axis="0 0 1" range="-1 1" damping="1"/ -->
+          <joint name="z" type="slide" axis="0 0 1" range="-0.001 0.001" damping="1"/>
           <inertial pos="0 0 0" mass="8." diaginertia=".05333333 .05333333 .05333333"/>
           <body name="link4" euler="90 0 0">
-            <joint name="roll" type="hinge" axis="0 0 1" range="-180 180" damping="0.1"/>
+            <joint name="roll" type="hinge" axis="0 0 1" range="-170 170" damping="1"/>
             <inertial pos="0 0 0" mass="8." diaginertia=".05333333 .05333333 .05333333"/>
             <body name="link5" euler="0 90 0">
-              <joint name="pitch" type="hinge" axis="0 0 1" range="-80 80" damping="0.1"/>
+              <joint name="pitch" type="hinge" axis="0 0 1" range="-80 80" damping="1"/>
               <inertial pos="0 0 0" mass="8." diaginertia=".05333333 .05333333 .05333333"/>
               <body name="link6" euler="-90 0 0">
-                <joint name="yaw" type="hinge" axis="0 0 1" range="-180 180" damping="0.1"/>
+                <joint name="yaw" type="hinge" axis="0 0 1" range="-170 170" damping="1"/>
                 <inertial pos="0 0 0" mass="8." diaginertia=".05333333 .05333333 .05333333"/>
                 <!-- site name="ft_sensor" rgba="0 0 0 0"/ -->
                 <site name="attachment" rgba="0 0 0 0"/>  <!-- make it invisible -->
