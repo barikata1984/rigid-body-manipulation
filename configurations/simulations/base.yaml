@@ -13,6 +13,21 @@ controller:
   state_space:
     epsilon: 1.0e-08
     centered: true
+  state_gain:
+  # qpos
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  # qvel
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
   input_gain:
   - 100.0
   - 100.0

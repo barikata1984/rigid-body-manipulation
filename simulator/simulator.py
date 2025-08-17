@@ -179,6 +179,7 @@ class Simulator:
         self.trajectory, self.tgt_trajectory = [], []
         self.transform_matrices = []
         self.twists_sen, self.dtwists_sen = [], []
+        self.feedforward_ctrls, self.feedback_ctrls = [], []
 
     def run(self):
         for _ in tqdm(range(self.n_steps), desc="Simulation Progress"):
@@ -211,8 +212,12 @@ class Simulator:
         # Compute the residuals and control signals, and set the control singals
         mj_differentiatePos(self.m, self.res_qpos, self.m.nu, act_qpos, tgt_traj[0])
         res_state = np.concatenate((self.res_qpos, tgt_traj[1] - act_qvel))
-        tgt_ctrl, _, _, _ = self.inverse(tgt_traj)
-        self.d.ctrl = tgt_ctrl - self.controller.gain_matrix @ res_state
+        feedforward_ctrl, _, _, _ = self.inverse(tgt_traj)
+        feedback_ctrl = self.controller.gain_matrix @ res_state
+        self.feedforward_ctrls.append(feedforward_ctrl)
+        self.feedback_ctrls.append(feedback_ctrl)
+        ctrl = feedforward_ctrl - feedback_ctrl
+        self.d.ctrl = ctrl
 
         # Get and log the regressor matrix for Least Squares-based identification of the target object's iparams
         regressor = get_regressor_matrix(twist_sen, dtwist_sen)
@@ -246,6 +251,8 @@ class Simulator:
         self.trajectory = np.array(self.trajectory)
         self.fts_sen = np.array(self.fts_sen)
         self.regressors = np.array(self.regressors)
+        self.feedforward_ctrls = np.array(self.feedforward_ctrls)
+        self.feedback_ctrls = np.array(self.feedback_ctrls)
 
         data_containers = [
             self.file_paths,
@@ -294,6 +301,18 @@ class Simulator:
                 legend_handles.append(Line2D([0], [0], color=color, linestyle="-", label=f"q{j} act"))
                 legend_handles.append(Line2D([0], [0], color=color, linestyle="--", label=f"q{j} tgt"))
             qpos_axes[i].legend(handles=legend_handles, ncol=3, fontsize="x-small")
+
+        # Feedforward and feedback control signals
+        ctrl_fig, ctrl_axes = plt.subplots(self.m.nu, 1, sharex=True, tight_layout=True, figsize=(8, 12))
+        ctrl_fig.suptitle("Control Signals (Feedforward vs. Feedback)")
+        for j in range(self.m.nu):
+            ax = ctrl_axes[j]
+            ax.plot(self.time, self.feedforward_ctrls[:, j], color=cb_rgb[0], linestyle="-", label="Feedforward")
+            ax.plot(self.time, self.feedback_ctrls[:, j], color=cb_rgb[1], linestyle="--", label="Feedback")
+            ax.set_ylabel(f"q{j} [Nm]")
+            ax.legend(fontsize="x-small")
+            ax.grid(True, linestyle="--", alpha=0.6)
+        ctrl_axes[-1].set_xlabel("time [s]")
 
         # Object linear acceleration and ft sensor measurements
         acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)

@@ -15,6 +15,7 @@ from .base_controller import BaseControllerConfig
 class LinearQuadraticRegulatorConfig(BaseControllerConfig):
     target_class: str = "LinearQuadraticRegulator"  # type: ignore
     state_space: StateSpaceConfig = field(default_factory=StateSpaceConfig)
+    state_gain: list[float] = MISSING
     input_gain: list[float] = MISSING
 
 
@@ -25,8 +26,11 @@ class LinearQuadraticRegulator:
         m: MjModel,
         d: MjData,
     ) -> None:
+        self.ss = StateSpace(cfg.state_space, m, d)
+
         # Fill a potentially missing field of a planner configuration
         try:
+            self.state_gain = np.array(cfg.state_gain)
             self.input_gain = np.array(cfg.input_gain)
         except ValueError as e:
             # 変換に失敗した場合、ValueErrorが発生し、このブロックが実行される
@@ -34,7 +38,12 @@ class LinearQuadraticRegulator:
                 f"{e}: Value for LinearQuadraticRegulatorConfig's attribute 'duration' is not properly set. Check the setting. It may be set at a string that are not castabble to flaot."
             )
 
-        self.ss = StateSpace(cfg.state_space, m, d)
+        if len(self.state_gain) != self.ss.ns:
+            raise ValueError(
+                f"Length of state_gain ({len(self.state_gain)}) does not match "
+                f"the number of states ({self.ss.ns})."
+            )
+
         self.gain_matrix = self.update_control_gain(m, d)
 
     def update_control_gain(
@@ -44,8 +53,10 @@ class LinearQuadraticRegulator:
     ) -> NDArray:
         self.ss.update_matrices(m, d)
 
-        Q = np.eye(self.ss.ns)  # Initial state cost matrix R = np.diag(self.input_gains)  # Input gain matrix
-        R = np.diag(self.input_gain)  # Input gain matrix
+        # State gain matrix
+        Q = np.diag(self.state_gain)
+        # Input gain matrix
+        R = np.diag(self.input_gain)
         # Compute the feedback gain matrix K
         P = linalg.solve_discrete_are(self.ss.A, self.ss.B, Q, R)
         K = linalg.pinv(R + self.ss.B.T @ P @ self.ss.B) @ self.ss.B.T @ P @ self.ss.A
