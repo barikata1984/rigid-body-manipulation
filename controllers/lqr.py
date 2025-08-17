@@ -40,8 +40,7 @@ class LinearQuadraticRegulator:
 
         if len(self.state_gain) != self.ss.ns:
             raise ValueError(
-                f"Length of state_gain ({len(self.state_gain)}) does not match "
-                f"the number of states ({self.ss.ns})."
+                f"Length of state_gain ({len(self.state_gain)}) does not match the number of states ({self.ss.ns})."
             )
 
         self.gain_matrix = self.update_control_gain(m, d)
@@ -60,5 +59,13 @@ class LinearQuadraticRegulator:
         # Compute the feedback gain matrix K
         P = linalg.solve_discrete_are(self.ss.A, self.ss.B, Q, R)
         K = linalg.pinv(R + self.ss.B.T @ P @ self.ss.B) @ self.ss.B.T @ P @ self.ss.A
+
+        # ===== DEBUG PRINT =====
+        print("\n===== LQR GAIN DEBUG =====")
+        print(f"Q matrix (diagonal):\n{np.diag(Q)}")
+        print(f"R matrix (diagonal):\n{np.diag(R)}")
+        print(f"Resulting K matrix (first 5x5 part):\n{K[:5, :5]}")
+        print("==========================\n")
+        # =======================
 
         return K

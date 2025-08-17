@@ -68,9 +68,9 @@ class Sensors:
         else:
             return self._sensordata[idx]
 
-    def _get_ft(self) -> np.ndarray:
-        force = self._get_force(perturbed=True)
-        torque = self._get_torque(perturbed=True)
+    def _get_ft(self, perturbed) -> np.ndarray:
+        force = self._get_force(perturbed=perturbed)
+        torque = self._get_torque(perturbed=perturbed)
         return np.concatenate([force, torque], axis=None)
 
     def get(
@@ -100,7 +100,7 @@ class Sensors:
         elif key == "torque":
             return self._get_torque(perturbed)
         elif key == "ft":
-            return self._get_ft()
+            return self._get_ft(perturbed)
         else:
             raise ValueError(f"Unknown sensor key: {key}")
 

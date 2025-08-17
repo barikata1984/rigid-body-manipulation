@@ -314,6 +314,17 @@ class Simulator:
             ax.grid(True, linestyle="--", alpha=0.6)
         ctrl_axes[-1].set_xlabel("time [s]")
 
+        # Save ctrl figure to a specified directory
+        ctrl_debug_dir = Path("debug_log/dev-jointpos_limits/ctrl")
+        ctrl_debug_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            fname = f"ctrl_{timestamp}.png"
+            ctrl_fig.savefig(ctrl_debug_dir / fname)
+            print(f"Saved ctrl figure: {ctrl_debug_dir / fname}")
+        except Exception as e:
+            print(f"Failed to save ctrl figure: {e}")
+
         # Object linear acceleration and ft sensor measurements
         acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)
         ax_plot_lines(acc_ft_axes[0], frame_iter, np.array(self.linaccs_sen_obji), "recovered_linacc_sen_obji [m/s/s]")
@@ -322,9 +333,9 @@ class Simulator:
         for ax in acc_ft_axes:
             ax.hlines(0.0, frame_iter[0], frame_iter[-1], ls="dashed", alpha=0.5)
 
-        # Save qpos figure to debug_log directory
-        debug_dir = Path("debug_log")
-        debug_dir.mkdir(exist_ok=True)
+        # Save qpos figure to a specified directory
+        debug_dir = Path("debug_log/dev-jointpos_limits/qpos")
+        debug_dir.mkdir(parents=True, exist_ok=True)
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             fname = f"qpos_{timestamp}.png"
