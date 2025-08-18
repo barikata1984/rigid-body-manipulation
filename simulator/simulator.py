@@ -179,7 +179,10 @@ class Simulator:
         self.trajectory, self.tgt_trajectory = [], []
         self.transform_matrices = []
         self.twists_sen, self.dtwists_sen = [], []
-        self.feedforward_ctrls, self.feedback_ctrls = [], []
+        self.feedforward_ctrls, self.feedback_ctrls, self.total_ctrls = [], [], []
+        self.qpos_errors = []  # Added for position errors
+        self.qvel_errors = []  # Added for velocity errors
+        self.qacc_errors = []  # Added for acceleration errors
 
     def run(self):
         for _ in tqdm(range(self.n_steps), desc="Simulation Progress"):
@@ -196,7 +199,7 @@ class Simulator:
         return {"frames": self.frames, "regressors": self.regressors, "fts_sen": self.fts_sen}
 
     def procoess_frame(self, current_frame_idx):
-        act_qpos, act_qvel, act_qacc = self.sensors.get("jointvars", perturbed=False)  # # shape: (6,), (6,), (6,)
+        act_qpos, act_qvel, act_qacc = self.sensors.get("jointvars", perturbed=True)  # # shape: (6,), (6,), (6,)
         act_traj = np.stack((act_qpos, act_qvel, act_qacc))
         self.trajectory.append(act_traj)  # type: ignore
 
@@ -214,10 +217,16 @@ class Simulator:
         res_state = np.concatenate((self.res_qpos, tgt_traj[1] - act_qvel))
         feedforward_ctrl, _, _, _ = self.inverse(tgt_traj)
         feedback_ctrl = self.controller.gain_matrix @ res_state
+        ctrl = feedforward_ctrl + feedback_ctrl
+        self.d.ctrl = ctrl
+
         self.feedforward_ctrls.append(feedforward_ctrl)
         self.feedback_ctrls.append(feedback_ctrl)
-        ctrl = feedforward_ctrl - feedback_ctrl
-        self.d.ctrl = ctrl
+        self.total_ctrls.append(ctrl)
+
+        self.qpos_errors.append(np.copy(self.res_qpos))  # Added for position errors
+        self.qvel_errors.append(np.copy(tgt_traj[1] - act_qvel))  # Added for velocity errors
+        self.qacc_errors.append(np.copy(tgt_traj[2] - act_qacc))  # Added for acceleration errors
 
         # Get and log the regressor matrix for Least Squares-based identification of the target object's iparams
         regressor = get_regressor_matrix(twist_sen, dtwist_sen)
@@ -228,7 +237,7 @@ class Simulator:
         self.linaccs_sen_obji.append(linacc_sen_obji)
 
         # Measure and log the force and torque measurements
-        ft = self.sensors.get("ft", perturbed=False)
+        ft = self.sensors.get("ft", perturbed=True)
         self.fts_sen.append(ft)  # type: ignore
 
         # Render the camera observatio
@@ -253,6 +262,10 @@ class Simulator:
         self.regressors = np.array(self.regressors)
         self.feedforward_ctrls = np.array(self.feedforward_ctrls)
         self.feedback_ctrls = np.array(self.feedback_ctrls)
+        self.total_ctrls = np.array(self.total_ctrls)
+        self.qpos_errors = np.array(self.qpos_errors)  # Added for position errors
+        self.qvel_errors = np.array(self.qvel_errors)  # Added for velocity errors
+        self.qacc_errors = np.array(self.qacc_errors)  # Added for acceleration errors
 
         data_containers = [
             self.file_paths,
@@ -275,6 +288,7 @@ class Simulator:
 
     def _visualize_results(self):
         frame_iter = np.arange(self.n_processed_frames)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         # Actual and target joint positions
         n_row = 2
@@ -314,16 +328,72 @@ class Simulator:
             ax.grid(True, linestyle="--", alpha=0.6)
         ctrl_axes[-1].set_xlabel("time [s]")
 
-        # Save ctrl figure to a specified directory
-        ctrl_debug_dir = Path("debug_log/dev-jointpos_limits/ctrl")
-        ctrl_debug_dir.mkdir(parents=True, exist_ok=True)
+        # Save plots and data
         try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            fname = f"ctrl_{timestamp}.png"
-            ctrl_fig.savefig(ctrl_debug_dir / fname)
-            print(f"Saved ctrl figure: {ctrl_debug_dir / fname}")
+            # Save qpos figure
+            qpos_debug_dir = Path("debug_log/dev-jointpos_limits/qpos")
+            qpos_debug_dir.mkdir(parents=True, exist_ok=True)
+            qpos_fname = qpos_debug_dir / f"qpos_{timestamp}.png"
+            qpos_fig.savefig(qpos_fname)
+            print(f"Saved qpos figure: {qpos_fname}")
+
+            # Save ctrl figure
+            ctrl_debug_dir = Path("debug_log/dev-jointpos_limits/ctrl")
+            ctrl_debug_dir.mkdir(parents=True, exist_ok=True)
+            ctrl_fname = ctrl_debug_dir / f"ctrl_{timestamp}.png"
+            ctrl_fig.savefig(ctrl_fname)
+            print(f"Saved ctrl figure: {ctrl_fname}")
+
+            # Save raw data to a CSV file
+            data_debug_dir = Path("debug_log/dev-jointpos_limits/data")
+            data_debug_dir.mkdir(parents=True, exist_ok=True)
+
+            # 1. Create header
+            header_parts = []
+            for prefix in [
+                "tgt_qpos",
+                "tgt_qvel",
+                "tgt_qacc",
+                "act_qpos",
+                "act_qvel",
+                "act_qacc",
+                "qpos_error",  # Added for position errors
+                "qvel_error",  # Added for velocity errors
+                "qacc_error",  # Added for acceleration errors
+                "ff_ctrl",
+                "fb_ctrl",
+                "total_ctrl",
+            ]:
+                for i in range(self.m.nu):
+                    header_parts.append(f"{prefix}_{i}")
+            header = "time," + ",".join(header_parts)
+
+            # 2. Reshape and combine data arrays
+            time_col = np.array(self.time).reshape(-1, 1)
+            tgt_traj_flat = self.tgt_trajectory.reshape(self.n_processed_frames, -1)
+            act_traj_flat = self.trajectory.reshape(self.n_processed_frames, -1)
+
+            data_to_save = np.hstack(
+                [
+                    time_col,
+                    tgt_traj_flat,
+                    act_traj_flat,
+                    self.qpos_errors,  # Added for position errors
+                    self.qvel_errors,  # Added for velocity errors
+                    self.qacc_errors,  # Added for acceleration errors
+                    self.feedforward_ctrls,
+                    self.feedback_ctrls,
+                    self.total_ctrls,
+                ]
+            )
+
+            # 3. Save to CSV
+            data_fname = data_debug_dir / f"data_{timestamp}.csv"
+            np.savetxt(data_fname, data_to_save, delimiter=",", header=header, comments="")
+            print(f"Saved data CSV: {data_fname}")
+
         except Exception as e:
-            print(f"Failed to save ctrl figure: {e}")
+            print(f"Failed to save plots or data: {e}")
 
         # Object linear acceleration and ft sensor measurements
         acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)
@@ -333,15 +403,4 @@ class Simulator:
         for ax in acc_ft_axes:
             ax.hlines(0.0, frame_iter[0], frame_iter[-1], ls="dashed", alpha=0.5)
 
-        # Save qpos figure to a specified directory
-        debug_dir = Path("debug_log/dev-jointpos_limits/qpos")
-        debug_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            fname = f"qpos_{timestamp}.png"
-            qpos_fig.savefig(debug_dir / fname)
-            print(f"Saved qpos figure: {debug_dir / fname}")
-        except Exception as e:
-            print(f"Failed to save qpos figure: {e}")
-
-        plt.show()
+        # plt.show()
