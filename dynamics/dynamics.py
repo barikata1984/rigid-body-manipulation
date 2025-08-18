@@ -14,7 +14,7 @@ from utilities import get_element_id
 
 @dataclass
 class StateSpaceConfig:
-    epsilon: float = 1e-8
+    epsilon: float = 1.0
     centered: bool = True
 
 

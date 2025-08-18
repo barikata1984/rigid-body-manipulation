@@ -16,15 +16,15 @@ class Sensors:
         self.d = d
         self._sensordata = d.sensordata
         self.jointpos_stddev = np.array(
-            # [5.0e-4, 5.0e-4, 5.0e-4, 1.0e-3, 1.0e-3, 1.0e-3]  # [m, m, m, rad, rad, rad], may too strong
-            [1.0e-4, 1.0e-4, 1.0e-4, 5.0e-4, 5.0e-4, 5.0e-4]  # [m, m, m, rad, rad, rad], may too weak
+            [5.0e-4, 5.0e-4, 5.0e-4, 1.0e-3, 1.0e-3, 1.0e-3]  # [m, m, m, rad, rad, rad], may strong
+            # [1.0e-4, 1.0e-4, 1.0e-4, 5.0e-4, 5.0e-4, 5.0e-4]  # [m, m, m, rad, rad, rad], may weak
         )
         self.force_stddev = 2 * np.ones(3)  # [N]
         self.torque_stddev = 0.1 * np.ones(3)  # [Nm]
         self.jointvar_noise_scaler = np.sqrt(2) * fps
         self.rng = np.random.default_rng()
 
-    def get_noise(self, stddev) -> np.ndarray:
+    def _get_noise(self, stddev) -> np.ndarray:
         return self.rng.normal(
             np.zeros_like(stddev),
             stddev,
@@ -32,19 +32,19 @@ class Sensors:
 
     def _get_jointpos(self, perturbed: bool) -> np.ndarray:
         if perturbed:
-            return self.d.qpos + self.get_noise(self.jointpos_stddev)
+            return self.d.qpos + self._get_noise(self.jointpos_stddev)
         else:
             return self.d.qpos
 
     def _get_jointvel(self, perturbed: bool) -> np.ndarray:
         if perturbed:
-            return self.d.qvel + self.get_noise(self.jointpos_stddev * self.jointvar_noise_scaler)
+            return self.d.qvel + self._get_noise(self.jointpos_stddev * self.jointvar_noise_scaler)
         else:
             return self.d.qvel
 
     def _get_jointacc(self, perturbed: bool) -> np.ndarray:
         if perturbed:
-            return self.d.qacc + self.get_noise(self.jointpos_stddev * self.jointvar_noise_scaler**2)
+            return self.d.qacc + self._get_noise(self.jointpos_stddev * self.jointvar_noise_scaler**2)
         else:
             return self.d.qvel
 
@@ -57,14 +57,14 @@ class Sensors:
     def _get_force(self, perturbed: bool) -> np.ndarray:
         idx = get_sensor_measurement_idx(self.m, name="force")
         if perturbed:
-            return self._sensordata[idx] + self.get_noise(self.force_stddev)
+            return self._sensordata[idx] + self._get_noise(self.force_stddev)
         else:
             return self._sensordata[idx]
 
     def _get_torque(self, perturbed: bool) -> np.ndarray:
         idx = get_sensor_measurement_idx(self.m, name="torque")
         if perturbed:
-            return self._sensordata[idx] + self.get_noise(self.torque_stddev)
+            return self._sensordata[idx] + self._get_noise(self.torque_stddev)
         else:
             return self._sensordata[idx]
 

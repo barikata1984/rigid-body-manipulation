@@ -49,6 +49,7 @@ class SimulatorConfig(BaseSimulatorConfig):
     displacements: list[float] = MISSING
     target_trajectory: str | None = None
     generate_trajectory: str | None = None
+    finite_differentiation_dt: float = 1.0
 
 
 # Naming convention of spatial and dynamics variables:
@@ -133,7 +134,9 @@ class Simulator:
             self.fps = cfg.fps
             self.target_jointvars = []  # placeholder; controller logic may expect list
 
-        self.n_steps = int(self.duration / MjOption().timestep)
+        self.finite_differentiation_dt = cfg.finite_differentiation_dt
+        self.timestep = MjOption().timestep
+        self.n_steps = int(self.duration / self.timestep)
         self.recorder = instantiate(cfg.recorder, m, d, fps=self.fps)
         self.controller = instantiate(cfg.controller, m, d)
 
@@ -174,7 +177,7 @@ class Simulator:
         self.n_processed_frames = 0
         self.poses_sen_obj, self.poses_sen_obji = [], []
         self.regressors = []
-        self.res_qpos = np.empty(self.m.nu)
+        self.qpos_error = np.empty(self.m.nu)
         self.time = []
         self.trajectory, self.tgt_trajectory = [], []
         self.transform_matrices = []
@@ -199,7 +202,7 @@ class Simulator:
         return {"frames": self.frames, "regressors": self.regressors, "fts_sen": self.fts_sen}
 
     def procoess_frame(self, current_frame_idx):
-        act_qpos, act_qvel, act_qacc = self.sensors.get("jointvars", perturbed=True)  # # shape: (6,), (6,), (6,)
+        act_qpos, act_qvel, act_qacc = self.sensors.get("jointvars", perturbed=True)  # shape: (6,), (6,), (6,)
         act_traj = np.stack((act_qpos, act_qvel, act_qacc))
         self.trajectory.append(act_traj)  # type: ignore
 
@@ -213,10 +216,12 @@ class Simulator:
         )
 
         # Compute the residuals and control signals, and set the control singals
-        mj_differentiatePos(self.m, self.res_qpos, self.m.nu, act_qpos, tgt_traj[0])
-        res_state = np.concatenate((self.res_qpos, tgt_traj[1] - act_qvel))
+        mj_differentiatePos(self.m, self.qpos_error, self.finite_differentiation_dt, act_qpos, tgt_traj[0])
+        qvel_error = tgt_traj[1] - act_qvel
+        qacc_error = tgt_traj[2] - act_qacc
+        state_error = np.concatenate((self.qpos_error, qvel_error))
         feedforward_ctrl, _, _, _ = self.inverse(tgt_traj)
-        feedback_ctrl = self.controller.gain_matrix @ res_state
+        feedback_ctrl = self.controller.gain_matrix @ state_error
         ctrl = feedforward_ctrl + feedback_ctrl
         self.d.ctrl = ctrl
 
@@ -224,9 +229,9 @@ class Simulator:
         self.feedback_ctrls.append(feedback_ctrl)
         self.total_ctrls.append(ctrl)
 
-        self.qpos_errors.append(np.copy(self.res_qpos))  # Added for position errors
-        self.qvel_errors.append(np.copy(tgt_traj[1] - act_qvel))  # Added for velocity errors
-        self.qacc_errors.append(np.copy(tgt_traj[2] - act_qacc))  # Added for acceleration errors
+        self.qpos_errors.append(np.copy(self.qpos_error))  # Added for position errors
+        self.qvel_errors.append(np.copy(qvel_error))  # Added for velocity errors
+        self.qacc_errors.append(np.copy(qacc_error))  # Added for acceleration errors
 
         # Get and log the regressor matrix for Least Squares-based identification of the target object's iparams
         regressor = get_regressor_matrix(twist_sen, dtwist_sen)
@@ -403,4 +408,4 @@ class Simulator:
         for ax in acc_ft_axes:
             ax.hlines(0.0, frame_iter[0], frame_iter[-1], ls="dashed", alpha=0.5)
 
-        # plt.show()
+        plt.show()
