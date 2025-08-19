@@ -211,18 +211,20 @@ class Simulator:
         self.tgt_trajectory.append(tgt_traj)  # type: ignore
 
         # Get (d)twist_sen, and linacc_sen_obj for verification
-        twist_sen, dtwist_sen, regressor = _calculate_frame_dynamics(
+        twist_sen, dtwist_sen, regressor = _calculate_frame_dynamics( 
             act_traj, self.inverse, self.id_ll, self.pose_x_ll, self.pose_ll_llj, self.pose_x_sen
         )
 
         # Compute the residuals and control signals, and set the control singals
-        mj_differentiatePos(self.m, self.qpos_error, self.finite_differentiation_dt, act_qpos, tgt_traj[0])
-        qvel_error = tgt_traj[1] - act_qvel
-        qacc_error = tgt_traj[2] - act_qacc
+        mj_differentiatePos(
+            self.m, self.qpos_error, self.finite_differentiation_dt, tgt_traj[0], act_qpos
+        )  # tgt should comes first, not sure why this order but refer to LQR.ipynb of MuJoCo
+        qvel_error = act_qvel - tgt_traj[1]  # act should comes first
+        qacc_error = act_qacc - tgt_traj[2]
         state_error = np.concatenate((self.qpos_error, qvel_error))
         feedforward_ctrl, _, _, _ = self.inverse(tgt_traj)
         feedback_ctrl = self.controller.gain_matrix @ state_error
-        ctrl = feedforward_ctrl + feedback_ctrl
+        ctrl = feedforward_ctrl - feedback_ctrl
         self.d.ctrl = ctrl
 
         self.feedforward_ctrls.append(feedforward_ctrl)
@@ -362,7 +364,7 @@ class Simulator:
                 "act_qpos",
                 "act_qvel",
                 "act_qacc",
-                "qpos_error",  # Added for position errors
+                "qpos_error",  # Added for position errorsu
                 "qvel_error",  # Added for velocity errors
                 "qacc_error",  # Added for acceleration errors
                 "ff_ctrl",
@@ -408,4 +410,4 @@ class Simulator:
         for ax in acc_ft_axes:
             ax.hlines(0.0, frame_iter[0], frame_iter[-1], ls="dashed", alpha=0.5)
 
-        plt.show()
+        plt.show()J

@@ -64,7 +64,7 @@ class LinearQuadraticRegulator:
         print("\n===== LQR GAIN DEBUG =====")
         print(f"Q matrix (diagonal):\n{np.diag(Q)}")
         print(f"R matrix (diagonal):\n{np.diag(R)}")
-        print(f"Resulting K matrix (first 5x5 part):\n{K[:5, :5]}")
+        print(f"Resulting K matrix:\n{K}")
         print("==========================\n")
         # =======================
 
