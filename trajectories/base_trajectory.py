@@ -1,6 +1,7 @@
 import json
 import os
 from dataclasses import dataclass, field
+from typing import Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,7 +12,10 @@ from omegaconf import MISSING, DictConfig, OmegaConf
 from omegaconf_custom_resolvers import pi_converter
 from simulator.env_builder import generate_model_data
 
-from .optimal_excitation import generate_optimal_excitation_trajectory
+from .optimal_excitation import (
+    generate_optimal_excitation_trajectory,
+    generate_task_oriented_excitation_trajectory,
+)
 from .spline_interpolation import BoundaryCondition, generate_spline_trajectory
 
 OmegaConf.register_new_resolver("pi", pi_converter)
@@ -19,16 +23,16 @@ OmegaConf.register_new_resolver("pi", pi_converter)
 
 @dataclass
 class TrajectoryConfig:
-    trajectory_type: str
+    trajectory_type: Literal["spline", "optimal-excitation", "exciting-spline"]
     duration: float
     fps: int
     trajectory_config: str | None = None
     start_conditions: BoundaryCondition = MISSING
     end_conditions: BoundaryCondition = MISSING
-    jointpos_offset: list[float] = field(default_factory=lambda: [0.0] * 6)
+    start_qpos: list[float] = field(default_factory=lambda: [0.0] * 6)
+    end_qpos: list[float] | None = None
     coeffs: list[float] | None = None
     base_frequency: float = 1.0
-    # New fields for optimal_excitation
     n_harmonics: int = 5
     transition_duration: float = 0.5
     manipulator_path: str = "xml_models/manipulators/sequential"
@@ -46,7 +50,7 @@ def save_trajectory_to_json(
     output_filename = os.path.join(output_dir, f"{trajectory_type}.json")
 
     time_points = trajectory_dict["t"]
-    qposs = trajectory_dict["qpos"].T  # Transpose to (n_frames, n_dof)
+    qposs = trajectory_dict["qpos"].T
     qvels = trajectory_dict["qvel"].T
     qaccs = trajectory_dict["qacc"].T
     qjerks = trajectory_dict["qjerk"].T
@@ -94,41 +98,37 @@ def visualize_trajectory(
     fig.suptitle("Spline Trajectory Visualization", fontsize=16)
 
     labels = ["Position", "Velocity", "Acceleration", "Jerk"]
-    data_arrays = [qposs, qvels, qaccs, qjerks]  # Each element is (n_frames, n_dof)
+    data_arrays = [qposs, qvels, qaccs, qjerks]
 
     joint_groups = {
-        0: range(n_dof // 2),  # First half of joints (e.g., 0, 1, 2)
-        1: range(n_dof // 2, n_dof),  # Second half of joints (e.g., 3, 4, 5)
+        0: range(n_dof // 2),
+        1: range(n_dof // 2, n_dof),
     }
 
-    for row_idx, label_type in enumerate(labels):  # Iterate over data types (pos, vel, acc, jerk)
-        for col_idx in range(2):  # Iterate over columns (left/right joint groups)
-            for joint_idx in joint_groups[col_idx]:  # Iterate over joints in the current group
+    for row_idx, label_type in enumerate(labels):
+        for col_idx in range(2):
+            for joint_idx in joint_groups[col_idx]:
                 axes[row_idx, col_idx].plot(
                     time_points, data_arrays[row_idx][:, joint_idx], label=f"Joint {joint_idx + 1}"
                 )
 
             axes[row_idx, col_idx].set_ylabel(label_type)
-            if row_idx == 3:  # Only for the bottom-most row (Jerk)
+            if row_idx == 3:
                 axes[row_idx, col_idx].set_xlabel("Time (s)")
 
             axes[row_idx, col_idx].grid(True)
-            axes[row_idx, col_idx].legend()  # Add legend for multiple lines on the same subplot
+            axes[row_idx, col_idx].legend()
 
-            # Hide x-axis tick labels for all but the bottom-most row
             if row_idx < 3:
                 axes[row_idx, col_idx].tick_params(labelbottom=False)
 
-            # Add vertical lines for optimal excitation trajectory
             if transition_duration > 0 or main_duration > 0:
                 axes[row_idx, col_idx].axvline(transition_duration, color='r', linestyle='--', label='Main Start')
                 axes[row_idx, col_idx].axvline(transition_duration + main_duration, color='g', linestyle='--', label='Main End')
-                # Update legend to include new labels
-                handles, labels = axes[row_idx, col_idx].get_legend_handles_labels()
-                by_label = dict(zip(labels, handles))
+                handles, labels_legend = axes[row_idx, col_idx].get_legend_handles_labels()
+                by_label = dict(zip(labels_legend, handles))
                 axes[row_idx, col_idx].legend(by_label.values(), by_label.keys())
 
-    # Adjust layout and display
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.show()
 
@@ -137,47 +137,52 @@ def generate_trajectory():
     cfg = tyro.cli(TrajectoryConfig)
     if cfg.trajectory_config is not None:
         yaml_cfg = OmegaConf.load(cfg.trajectory_config)
-        cfg = OmegaConf.merge(yaml_cfg, cfg)  # priority: yaml > cli
+        cfg = OmegaConf.merge(yaml_cfg, cfg)
 
-    if "spline" in cfg.trajectory_type:
-        trajectory_data = generate_spline_trajectory(
-            trajectory_type=cfg.trajectory_type,
-            duration=cfg.duration,
-            fps=cfg.fps,
-            start_conditions=cfg.start_conditions,
-            end_conditions=cfg.end_conditions,
-        )
-        qposs = trajectory_data[:, 0, :]
-        qvels = trajectory_data[:, 1, :]
-        qaccs = trajectory_data[:, 2, :]
-        qjerks = trajectory_data[:, 3, :]
-        time_points = np.linspace(0, cfg.duration, int(cfg.duration * cfg.fps))
-        n_dof = len(cfg.start_conditions.qpos)
+    trajectory_dict = None
 
-        # Create dictionary for saving
-        trajectory_dict = {
-            "t": time_points,
-            "qpos": qposs.T,
-            "qvel": qvels.T,
-            "qacc": qaccs.T,
-            "qjerk": qjerks.T,
-        }
+    if cfg.trajectory_type == "exciting-spline":
+        if cfg.end_qpos is None:
+            raise ValueError("For 'exciting-spline' trajectory, 'end_qpos' must be specified.")
 
-    elif cfg.trajectory_type.strip() == "optimal-excitation":
-        # generate_model_data に渡すための設定オブジェクトを構築
         m, d = None, None
         if cfg.object_path:
             model_cfg = DictConfig(
                 {
-                    "manipulator": cfg.manipulator_path.replace(".xml", ""),  # .xml 拡張子を削除
-                    "object": cfg.object_path.replace(".xml", ""),  # .xml 拡張子を削除
-                    "recorder": {"track_cam_name": "tracking"},  # generate_model_data が必要とするダミー値
-                    "reset_keyframe": None,  # generate_model_data が必要とするダミー値
+                    "manipulator": cfg.manipulator_path.replace(".xml", ""),
+                    "object": cfg.object_path.replace(".xml", ""),
+                    "recorder": {"track_cam_name": "tracking"},
+                    "reset_keyframe": None,
                 }
             )
-            m, d, _ = generate_model_data(model_cfg)  # _ は ground_truth
+            m, d, _ = generate_model_data(model_cfg)
 
-        # 拡張された generate_optimal_excitation_trajectory を呼び出す
+        trajectory_dict = generate_task_oriented_excitation_trajectory(
+            start_qpos=np.array(cfg.start_qpos),
+            end_qpos=np.array(cfg.end_qpos),
+            duration=cfg.duration,
+            fps=cfg.fps,
+            n_harmonics=cfg.n_harmonics,
+            base_frequency=cfg.base_frequency,
+            m=m,
+            d=d,
+            ee_body_name=cfg.ee_body_name,
+            optimization_max_iter=cfg.optimization_max_iter,
+        )
+
+    elif cfg.trajectory_type == "optimal-excitation":
+        m, d = None, None
+        if cfg.object_path:
+            model_cfg = DictConfig(
+                {
+                    "manipulator": cfg.manipulator_path.replace(".xml", ""),
+                    "object": cfg.object_path.replace(".xml", ""),
+                    "recorder": {"track_cam_name": "tracking"},
+                    "reset_keyframe": None,
+                }
+            )
+            m, d, _ = generate_model_data(model_cfg)
+
         trajectory_dict = generate_optimal_excitation_trajectory(
             main_duration=cfg.duration,
             transition_duration=cfg.transition_duration,
@@ -186,27 +191,32 @@ def generate_trajectory():
             m=m,
             d=d,
             base_frequency=cfg.base_frequency,
-            start_qpos=np.array(cfg.jointpos_offset),
+            start_qpos=np.array(cfg.start_qpos),
             ee_body_name=cfg.ee_body_name,
             manipulator_path=cfg.manipulator_path,
             optimization_max_iter=cfg.optimization_max_iter,
         )
-        full_qpos = trajectory_dict["qpos"]
-        full_qvel = trajectory_dict["qvel"]
-        full_qacc = trajectory_dict["qacc"]
-        full_qjerk = trajectory_dict["qjerk"]
-        full_t_vec = trajectory_dict["t"]
-        qposs = full_qpos.T
-        qvels = full_qvel.T
-        qaccs = full_qacc.T
-        qjerks = full_qjerk.T
-        time_points = full_t_vec
-        n_dof = full_qpos.shape[0]
+
+    elif "spline" in cfg.trajectory_type:
+        trajectory_data = generate_spline_trajectory(
+            trajectory_type=cfg.trajectory_type,
+            duration=cfg.duration,
+            fps=cfg.fps,
+            start_conditions=cfg.start_conditions,
+            end_conditions=cfg.end_conditions,
+        )
+        time_points = np.linspace(0, cfg.duration, int(cfg.duration * cfg.fps))
+        trajectory_dict = {
+            "t": time_points,
+            "qpos": trajectory_data[:, 0, :].T,
+            "qvel": trajectory_data[:, 1, :].T,
+            "qacc": trajectory_data[:, 2, :].T,
+            "qjerk": trajectory_data[:, 3, :].T,
+        }
 
     else:
         raise ValueError(f"Unknown trajectory type: {cfg.trajectory_type}")
 
-    # 統一された可視化と保存処理
     if trajectory_dict:
         qposs = trajectory_dict["qpos"].T
         qvels = trajectory_dict["qvel"].T
