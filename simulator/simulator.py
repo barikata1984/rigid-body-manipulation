@@ -211,7 +211,7 @@ class Simulator:
         self.tgt_trajectory.append(tgt_traj)  # type: ignore
 
         # Get (d)twist_sen, and linacc_sen_obj for verification
-        twist_sen, dtwist_sen, regressor = _calculate_frame_dynamics( 
+        twist_sen, dtwist_sen, regressor = _calculate_frame_dynamics(
             act_traj, self.inverse, self.id_ll, self.pose_x_ll, self.pose_ll_llj, self.pose_x_sen
         )
 
@@ -410,4 +410,4 @@ class Simulator:
         for ax in acc_ft_axes:
             ax.hlines(0.0, frame_iter[0], frame_iter[-1], ls="dashed", alpha=0.5)
 
-        plt.show()J
+        plt.show()

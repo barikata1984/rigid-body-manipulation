@@ -22,7 +22,7 @@ def _find_optimal_coeffs(
     """
     Finds the optimal coefficients for the sinusoidal trajectory by minimizing the condition number.
     """
-    initial_coeffs = np.random.rand(n_joints, n_harmonics, 2) * 0.01
+    initial_coeffs = np.random.rand(n_joints, n_harmonics, 2) * 0.25
     initial_coeffs_flat = initial_coeffs.flatten()
 
     objective_args = (

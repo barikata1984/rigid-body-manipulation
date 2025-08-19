@@ -23,7 +23,7 @@
             <joint name="roll" type="hinge" axis="0 0 1" range="-180 180"/>
             <inertial pos="0 0 0" mass="8." diaginertia=".05333333 .05333333 .05333333"/>
             <body name="link5" euler="0 90 0">
-              <joint name="pitch" type="hinge" axis="0 0 1" range="-80 80"/>
+              <joint name="pitch" type="hinge" axis="0 0 1" range="-85 85"/>
               <inertial pos="0 0 0" mass="8." diaginertia=".05333333 .05333333 .05333333"/>
               <body name="link6" euler="-90 0 0">
                 <joint name="yaw" type="hinge" axis="0 0 1" range="-180 180"/>
