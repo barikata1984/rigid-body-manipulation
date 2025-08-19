@@ -3,6 +3,8 @@ import numpy as np
 from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 from scipy.signal.windows import tukey
+from datetime import datetime
+from datetime import datetime
 
 from dynamics.dynamics import calculate_condition_number
 from trajectories.spline_interpolation import BoundaryCondition, generate_spline_trajectory
@@ -562,6 +564,19 @@ def generate_task_oriented_excitation_trajectory(
         ee_body_name,
     )
 
+    # Define a callback function to print progress
+    iteration_count = [0]  # Use a list to make it mutable inside the callback
+
+    def _optimization_callback(coeffs_flat):
+        iteration_count[0] += 1
+        current_condition_number = _task_oriented_objective(coeffs_flat, *opt_args)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(
+            f"  {timestamp} - Iteration: {iteration_count[0]:>3}, "
+            f"Condition Number: {current_condition_number:.4e}"
+        )
+
+    print("\nStarting trajectory optimization...")
     result = minimize(
         fun=_task_oriented_objective,
         x0=initial_coeffs.flatten(),
@@ -569,7 +584,11 @@ def generate_task_oriented_excitation_trajectory(
         method="SLSQP",
         constraints=[{"type": "ineq", "fun": _joint_limit_constraint, "args": opt_args}],
         options={"maxiter": optimization_max_iter, "disp": False},
+        callback=_optimization_callback,
     )
+    print("...Optimization finished.")
+    final_cond_num = result.fun
+    print(f"Final condition number: {final_cond_num:.4e}")
     optimal_coeffs = result.x.reshape(n_joints, n_harmonics, 2)
 
     # 3. Generate the final, optimized trajectory by combining the base and excitation parts
@@ -584,6 +603,10 @@ def generate_task_oriented_excitation_trajectory(
         base_frequency,
     )
 
+    final_trajectory["condition_number"] = final_cond_num.item()
+
     return final_trajectory
+
+
 
 # --- End of new implementation ---

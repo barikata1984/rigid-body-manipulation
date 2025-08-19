@@ -1,7 +1,6 @@
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,7 +22,7 @@ OmegaConf.register_new_resolver("pi", pi_converter)
 
 @dataclass
 class TrajectoryConfig:
-    trajectory_type: Literal["spline", "optimal-excitation", "exciting-spline"]
+    trajectory_type: str
     duration: float
     fps: int
     trajectory_config: str | None = None
@@ -50,7 +49,7 @@ def save_trajectory_to_json(
     output_filename = os.path.join(output_dir, f"{trajectory_type}.json")
 
     time_points = trajectory_dict["t"]
-    qposs = trajectory_dict["qpos"].T
+    qposs = trajectory_dict["qpos"].T  # Transpose to (n_frames, n_dof)
     qvels = trajectory_dict["qvel"].T
     qaccs = trajectory_dict["qacc"].T
     qjerks = trajectory_dict["qjerk"].T
@@ -75,6 +74,9 @@ def save_trajectory_to_json(
 
     if "excitation" in trajectory_dict:
         output_data["excitation"] = trajectory_dict["excitation"]
+
+    if "condition_number" in trajectory_dict:
+        output_data["condition_number"] = trajectory_dict["condition_number"]
 
     with open(output_filename, "w") as f:
         json.dump(output_data, f, indent=4)
