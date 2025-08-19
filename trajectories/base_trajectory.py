@@ -10,6 +10,7 @@ from omegaconf import MISSING, DictConfig, OmegaConf
 
 from omegaconf_custom_resolvers import pi_converter
 from simulator.env_builder import generate_model_data
+from dynamics.dynamics import calculate_condition_number
 
 from .optimal_excitation import (
     generate_optimal_excitation_trajectory,
@@ -200,6 +201,20 @@ def generate_trajectory():
         )
 
     elif "spline" in cfg.trajectory_type:
+        # 1. Load model data for condition number calculation
+        m, d = None, None
+        if cfg.object_path:
+            model_cfg = DictConfig(
+                {
+                    "manipulator": cfg.manipulator_path.replace(".xml", ""),
+                    "object": cfg.object_path.replace(".xml", ""),
+                    "recorder": {"track_cam_name": "tracking"},
+                    "reset_keyframe": None,
+                }
+            )
+            m, d, _ = generate_model_data(model_cfg)
+
+        # 2. Generate the spline trajectory
         trajectory_data = generate_spline_trajectory(
             trajectory_type=cfg.trajectory_type,
             duration=cfg.duration,
@@ -207,6 +222,29 @@ def generate_trajectory():
             start_conditions=cfg.start_conditions,
             end_conditions=cfg.end_conditions,
         )
+
+        # 3. Calculate the condition number
+        condition_number = -1.0  # Default value if model is not available
+        if m is not None and d is not None:
+            print("\nCalculating condition number for the spline trajectory...")
+            # Reshape trajectory data for the condition number function
+            joint_trajectory = np.stack(
+                [
+                    trajectory_data[:, 0, :],  # qpos (n_frames, n_dof)
+                    trajectory_data[:, 1, :],  # qvel (n_frames, n_dof)
+                    trajectory_data[:, 2, :],  # qacc (n_frames, n_dof)
+                ],
+                axis=1,
+            )
+            condition_number = calculate_condition_number(
+                m=m,
+                d=d,
+                joint_trajectory=joint_trajectory,
+                ee_body_name=cfg.ee_body_name,
+            )
+            print(f"  Condition Number: {condition_number:.4e}")
+
+        # 4. Create the final dictionary for saving and visualization
         time_points = np.linspace(0, cfg.duration, int(cfg.duration * cfg.fps))
         trajectory_dict = {
             "t": time_points,
@@ -214,6 +252,7 @@ def generate_trajectory():
             "qvel": trajectory_data[:, 1, :].T,
             "qacc": trajectory_data[:, 2, :].T,
             "qjerk": trajectory_data[:, 3, :].T,
+            "condition_number": condition_number,
         }
 
     else:
