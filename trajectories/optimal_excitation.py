@@ -518,9 +518,9 @@ def _joint_limit_constraint(coeffs_flat: np.ndarray, *opt_args) -> np.ndarray:
     return np.concatenate((lower_bound_violation.flatten(), upper_bound_violation.flatten()))
 
 
-def generate_task_oriented_excitation_trajectory(
-    start_qpos: np.ndarray,
-    end_qpos: np.ndarray,
+def generate_exciting_spline_trajectory(
+    start_conditions: BoundaryCondition,
+    end_conditions: BoundaryCondition,
     duration: float,
     fps: int,
     n_harmonics: int,
@@ -536,12 +536,23 @@ def generate_task_oriented_excitation_trajectory(
     """
     n_joints = m.njnt
 
+    # Extract values from BoundaryCondition objects
+    start_qpos = np.array(start_conditions.qpos)
+    start_qvel = np.array(start_conditions.qvel)
+    start_qacc = np.array(start_conditions.qacc)
+    start_qjerk = np.array(start_conditions.qjerk)
+
+    end_qpos = np.array(end_conditions.qpos)
+    end_qvel = np.array(end_conditions.qvel)
+    end_qacc = np.array(end_conditions.qacc)
+    end_qjerk = np.array(end_conditions.qjerk)
+
     # 1. Generate the base trajectory (7th order spline)
     start_cond = BoundaryCondition(
-        qpos=start_qpos.tolist(), qvel=[0] * n_joints, qacc=[0] * n_joints, qjerk=[0] * n_joints
+        qpos=start_qpos.tolist(), qvel=start_qvel.tolist(), qacc=start_qacc.tolist(), qjerk=start_qjerk.tolist()
     )
     end_cond = BoundaryCondition(
-        qpos=end_qpos.tolist(), qvel=[0] * n_joints, qacc=[0] * n_joints, qjerk=[0] * n_joints
+        qpos=end_qpos.tolist(), qvel=end_qvel.tolist(), qacc=end_qacc.tolist(), qjerk=end_qjerk.tolist()
     )
     base_traj_data = generate_spline_trajectory("seventh", duration, fps, start_cond, end_cond)
     q_base_pos = base_traj_data[:, 0, :].T

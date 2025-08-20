@@ -12,7 +12,7 @@ from trajectories.optimal_excitation import (
     _find_optimal_coeffs,  # Import the new private function
     generate_optimal_excitation_trajectory,
     generate_sinusoidal_trajectory,
-    generate_task_oriented_excitation_trajectory,
+    generate_exciting_spline_trajectory,
     objective_function,
 )
 from trajectories.spline_interpolation import (
@@ -211,15 +211,15 @@ class TestOptimalExcitation(unittest.TestCase):
             main_duration,
         )
 
-    def test_generate_task_oriented_excitation_trajectory(self):
-        print("\nTesting generate_task_oriented_excitation_trajectory (task-oriented)...")
+    def test_generate_exciting_spline_trajectory(self):
+        print("\nTesting generate_exciting_spline_trajectory (task-oriented)...")
 
         # 1. Define start and end positions
         start_qpos = self.jointpos_offset
         end_qpos = np.array([0.1, -0.1, 0.2, -0.2, 0.3, -0.3])
 
         # 2. Generate the optimized trajectory
-        trajectory = generate_task_oriented_excitation_trajectory(
+        trajectory = generate_exciting_spline_trajectory(
             start_qpos=start_qpos,
             end_qpos=end_qpos,
             duration=self.duration,

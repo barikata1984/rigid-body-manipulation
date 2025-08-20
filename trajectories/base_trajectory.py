@@ -6,15 +6,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tyro
 from numpy.typing import NDArray
-from omegaconf import MISSING, DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf
 
+from dynamics.dynamics import calculate_condition_number
 from omegaconf_custom_resolvers import pi_converter
 from simulator.env_builder import generate_model_data
-from dynamics.dynamics import calculate_condition_number
 
 from .optimal_excitation import (
+    generate_exciting_spline_trajectory,
     generate_optimal_excitation_trajectory,
-    generate_task_oriented_excitation_trajectory,
 )
 from .spline_interpolation import BoundaryCondition, generate_spline_trajectory
 
@@ -27,10 +27,8 @@ class TrajectoryConfig:
     duration: float
     fps: int
     trajectory_config: str | None = None
-    start_conditions: BoundaryCondition = MISSING
-    end_conditions: BoundaryCondition = MISSING
-    start_qpos: list[float] = field(default_factory=lambda: [0.0] * 6)
-    end_qpos: list[float] | None = None
+    start_conditions: BoundaryCondition = field(default_factory=lambda: BoundaryCondition())
+    end_conditions: BoundaryCondition = field(default_factory=lambda: BoundaryCondition())
     coeffs: list[float] | None = None
     base_frequency: float = 1.0
     n_harmonics: int = 5
@@ -126,10 +124,12 @@ def visualize_trajectory(
                 axes[row_idx, col_idx].tick_params(labelbottom=False)
 
             if transition_duration > 0 or main_duration > 0:
-                axes[row_idx, col_idx].axvline(transition_duration, color='r', linestyle='--', label='Main Start')
-                axes[row_idx, col_idx].axvline(transition_duration + main_duration, color='g', linestyle='--', label='Main End')
+                axes[row_idx, col_idx].axvline(transition_duration, color="r", linestyle="--", label="Main Start")
+                axes[row_idx, col_idx].axvline(
+                    transition_duration + main_duration, color="g", linestyle="--", label="Main End"
+                )
                 handles, labels_legend = axes[row_idx, col_idx].get_legend_handles_labels()
-                by_label = dict(zip(labels_legend, handles))
+                by_label = dict(zip(labels_legend, handles, strict=False))
                 axes[row_idx, col_idx].legend(by_label.values(), by_label.keys())
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
@@ -140,13 +140,15 @@ def generate_trajectory():
     cfg = tyro.cli(TrajectoryConfig)
     if cfg.trajectory_config is not None:
         yaml_cfg = OmegaConf.load(cfg.trajectory_config)
-        cfg = OmegaConf.merge(yaml_cfg, cfg)
+        cfg = OmegaConf.merge(cfg, yaml_cfg)
 
     trajectory_dict = None
 
     if cfg.trajectory_type == "exciting-spline":
-        if cfg.end_qpos is None:
-            raise ValueError("For 'exciting-spline' trajectory, 'end_qpos' must be specified.")
+        if cfg.start_conditions is None or cfg.end_conditions is None:
+            raise ValueError(
+                "For 'exciting-spline' trajectory, 'start_conditions' and 'end_conditions' must be specified."
+            )
 
         m, d = None, None
         if cfg.object_path:
@@ -160,9 +162,9 @@ def generate_trajectory():
             )
             m, d, _ = generate_model_data(model_cfg)
 
-        trajectory_dict = generate_task_oriented_excitation_trajectory(
-            start_qpos=np.array(cfg.start_qpos),
-            end_qpos=np.array(cfg.end_qpos),
+        trajectory_dict = generate_exciting_spline_trajectory(
+            start_conditions=cfg.start_conditions,
+            end_conditions=cfg.end_conditions,
             duration=cfg.duration,
             fps=cfg.fps,
             n_harmonics=cfg.n_harmonics,
@@ -194,7 +196,7 @@ def generate_trajectory():
             m=m,
             d=d,
             base_frequency=cfg.base_frequency,
-            start_qpos=np.array(cfg.start_qpos),
+            start_qpos=np.array(cfg.start_conditions.qpos),
             ee_body_name=cfg.ee_body_name,
             manipulator_path=cfg.manipulator_path,
             optimization_max_iter=cfg.optimization_max_iter,
@@ -276,6 +278,5 @@ def generate_trajectory():
             transition_duration=cfg.transition_duration if cfg.trajectory_type == "optimal-excitation" else 0.0,
             main_duration=cfg.duration,
         )
-        save_trajectory_to_json(
-            trajectory_dict, cfg.trajectory_type
-        )
+
+        save_trajectory_to_json(trajectory_dict, cfg.trajectory_type)
