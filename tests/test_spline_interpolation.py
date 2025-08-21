@@ -25,7 +25,7 @@ class TestSplineInterpolation(unittest.TestCase):
         )
 
         # Generate the trajectory
-        trajectory = generate_spline_trajectory(
+        trajectory, _ = generate_spline_trajectory(
             duration=duration,
             fps=fps,
             start_conditions=start_conditions,

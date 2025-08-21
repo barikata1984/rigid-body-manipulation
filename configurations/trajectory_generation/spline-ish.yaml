@@ -4,3 +4,4 @@ start_conditions:
   qpos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 end_conditions:
   qpos: [0.2, -0.2, 0.3, -0.3, 0.4, -0.4]
+optimization_max_iter: 10

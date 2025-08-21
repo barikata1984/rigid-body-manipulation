@@ -44,7 +44,7 @@ class TestSeventhOrderSpline(unittest.TestCase):
             qjerk=[10.0] * self.n_dof,  # Arbitrary end jerk
         )
 
-        trajectory = generate_spline_trajectory(
+        trajectory, _ = generate_spline_trajectory(
             duration=self.duration,
             fps=self.fps,
             start_conditions=start_conditions,
@@ -91,7 +91,7 @@ class TestSeventhOrderSpline(unittest.TestCase):
             qjerk=[0.0] * self.n_dof,  # Constrain end jerk to zero
         )
 
-        trajectory = generate_spline_trajectory(
+        trajectory, _ = generate_spline_trajectory(
             duration=self.duration,
             fps=self.fps,
             start_conditions=start_conditions,
@@ -138,7 +138,7 @@ class TestSeventhOrderSpline(unittest.TestCase):
             qjerk=[0.0] * self.n_dof,  # Constrain end jerk to zero
         )
 
-        trajectory = generate_spline_trajectory(
+        trajectory, _ = generate_spline_trajectory(
             duration=self.duration,
             fps=self.fps,
             start_conditions=start_conditions,

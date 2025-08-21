@@ -1,8 +1,11 @@
 from dataclasses import dataclass, field
 
+import mujoco
 import numpy as np
 from numpy import linalg as la
 from numpy.typing import NDArray
+
+from dynamics.condition_number import calculate_condition_number
 
 
 @dataclass
@@ -67,7 +70,10 @@ def generate_spline_trajectory(
     fps: float,  # [Hz]
     start_conditions: BoundaryCondition,
     end_conditions: BoundaryCondition,
-) -> NDArray:
+    m: mujoco.MjModel | None = None,
+    d: mujoco.MjData | None = None,
+    ee_body_name: str | None = None,
+) -> tuple[NDArray, float]:
     """
     Generates a spline trajectory for multiple joints with specified start and end conditions.
 
@@ -77,10 +83,15 @@ def generate_spline_trajectory(
         start_conditions: A dictionary with "qpos", "qvel", "qacc", and optionally "qjerk" at the start.
         end_conditions: A dictionary with "qpos", "qvel", "qacc", and optionally "qjerk" at the end.
         trajectory_type: The type of spline to use, either "fifth" or "sixth".
+        m: MuJoCo model for condition number calculation.
+        d: MuJoCo data for condition number calculation.
+        ee_body_name: End-effector body name for condition number calculation.
 
     Returns:
-        A numpy array of shape (n_frames, 4, n_dof) containing the joint positions,
-        velocities, accelerations, and jerks at each frame.
+        A tuple containing:
+        - A numpy array of shape (n_frames, 4, n_dof) containing the joint positions,
+          velocities, accelerations, and jerks at each frame.
+        - The calculated condition number. Returns -1.0 if model data is not provided.
     """
     n_frames = int(duration * fps)
     t_s = 0.0
@@ -156,4 +167,26 @@ def generate_spline_trajectory(
         else:
             raise ValueError("Invalid trajectory_type. Must be 'fifth', 'sixth' or 'seventh'.")
 
-    return np.stack([qposs, qvels, qaccs, qjerks], axis=1)
+    trajectory_data = np.stack([qposs, qvels, qaccs, qjerks], axis=1)
+
+    condition_number = -1.0
+    if m is not None and d is not None and ee_body_name is not None:
+        print("\nCalculating condition number for the spline trajectory...")
+        # Reshape trajectory data for the condition number function
+        joint_trajectory = np.stack(
+            [
+                trajectory_data[:, 0, :],  # qpos (n_frames, n_dof)
+                trajectory_data[:, 1, :],  # qvel (n_frames, n_dof)
+                trajectory_data[:, 2, :],  # qacc (n_frames, n_dof)
+            ],
+            axis=1,
+        )
+        condition_number = calculate_condition_number(
+            m=m,
+            d=d,
+            joint_trajectory=joint_trajectory,
+            ee_body_name=ee_body_name,
+        )
+        print(f"  Condition Number: {condition_number:.4e}")
+
+    return trajectory_data, condition_number

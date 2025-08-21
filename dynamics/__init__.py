@@ -1,7 +1,7 @@
+from .condition_number import calculate_condition_number
 from .dynamics import (
     StateSpace,
     StateSpaceConfig,
-    calculate_condition_number,
     coordinate_transfer_imat,
     coordinate_transfer_simat,
     extract_linvel_frame_transferred,

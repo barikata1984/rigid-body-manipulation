@@ -6,15 +6,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 from omegaconf import OmegaConf
 
-from dynamics.dynamics import calculate_condition_number
+from dynamics.condition_number import calculate_condition_number
 from simulator import SimulatorConfig, generate_model_data
-from trajectories.optimal_excitation import (
+from trajectories.excitation import (
     _find_optimal_coeffs,  # Import the new private function
     generate_optimal_excitation_trajectory,
     generate_sinusoidal_trajectory,
-    generate_exciting_spline_trajectory,
     objective_function,
 )
+from trajectories.exciting_spline import generate_exciting_spline_trajectory
 from trajectories.spline_interpolation import (
     BoundaryCondition,
     generate_spline_trajectory,
@@ -129,7 +129,7 @@ class TestOptimalExcitation(unittest.TestCase):
             start_qpos=self.jointpos_offset,
             base_frequency=self.base_frequency,
             ee_body_name=self.ee_body_name,
-            optimization_max_iter=10, # Keep test fast
+            optimization_max_iter=10,  # Keep test fast
         )
 
         # Generate trajectory with optimized coeffs to check condition number
@@ -169,7 +169,7 @@ class TestOptimalExcitation(unittest.TestCase):
             base_frequency=self.base_frequency,
             start_qpos=start_qpos,
             ee_body_name=self.ee_body_name,
-            optimization_max_iter=10, # Keep test fast
+            optimization_max_iter=10,  # Keep test fast
         )
 
         full_t_vec = trajectory_data["t"]
@@ -219,9 +219,12 @@ class TestOptimalExcitation(unittest.TestCase):
         end_qpos = np.array([0.1, -0.1, 0.2, -0.2, 0.3, -0.3])
 
         # 2. Generate the optimized trajectory
+        start_cond = BoundaryCondition(qpos=start_qpos.tolist())
+        end_cond = BoundaryCondition(qpos=end_qpos.tolist())
+
         trajectory = generate_exciting_spline_trajectory(
-            start_qpos=start_qpos,
-            end_qpos=end_qpos,
+            start_conditions=start_cond,
+            end_conditions=end_cond,
             duration=self.duration,
             fps=self.fps,
             n_harmonics=self.n_harmonics,
@@ -248,10 +251,16 @@ class TestOptimalExcitation(unittest.TestCase):
 
         # Check optimization effect
         # Condition number of base trajectory (spline only)
-        base_traj_data = generate_spline_trajectory(
-            "seventh", self.duration, self.fps,
-            BoundaryCondition(qpos=start_qpos.tolist(), qvel=[0]*self.n_dof, qacc=[0]*self.n_dof, qjerk=[0]*self.n_dof),
-            BoundaryCondition(qpos=end_qpos.tolist(), qvel=[0]*self.n_dof, qacc=[0]*self.n_dof, qjerk=[0]*self.n_dof)
+        base_traj_data, _ = generate_spline_trajectory(
+            "seventh",
+            self.duration,
+            self.fps,
+            BoundaryCondition(
+                qpos=start_qpos.tolist(), qvel=[0] * self.n_dof, qacc=[0] * self.n_dof, qjerk=[0] * self.n_dof
+            ),
+            BoundaryCondition(
+                qpos=end_qpos.tolist(), qvel=[0] * self.n_dof, qacc=[0] * self.n_dof, qjerk=[0] * self.n_dof
+            ),
         )
         base_joint_traj = np.stack([base_traj_data[:, 0, :], base_traj_data[:, 1, :], base_traj_data[:, 2, :]], axis=1)
 
