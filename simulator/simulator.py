@@ -22,6 +22,7 @@ from dynamics.dynamics import (
 from recorders import StandardRecorderConfig
 from sensors import Sensors
 from transformations import Poses
+from utilities.utilities import get_git_branch_name
 from visualization import ax_plot_lines, ax_plot_lines_w_tgt
 from visualization.visualization import cb_rgb  # color palette for consistency
 
@@ -337,22 +338,25 @@ class Simulator:
 
         # Save plots and data
         try:
+            branch_name = get_git_branch_name()
+            debug_dir = Path("debug_log") / branch_name
+
             # Save qpos figure
-            qpos_debug_dir = Path("debug_log/dev-jointpos_limits/qpos")
+            qpos_debug_dir = debug_dir / "qpos"
             qpos_debug_dir.mkdir(parents=True, exist_ok=True)
             qpos_fname = qpos_debug_dir / f"qpos_{timestamp}.png"
             qpos_fig.savefig(qpos_fname)
             print(f"Saved qpos figure: {qpos_fname}")
 
             # Save ctrl figure
-            ctrl_debug_dir = Path("debug_log/dev-jointpos_limits/ctrl")
+            ctrl_debug_dir = debug_dir / "ctrl"
             ctrl_debug_dir.mkdir(parents=True, exist_ok=True)
             ctrl_fname = ctrl_debug_dir / f"ctrl_{timestamp}.png"
             ctrl_fig.savefig(ctrl_fname)
             print(f"Saved ctrl figure: {ctrl_fname}")
 
             # Save raw data to a CSV file
-            data_debug_dir = Path("debug_log/dev-jointpos_limits/data")
+            data_debug_dir = debug_dir / "data"
             data_debug_dir.mkdir(parents=True, exist_ok=True)
 
             # 1. Create header

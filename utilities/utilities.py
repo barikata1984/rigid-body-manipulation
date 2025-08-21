@@ -1,7 +1,25 @@
+import subprocess
 from collections.abc import Iterable
 
 from mujoco._enums import mjtObj
 from mujoco._functions import mj_name2id
+
+
+def get_git_branch_name():
+    """現在のGitブランチ名を取得します。"""
+    try:
+        # `git rev-parse --abbrev-ref HEAD` コマンドを実行
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        # 標準出力をトリムして返す
+        return result.stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        # Gitコマンドが失敗した場合や、Gitがインストールされていない場合
+        return None
 
 
 def categorize_dict_kargs(dict_kargs):

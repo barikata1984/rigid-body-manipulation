@@ -1,7 +1,7 @@
 duration: 5.0
 fps: 60
 start_conditions:
-  qpos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  qpos: [-0.5, 0.5, 0.0, "${pi:-0.9pi}", "${pi:-0.4pi}", "${pi:0.9pi}"]
 end_conditions:
-  qpos: [0.2, -0.2, 0.3, -0.3, 0.4, -0.4]
+  qpos: [0.5, -0.5, 0.5, "${pi:0.9pi}", "${pi:0.4pi}", "${pi:-0.9pi}"]
 optimization_max_iter: 10
