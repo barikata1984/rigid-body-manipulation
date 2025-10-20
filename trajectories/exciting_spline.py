@@ -155,6 +155,7 @@ def generate_exciting_spline_trajectory(
     d: mujoco.MjData,
     ee_body_name: str,
     optimization_max_iter: int = 10,
+    seed: int | None = None,
 ) -> dict:
     """
     Generates a task-oriented excitation trajectory from start_qpos to end_qpos.
@@ -198,6 +199,8 @@ def generate_exciting_spline_trajectory(
     print(f"  Condition Number (Base Trajectory): {base_condition_number:.4e}")
 
     # 2. Optimize the coefficients of the excitation component
+    if seed is not None:
+        np.random.seed(seed)
     initial_coeffs = np.random.rand(n_joints, n_harmonics, 2) * 0.1  # Start with small random amplitudes
     opt_args = (
         q_base_pos,

@@ -34,6 +34,7 @@ class TrajectoryConfig:
     manipulator_path: str = "xml_models/manipulators/sequential"
     object_path: str = "xml_models/targets/stanford-bunny"
     ee_body_name: str = "link6"
+    seed: int | None = None
 
 
 def save_trajectory_to_json(
@@ -170,6 +171,7 @@ def generate_trajectory():
             d=d,
             ee_body_name=cfg.ee_body_name,
             optimization_max_iter=cfg.optimization_max_iter,
+            seed=cfg.seed,
         )
 
     elif cfg.trajectory_type == "optimal-excitation":
