@@ -252,5 +252,6 @@ def generate_exciting_spline_trajectory(
     )
 
     final_trajectory["condition_number"] = final_cond_num.item()
+    final_trajectory["seed"] = seed
 
     return final_trajectory

@@ -75,6 +75,9 @@ def save_trajectory_to_json(
     if "condition_number" in trajectory_dict:
         output_data["condition_number"] = trajectory_dict["condition_number"]
 
+    if "seed" in trajectory_dict:
+        output_data["seed"] = trajectory_dict["seed"]
+
     with open(output_filename, "w") as f:
         json.dump(output_data, f, indent=4)
     print(f"Trajectory saved to {output_filename}")
@@ -160,6 +163,10 @@ def generate_trajectory():
             )
             m, d, _ = generate_model_data(model_cfg)
 
+        seed = cfg.seed
+        if seed is None:
+            seed = np.random.randint(0, 1e6)
+
         trajectory_dict = generate_exciting_spline_trajectory(
             start_conditions=cfg.start_conditions,
             end_conditions=cfg.end_conditions,
@@ -171,7 +178,7 @@ def generate_trajectory():
             d=d,
             ee_body_name=cfg.ee_body_name,
             optimization_max_iter=cfg.optimization_max_iter,
-            seed=cfg.seed,
+            seed=seed,
         )
 
     elif cfg.trajectory_type == "optimal-excitation":
