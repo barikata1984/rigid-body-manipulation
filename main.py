@@ -91,7 +91,7 @@ def main():
     print("\nLeast Squares Results DataFrame:")
     print(df)
 
-    simulator.recorder.finish(result["frames"], result["regressors"], gt_iparams)
+    simulator.recorder.finish(result["frames"], result["regressors"], gt_iparams, result["trajectory_data"])
 
 
 if __name__ == "__main__":

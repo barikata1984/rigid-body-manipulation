@@ -200,7 +200,7 @@ class Simulator:
         self._post_process_data()
         self._visualize_results()
 
-        return {"frames": self.frames, "regressors": self.regressors, "fts_sen": self.fts_sen}
+        return {"frames": self.frames, "regressors": self.regressors, "fts_sen": self.fts_sen, "trajectory_data": self.trajectory_data}
 
     def procoess_frame(self, current_frame_idx):
         act_qpos, act_qvel, act_qacc = self.sensors.get("jointvars", perturbed=True)  # shape: (6,), (6,), (6,)

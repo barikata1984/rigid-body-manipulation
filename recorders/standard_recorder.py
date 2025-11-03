@@ -120,7 +120,7 @@ class StandardRecorder:
 
         return train, valid, test
 
-    def _process_split(self, frames, regressors, gt_iparams, split=None):
+    def _process_split(self, frames, regressors, gt_iparams, trajectory_data, split=None):
         suffix = ""
         fts_sen = []
 
@@ -150,29 +150,21 @@ class StandardRecorder:
         split_transform["ls"] = [*ls_iparams, np.nan]
         split_transform["tls"] = [*tls_iparams, np.nan]
 
+        if "base_condition_number" in trajectory_data:
+            split_transform["base_condition_number"] = trajectory_data["base_condition_number"]
+        if "condition_number" in trajectory_data:
+            split_transform["condition_number"] = trajectory_data["condition_number"]
+
         with open(self.dataset_dir / f"transforms{suffix}.json", "w") as f:
             json.dump(split_transform, f, indent=2)
 
-    def finish(self, frames, regressors, gt_iparams):
+    def finish(self, frames, regressors, gt_iparams, trajectory_data):
         self.videowriter.release()
 
         train_frames, valid_frames, test_frames = self._split(frames)
         train_regressors, valid_regressors, test_regressors = self._split(regressors)
-        train_regressors, valid_regressors, test_regressors = self._split(regressors)
 
-        self._process_split(frames, regressors, gt_iparams)
-        self._process_split(train_frames, train_regressors, gt_iparams, split="train")
-        self._process_split(valid_frames, valid_regressors, gt_iparams, split="valid")
-        self._process_split(test_frames, test_regressors, gt_iparams, split="test")
-
-
-#        with open(self.dataset_dir / "transform.json", "w") as f:
-#            json.dump(self.transform, f, indent=2)
-
-
-#        print("Tracking camera setup =======================================\n"
-#             f"    Tracking camera id:         {self.id}\n"
-#             f"    Image size (w x h [px]):    {self.width} x {self.height}\n"
-#             f"    Focus [px]:                 {self.focus}\in"
-#             f"    FoV (h, v [deg]):           {deg(self.fovx)}, {deg(self.fovy)}\n"
-#             f"    Output file:                {self.output_file}")
+        self._process_split(frames, regressors, gt_iparams, trajectory_data)
+        self._process_split(train_frames, train_regressors, gt_iparams, trajectory_data, split="train")
+        self._process_split(valid_frames, valid_regressors, gt_iparams, trajectory_data, split="valid")
+        self._process_split(test_frames, test_regressors, gt_iparams, trajectory_data, split="test")

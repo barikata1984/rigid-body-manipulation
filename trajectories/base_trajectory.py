@@ -75,6 +75,9 @@ def save_trajectory_to_json(
     if "condition_number" in trajectory_dict:
         output_data["condition_number"] = trajectory_dict["condition_number"]
 
+    if "base_condition_number" in trajectory_dict:
+        output_data["base_condition_number"] = trajectory_dict["base_condition_number"]
+
     if "seed" in trajectory_dict:
         output_data["seed"] = trajectory_dict["seed"]
 

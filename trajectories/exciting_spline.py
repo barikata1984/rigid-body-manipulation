@@ -251,6 +251,7 @@ def generate_exciting_spline_trajectory(
         base_frequency,
     )
 
+    final_trajectory["base_condition_number"] = base_condition_number.item()
     final_trajectory["condition_number"] = final_cond_num.item()
     final_trajectory["seed"] = seed
 
