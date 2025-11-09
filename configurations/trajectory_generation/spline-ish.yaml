@@ -1,5 +1,5 @@
-duration: 5.0
-fps: 60
+duration: 4.0
+fps: 50
 start_conditions:
   qpos: [-0.5, 0.5, 0.0, "${pi:-0.9pi}", "${pi:-0.4pi}", "${pi:0.9pi}"]
 end_conditions:

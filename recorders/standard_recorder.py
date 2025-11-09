@@ -58,6 +58,10 @@ class StandardRecorder:
         self.renderer = Renderer(m, self.fig_height, self.fig_width)
         self.aabb_scale = cfg.aabb_scale
 
+        import pdb
+
+        pdb.set_trace()
+
         os.makedirs(self.complete_image_dir, exist_ok=True)  # has to be called before the videowriter instantiated
 
         self.videowriter = cv2.VideoWriter(
