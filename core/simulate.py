@@ -162,7 +162,7 @@ def simulate(
     rng.standard_normal(10)
 
     # Prepare data containers =================================================
-    res_qpos = np.empty(m.nu)
+    qpos_error = np.empty(m.nu)
     tgt_trajectory = []
     trajectory = []
     fts_sen = []
@@ -254,14 +254,13 @@ def simulate(
         # Get residual of state
         mj_differentiatePos(  # Use this func to differenciate quat properly
             m,  # MjModel
-            res_qpos,  # data container for the residual of qpos
-            m.nu,  # idx of a joint up to which res_qpos are calculated
-            qpos,  # current qpos
+            qpos_error,  # data container for the residual of qpos
+            1,  # idx of a joint up to which qpos_error are calculated
             tgt_traj[0],  # target qpos or next qpos to calkculate dqvel
+            qpos,  # current qpos
         )
 
-        # res_state = np.concatenate((res_qpos, tgt_traj[1] - d.qvel))
-        res_state = np.concatenate((res_qpos, tgt_traj[1] - qvel))
+        res_state = np.concatenate((qpos_error, qvel - tgt_traj[1]))
         # Compute and set control, or actuator inputs
         d.ctrl = tgt_ctrl - controller.gain_matrix @ res_state
 
