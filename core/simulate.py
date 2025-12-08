@@ -67,7 +67,7 @@ def simulate(
     d: MjData,
     recorder,
     planner,
-    controller,  # TODO: annotate late... make a BaseModule or something and use Protocol or Generic, maybe...
+    controller,  # TODO: annotate later... make a BaseModule or something and use Protocol or Generic, maybe...
 ):
     # Instantiate register classes ================================================
     poses = Poses(m, d)

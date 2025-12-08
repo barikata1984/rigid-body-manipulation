@@ -40,7 +40,7 @@ class SimulationConfig:
 
     manipulator_name: str = "sequential"
     target_name: str = MISSING
-    reset_keyframe: str = "initial_state"
+    reset_keyframe: str = MISSING
     recorder: BasicRecorderConfig = field(default_factory=BasicRecorderConfig)
     planner: JointPositionPlannerConfig = field(default_factory=JointPositionPlannerConfig)
     controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
@@ -53,7 +53,7 @@ class SimulatorConfig(BaseSimulatorConfig):
     target_class: str = "Simulator"  # type: ignore
     manipulator: str = "xml_models/manipulators/sequential"
     object: str = MISSING
-    reset_keyframe: str | None = None
+    reset_keyframe: str = MISSING  # | None = None
     # Some tests pass these explicitly; keep them optional for trajectory-driven runs
     duration: float | None = None
     fps: int | None = None

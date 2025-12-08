@@ -292,7 +292,7 @@ def generate_model_data(
 ) -> tuple[MjModel, MjData, dict[str, float | list[float]]]:
     # Get the ground truth data output by a CAD application ========================
     xml_dir = Path.cwd() / "xml_models"
-    target_dir = xml_dir / "targets" / cfg.target_name
+    target_dir = xml_dir / "targets" / cfg.object
     target_object_path = target_dir / "object.xml"
     target_object_cad_gt_path = target_dir / "object_cad_gt.csv"
     target_object, assets, ground_truth = spawn_target_object(
@@ -300,7 +300,7 @@ def generate_model_data(
     )
 
     # Load the .xml of a manipulator and attach the target object to it
-    manipulator_path = xml_dir / "manipulators" / f"{cfg.manipulator_name}.xml"
+    manipulator_path = xml_dir / "manipulators" / f"{cfg.manipulator}.xml"
     manipulator = mjcf.from_path(manipulator_path)
     attachment_site = manipulator.find("site", "attachment")
     attachment_site.attach(target_object)
