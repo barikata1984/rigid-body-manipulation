@@ -1,13 +1,33 @@
 from pathlib import Path
 from shutil import copy
 
-from omegaconf.errors import MissingMandatoryValue
+from omegaconf import OmegaConf
+from omegaconf.errors import ConfigAttributeError, MissingMandatoryValue
 
-from core import autoinstantiate, generate_model_data, get_element_id, load_config, simulate
+from core import SimulationConfig, autoinstantiate, generate_model_data, get_element_id, simulate
 
 
 def main():
-    cfg = load_config()  # priority: cli > cli-specified .yaml > base.yaml > hard-coded
+    # _cfg = tyro.cli(SimulationConfig)
+    cfg = OmegaConf.structured(SimulationConfig)
+    base_cfg = OmegaConf.load(cfg.config)
+    OmegaConf.structured(SimulationConfig)
+
+    cli_cfg = OmegaConf.from_cli()
+
+    try:
+        yaml_cfg = OmegaConf.load(cli_cfg.config)
+    except ConfigAttributeError:  # if read_config not provided on cli, cli_cfg
+        yaml_cfg = {}  # does not have it as its attribute, so using
+        # this error rather than MissingMandatoryValue
+
+    cfg = OmegaConf.merge(cfg, base_cfg, yaml_cfg, cli_cfg)
+
+    try:
+        OmegaConf.save(cfg, cfg.config_export_path)
+    except MissingMandatoryValue:
+        pass
+
     m, d, gt = generate_model_data(cfg)
 
     # Fill (potentially) missing fields of a logger configulation =================
@@ -40,9 +60,9 @@ def main():
     planner = autoinstantiate(cfg.planner, m, d)
     controller = autoinstantiate(cfg.controller, m, d)
 
-    # import pdb
+    import pdb
 
-    # pdb.set_trace()  # Debugger breakpoint
+    pdb.set_trace()
 
     result = simulate(m, d, recorder, planner, controller)  # main process
 

@@ -43,3 +43,27 @@ target-version = "py312" # ターゲットの Python バージョン
 #src = ["src", "."] # ソースディレクトリ
 fix = true # 自動修正を有効にする
 unsafe-fixes = false # 安全でない修正も有効にする
+
+[tool.setuptools]
+# エラーに出ていたフォルダ名をすべてリストアップして許可します
+packages = [
+    'base_config',
+    'configurations',
+    'controllers',
+    'core',
+    'datasets',
+    'debug_log',
+    'dynamics',
+    'literature',
+    'omegaconf_custom_resolvers',
+    'planners',
+    'recorders',
+    'regressions',
+    'sensors',
+    'simulators',
+    'trajectories',
+    'transformations',
+    'utilities',
+    'xml_models',
+    'visualization',
+]

@@ -10,7 +10,7 @@ from numpy import linalg as nla
 from tqdm import tqdm
 
 import dynamics as dyn
-import visualization as vis
+import visualization_ as vis
 from sensors import Sensors
 from transformations import Poses
 from utilities import get_element_id

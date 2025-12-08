@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import os
 import shutil
@@ -11,32 +13,36 @@ import cv2
 import numpy as np
 from mujoco._structs import MjData, MjModel
 from mujoco.renderer import Renderer
+from numpy.linalg import lstsq
 from omegaconf import MISSING
 
-# from main import Scorer
+from regressions import total_lstsq
 from utilities import get_element_id
+
+from .base_recorder import BaseRecorderConfig
 
 
 @dataclass
-class BasicRecorderConfig:
-    target_class: str = "Logger"
+class StandardRecorderConfig(BaseRecorderConfig):
+    target_class: str = "StandardRecorder"  # type: ignore
     track_cam_name: str = "tracking"
     fig_height: int = 800
     fig_width: int = 800
-    fps: int = 60
     videoname: str = "output.mp4"
     videcodec: str = "mp4v"
     dataset_dir: str = MISSING
-    aabb_scale: float = MISSING
+    aabb_scale: float = MISSING  # | None = None
     # gt_mass_distr_file_path: str = MISSING
 
 
-class BasicRecorder:
+class StandardRecorder:
     def __init__(
         self,
-        cfg: BasicRecorderConfig,
+        cfg: StandardRecorderConfig,
         m: MjModel,
         d: MjData,
+        *ars,
+        **kwargs,
     ) -> None:
         self.cam_name = cfg.track_cam_name
         self.cam_id = get_element_id(m, "camera", self.cam_name)
@@ -47,25 +53,19 @@ class BasicRecorder:
         self.cam_fovy = radians(m.cam_fovy[self.cam_id])
         self.cam_focus = 0.5 * self.fig_height / tan(0.5 * self.cam_fovy)
         self.cam_fovx = 2 * atan2(0.5 * self.fig_width, self.cam_focus)
-        self.fps = cfg.fps
         self.dataset_dir = Path(cfg.dataset_dir)
         self.complete_image_dir = self.dataset_dir / "complete"
         self.renderer = Renderer(m, self.fig_height, self.fig_width)
         self.aabb_scale = cfg.aabb_scale
 
-        os.makedirs(self.complete_image_dir, exist_ok=True)  # not sure but should be called before
-        # the videowriter is instantiated
+        os.makedirs(self.complete_image_dir, exist_ok=True)  # has to be called before the videowriter instantiated
 
         self.videowriter = cv2.VideoWriter(
             str(self.dataset_dir / cfg.videoname),
-            cv2.VideoWriter_fourcc(*cfg.videcodec),
-            self.fps,
+            cv2.VideoWriter_fourcc(*cfg.videcodec),  # type: ignore
+            kwargs.get("fps"),  # type: ignore
             (self.fig_width, self.fig_height),
         )
-
-        # import pdb
-
-        # pdb.set_trace()
 
         self.base_transform = {
             "date_time": datetime.now().strftime("%d/%m/%Y_%H:%M:%S"),
@@ -139,18 +139,16 @@ class BasicRecorder:
 
         regressors = np.reshape(regressors, (-1, 10))
         fts_sen = np.reshape(fts_sen, -1)
-        est_iparams, _, _, _ = np.linalg.lstsq(regressors, fts_sen)
-
-        labels = ["total_mass", "mx", "my", "mz", "ixx", "iyy", "izz", "ixy", "iyz", "izx", "aabb_scale", "score"]
-        global_gt = [*gt_iparams, self.aabb_scale]
-        lstsq = [*est_iparams, np.nan]
+        ls_iparams = lstsq(regressors, fts_sen)[0]
+        tls_iparams = total_lstsq(regressors, fts_sen)[0]
+        labels = ["total_mass", "mx", "my", "mz", "ixx", "iyy", "izz", "ixy", "iyz", "izx", "aabb_scale"]
 
         split_transform = self.base_transform.copy()
         split_transform["frames"] = frames
         split_transform["labels"] = labels
-        split_transform["global_gt"] = global_gt
-        split_transform["lstsq"] = lstsq
-        # split_transform["globalinertia"] = comparison.to_json()
+        split_transform["global_gt"] = [*gt_iparams, self.aabb_scale]
+        split_transform["ls"] = [*ls_iparams, np.nan]
+        split_transform["tls"] = [*tls_iparams, np.nan]
 
         with open(self.dataset_dir / f"transforms{suffix}.json", "w") as f:
             json.dump(split_transform, f, indent=2)
@@ -159,6 +157,7 @@ class BasicRecorder:
         self.videowriter.release()
 
         train_frames, valid_frames, test_frames = self._split(frames)
+        train_regressors, valid_regressors, test_regressors = self._split(regressors)
         train_regressors, valid_regressors, test_regressors = self._split(regressors)
 
         self._process_split(frames, regressors, gt_iparams)
