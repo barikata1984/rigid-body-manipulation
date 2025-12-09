@@ -81,6 +81,9 @@ class StandardRecorder:
             "aabb_scale": self.aabb_scale,
         }
 
+        yyyymmddhhmmss = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.recursive_eval_data = {"datetime": yyyymmddhhmmss, "frames": {}}
+
     def render(self, d, file_name, cam_id=None):
         if cam_id is None:
             cam_id = self.cam_id
@@ -156,6 +159,9 @@ class StandardRecorder:
 
     def finish(self, frames, regressors, gt_iparams):
         self.videowriter.release()
+
+        with open(self.dataset_dir / "rtls_eval.json", mode="wt", encoding="utf-8") as f:
+            json.dump(self.recursive_eval_data, f, ensure_ascii=False, indent=2)
 
         train_frames, valid_frames, test_frames = self._split(frames)
         train_regressors, valid_regressors, test_regressors = self._split(regressors)

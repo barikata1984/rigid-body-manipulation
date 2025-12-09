@@ -76,7 +76,7 @@ def main():
     gt_total_mass = gt["mass"]
     gt_f_moms = gt_total_mass * gt["com"]  # type: ignore
     gt_moms_i = gt["globalinertia"]
-    gt_iparams = [gt_total_mass, *gt_f_moms, *gt_moms_i]
+    gt_iparams = np.array([gt_total_mass, *gt_f_moms, *gt_moms_i])
 
     regressors = result["regressors"]
     fts_sen = result["fts_sen"]
@@ -91,6 +91,9 @@ def main():
         columns=labels,
         index=["gt_iparams", "ls_iparams", "tls_iparams"],
     )
+
+    import pdb
+    pdb.set_trace()
     
     print("\nLeast Squares Results DataFrame:")
     print(df)

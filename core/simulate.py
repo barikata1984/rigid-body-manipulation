@@ -238,6 +238,8 @@ def simulate(
             poses_sen_obji.append(pose_sen_obji.as_matrix().tolist())
             twists_sen.append(twist_sen.tolist())
             dtwists_sen.append(dtwist_sen.tolist())
+            
+            recorder.recursive_eval_data["frames"][f"{frame_count:04}"] = {"regressor": regressor.tolist(), "ft_sen": wrench.tolist()}
 
             #            frame = dict(
             #                file_path=str(recorder.complete_image_dir / file_name),
