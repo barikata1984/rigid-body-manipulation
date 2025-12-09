@@ -2,9 +2,9 @@ import numpy as np
 from scipy.odr import odr
 
 
-def linear_rigid_body_dynamics(regressors, iparams):
+def linear_model(regressors, params):
     # Not sure but odr would expect regressors's shape to be (num_params, num_samples) rather than (num_samples, num_params)
-    return regressors.T @ iparams
+    return regressors.T @ params
 
 
 def total_lstsq(regressors: np.ndarray, fts_sen: np.ndarray, initbeta_scale: float = 1.0) -> tuple:
@@ -22,7 +22,7 @@ def total_lstsq(regressors: np.ndarray, fts_sen: np.ndarray, initbeta_scale: flo
     initbeta = initbeta_scale * np.ones(regressors.shape[-1])
 
     return odr(
-        fcn=linear_rigid_body_dynamics,
+        fcn=linear_model,
         initbeta=initbeta,
         y=fts_sen,
         # Not sure but odr would expect x's shape to be (num_params, num_samples) rather than

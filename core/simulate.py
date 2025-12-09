@@ -325,4 +325,4 @@ def simulate(
 
     plt.show()
 
-    return dict(frames=frames, regressors=regressors)
+    return {"frames": frames, "regressors":regressors, "fts_sen": fts_sen}

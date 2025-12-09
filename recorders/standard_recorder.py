@@ -81,10 +81,6 @@ class StandardRecorder:
             "aabb_scale": self.aabb_scale,
         }
 
-        import pdb
-
-        pdb.set_trace()
-
     def render(self, d, file_name, cam_id=None):
         if cam_id is None:
             cam_id = self.cam_id
