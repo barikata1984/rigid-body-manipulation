@@ -58,6 +58,7 @@ class SimulatorConfig(BaseSimulatorConfig):
     duration: float | None = None
     fps: int | None = None
     recorder: StandardRecorderConfig = field(default_factory=StandardRecorderConfig)
+    planner: JointPositionPlannerConfig = field(default_factory=JointPositionPlannerConfig)
     controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
     exp_setup: str = "configurations/simulations/base.yaml"
     config_export_path: str | None = None

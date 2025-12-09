@@ -64,11 +64,11 @@ def main():
     planner = autoinstantiate(cfg.planner, m, d)
     controller = autoinstantiate(cfg.controller, m, d)
 
-    import pdb
-
-    pdb.set_trace()
+    if not recorder.videowriter.isOpened():
+        print("Error: VideoWriter failed to open, outside simulation")
 
     result = simulate(m, d, recorder, planner, controller)  # main process
+
 
     # Show inertial params identified with the least squares method
     gt_total_mass = gt["mass"]

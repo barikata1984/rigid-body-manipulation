@@ -69,6 +69,9 @@ def simulate(
     planner,
     controller,  # TODO: annotate later... make a BaseModule or something and use Protocol or Generic, maybe...
 ):
+    if not recorder.videowriter.isOpened():
+        print("Error: VideoWriter failed to open, inside simulation.")
+
     # Instantiate register classes ================================================
     poses = Poses(m, d)
     sensors = Sensors(m, d)

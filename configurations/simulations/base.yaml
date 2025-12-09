@@ -5,7 +5,7 @@ recorder:
   track_cam_name: tracking
   fig_height: 800
   fig_width: 800
-  #fps: 60
+  fps: 60
   videoname: output.mp4
   videcodec: mp4v
 controller:
@@ -44,3 +44,21 @@ displacements:
 - ${pi:1pi}  # converted by a omegaconf custom resolver
 - 0.0
 - ${pi:8pi}  # converted by a omegaconf custom resolver
+planner:
+  target_class: JointPositionPlanner
+  duration: 5.0
+  timestep: -1.0
+  displacements:
+  - 0.2
+  - 1.4
+  - 0.6
+  - 3.141592653589793  # 1π
+  - 0.0
+  - 25.1327412287  # 8π
+  pos_offset: 
+  - 1 
+  - 1 
+  - 1 
+  - 0
+  - 0
+  - 0

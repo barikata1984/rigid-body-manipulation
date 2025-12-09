@@ -33,7 +33,7 @@ class StandardRecorderConfig(BaseRecorderConfig):
     dataset_dir: str = MISSING
     aabb_scale: float = MISSING  # | None = None
     # gt_mass_distr_file_path: str = MISSING
-
+    fps: int = 30
 
 class StandardRecorder:
     def __init__(
@@ -57,13 +57,14 @@ class StandardRecorder:
         self.complete_image_dir = self.dataset_dir / "complete"
         self.renderer = Renderer(m, self.fig_height, self.fig_width)
         self.aabb_scale = cfg.aabb_scale
+        self.fps = cfg.fps
 
         os.makedirs(self.complete_image_dir, exist_ok=True)  # has to be called before the videowriter instantiated
 
         self.videowriter = cv2.VideoWriter(
             str(self.dataset_dir / cfg.videoname),
             cv2.VideoWriter_fourcc(*cfg.videcodec),  # type: ignore
-            kwargs.get("fps"),  # type: ignore
+            self.fps,  # type: ignore
             (self.fig_width, self.fig_height),
         )
 
@@ -79,6 +80,10 @@ class StandardRecorder:
             "w": self.fig_width,
             "aabb_scale": self.aabb_scale,
         }
+
+        import pdb
+
+        pdb.set_trace()
 
     def render(self, d, file_name, cam_id=None):
         if cam_id is None:
