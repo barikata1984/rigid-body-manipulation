@@ -1,12 +1,16 @@
 from pathlib import Path
 from shutil import copy
 
+import numpy as np
+import pandas as pd
 import tyro
+from numpy.linalg import lstsq, norm
 from omegaconf import OmegaConf
 from omegaconf.errors import MissingMandatoryValue
 
 from core import autoinstantiate, generate_model_data, get_element_id, simulate
 from omegaconf_custom_resolvers import pi_converter
+from regressions import total_lstsq
 from simulators import SimulatorConfig
 
 OmegaConf.register_new_resolver("pi", pi_converter)
@@ -57,7 +61,6 @@ def main():
             excitation_slice = slice(start, end)
             print(f"Excitation trajectory slice found: {start} to {end}")
 
-    simulator_cfg = OmegaConf.to_object(cfg)
 
     # Instantiate necessary classes ===============================================
     recorder = autoinstantiate(cfg.recorder, m, d)
@@ -69,12 +72,28 @@ def main():
 
     result = simulate(m, d, recorder, planner, controller)  # main process
 
-
     # Show inertial params identified with the least squares method
     gt_total_mass = gt["mass"]
     gt_f_moms = gt_total_mass * gt["com"]  # type: ignore
     gt_moms_i = gt["globalinertia"]
     gt_iparams = [gt_total_mass, *gt_f_moms, *gt_moms_i]
+
+    regressors = result["regressors"]
+    fts_sen = result["fts_sen"]
+    ls_iparams = lstsq(regressors.reshape(-1, 10), fts_sen.reshape(-1))[0]
+    tls_iparams = total_lstsq(regressors.reshape(-1, 10), fts_sen.reshape(-1))[0]
+    l2_ls = norm(ls_iparams - np.array(gt_iparams), 2)
+    l2_tls = norm(tls_iparams - np.array(gt_iparams), 2)
+    labels = ["total_mass", "mx", "my", "mz", "ixx", "iyy", "izz", "ixy", "iyz", "izx", "l2"]
+
+    df = pd.DataFrame(
+        [[*gt_iparams, np.nan], [*ls_iparams, l2_ls], [*tls_iparams, l2_tls]],
+        columns=labels,
+        index=["gt_iparams", "ls_iparams", "tls_iparams"],
+    )
+    
+    print("\nLeast Squares Results DataFrame:")
+    print(df)
 
     # Log the identified inertial params and their ground truth
     # logger.transform["globalinertia"] = comparison.to_json()
