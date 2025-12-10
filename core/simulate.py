@@ -94,50 +94,7 @@ class Simulation:
             tgt_traj = self.planner.plan(step)
 
             if self.frame_count <= self.d.time * self.recorder.fps:
-                self.time.append(self.d.time)
-                self.tgt_trajectory.append(tgt_traj)
-                self.act_trajectory.append(act_traj)
-
-                # Get (d)twist_sen, and linacc_sen_obj for later verification
-                pose_sen_llj = self.pose_x_sen.inv().dot(self.pose_x_ll.dot(self.pose_ll_llj))
-                twist_llj = twists_lj_l[self.id_ll]
-                twist_sen = pose_sen_llj.adjoint() @ twist_llj
-                # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-                dtwist_llj = dtwists_lj_l[self.id_ll]
-                pose_sen_llj_dadjoint = SE3.curlywedge(twist_sen) @ pose_sen_llj.adjoint()
-                dtwist_sen = pose_sen_llj_dadjoint @ twist_llj + pose_sen_llj.adjoint() @ dtwist_llj
-                # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-
-                linacc_sen_obji = dyn.extract_linacc_frame_transferred(twist_sen, dtwist_sen, self.pose_sen_obji)
-                self.linaccs_sen_obji.append(linacc_sen_obji)
-
-                # Get force-torque measurements
-                force = self.sensors.get("force")
-                torque = self.sensors.get("torque")
-                wrench = np.concatenate([force, torque], axis=None)
-                self.fts_sen.append(wrench)
-
-                regressor = dyn.get_regressor_matrix(twist_sen, dtwist_sen)
-                self.regressors.append(regressor)
-
-                # Writing a single frame of a dataset =============================
-                file_name = f"{self.frame_count:04}.png"
-                self.recorder.render(self.d, file_name)  # recorder.cam_id is selected internally
-
-                # Log NeMD ingredients ============================================
-                # Items which need to be computed at every frame recoding
-                pose_obj_cam = self.pose_x_obj.inv().dot(self.poses.x_cam[self.recorder.cam_id])
-
-                self.file_paths.append(str(self.recorder.complete_image_dir / file_name))
-                self.transform_matrices.append(pose_obj_cam.as_matrix().tolist())
-                self.poses_sen_obj.append(self.pose_sen_obj.as_matrix().tolist())
-                self.poses_sen_obji.append(self.pose_sen_obji.as_matrix().tolist())
-                self.twists_sen.append(twist_sen.tolist())
-                self.dtwists_sen.append(dtwist_sen.tolist())
-
-                self.recorder.recursive_eval_data["frames"][f"{self.frame_count:04}"] = {"regressor": regressor.tolist(), "ft_sen": wrench.tolist()}
-
-                self.frame_count += 1
+                self.process_frame(tgt_traj, act_traj, twists_lj_l, dtwists_lj_l)
 
             # Get residual of state
             mj_differentiatePos(  # Use this func to differenciate quat properly
@@ -219,3 +176,50 @@ class Simulation:
         plt.show()
 
         return {"frames": frames, "regressors":regressors, "fts_sen": fts_sen}
+
+
+    def process_frame(self, tgt_traj, act_traj, twists_lj_l, dtwists_lj_l):
+        self.time.append(self.d.time)
+        self.tgt_trajectory.append(tgt_traj)
+        self.act_trajectory.append(act_traj)
+
+        # Get (d)twist_sen, and linacc_sen_obj for later verification
+        pose_sen_llj = self.pose_x_sen.inv().dot(self.pose_x_ll.dot(self.pose_ll_llj))
+        twist_llj = twists_lj_l[self.id_ll]
+        twist_sen = pose_sen_llj.adjoint() @ twist_llj
+        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+        dtwist_llj = dtwists_lj_l[self.id_ll]
+        pose_sen_llj_dadjoint = SE3.curlywedge(twist_sen) @ pose_sen_llj.adjoint()
+        dtwist_sen = pose_sen_llj_dadjoint @ twist_llj + pose_sen_llj.adjoint() @ dtwist_llj
+        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+        linacc_sen_obji = dyn.extract_linacc_frame_transferred(twist_sen, dtwist_sen, self.pose_sen_obji)
+        self.linaccs_sen_obji.append(linacc_sen_obji)
+
+        # Get force-torque measurements
+        force = self.sensors.get("force")
+        torque = self.sensors.get("torque")
+        wrench = np.concatenate([force, torque], axis=None)
+        self.fts_sen.append(wrench)
+
+        regressor = dyn.get_regressor_matrix(twist_sen, dtwist_sen)
+        self.regressors.append(regressor)
+
+        # Writing a single frame of a dataset =============================
+        file_name = f"{self.frame_count:04}.png"
+        self.recorder.render(self.d, file_name)  # recorder.cam_id is selected internally
+
+        # Log NeMD ingredients ============================================
+        # Items which need to be computed at every frame recoding
+        pose_obj_cam = self.pose_x_obj.inv().dot(self.poses.x_cam[self.recorder.cam_id])
+
+        self.file_paths.append(str(self.recorder.complete_image_dir / file_name))
+        self.transform_matrices.append(pose_obj_cam.as_matrix().tolist())
+        self.poses_sen_obj.append(self.pose_sen_obj.as_matrix().tolist())
+        self.poses_sen_obji.append(self.pose_sen_obji.as_matrix().tolist())
+        self.twists_sen.append(twist_sen.tolist())
+        self.dtwists_sen.append(dtwist_sen.tolist())
+
+        self.recorder.recursive_eval_data["frames"][f"{self.frame_count:04}"] = {"regressor": regressor.tolist(), "ft_sen": wrench.tolist()}
+
+        self.frame_count += 1
