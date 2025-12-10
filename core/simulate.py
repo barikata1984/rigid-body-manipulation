@@ -11,49 +11,10 @@ from tqdm import tqdm
 
 import dynamics as dyn
 import visualization_ as vis
+from dynamics import setup_robot_dynamics_parameters
 from sensors import Sensors
 from transformations import Poses
 from utilities import get_element_id
-
-# Naming convention of spatial and dynamics variables:
-#
-# {descriptor}_{reference}_{described}, where
-#
-#    descriptor | Definition
-# --------------+------------
-#       (s)imat | (spatial) inertia matrix
-#       (h)pose | (home) pose
-#      (u)screw | (unit) screw
-#      (d)twist | (first-order time derivative of) twist
-#  (lin/ang)vel | (linear/angular) velocity
-#  (lin/ang)acc | (linear/angular) acceleration
-#         momsi | moments of inertia
-#          gacc | graviatational acceleration
-#
-#     reference |
-#     /descried | Definition
-# --------------+-------------
-#             b | body itself or its frame (refer to the official documentation)
-#            bi | body's principal frame
-#            bj | frame attached to a body's joint
-#       a/ai/aj | body's parent itself or its body/principal/joint frame
-#       l/li/lj | link itself or its body/principal/joint frame
-#       k/ki/kj | link's parent itself or its body/principal/joint frame
-#    ll/lli/llj | last link itself or its body/principal/joint frame
-#             x | world frame (x ∈ b)
-#             q | joint space
-#
-#  NOTE: 's' follows the descriptor part of a variable's name to clarify that
-#        the variable contains multiple descriptors.
-#
-#        ┏━━━━━━━━━━━━ Body namespace: "b"ody and its p"a"rent body ━━━━━━━━━━━━┓
-#
-# Bodies: x, link1 (firstlink), ..., link6 or sth (lastlink), attachment, object
-#
-#                                   ┗━ "l"ast"l"ink merged with the later ones ━┛
-#
-#        ┗━━ Link namespace: "l"ink and its parent body (= "k", prior to 'l') ━━┛
-#
 
 
 # Remove redundant space at the head and tail of the horizontal axis's scale
@@ -72,9 +33,18 @@ class Simulation:
         self.recorder = recorder
         self.planner = planner
         self.controller = controller
-
-        self.poses = Poses(self.m, self.d)
         self.sensors = Sensors(self.m, self.d)
+
+        (
+            self.poses,
+            self.id_ll,
+            self.pose_ll_llj,
+            self.uscrews_lj,
+            self.simats_lj_l,
+            self.hposes_lj_kj,
+            self.inverse,
+        ) = setup_robot_dynamics_parameters(self.m, self.d)
+
 
     def run(self):
         if not self.recorder.videowriter.isOpened():
@@ -83,8 +53,7 @@ class Simulation:
         # Instantiate register classes ================================================
 
         # Get ids and indices for the sake of convenience =============================
-        id_ll = get_element_id(self.m, "body", "link6")  # l(ast) l(ink)
-        id_x2ll = slice(0, id_ll + 1)
+        id_x2ll = slice(0, self.id_ll + 1)
 
         # Join the spatial inertia matrices of bodies later than the last link into the
         # spatial inertia matrix of the link so that dyn.inverse() can consider the
@@ -96,27 +65,11 @@ class Simulation:
         pose_x_sen = self.poses.get_x_("site", "target/ft_sensor")
         pose_sen_obj = pose_x_sen.inv().dot(pose_x_obj)
         pose_sen_obji = pose_x_sen.inv().dot(pose_x_obji)
-        pose_x_ll = self.poses.x_b[id_ll]  # dynamic
-        pose_ll_llj = self.poses.l_lj[id_ll]  # static
+        pose_x_ll = self.poses.x_b[self.id_ll]  # dynamic
         # NOTE: Variables below should be declared not here but whenever neccessary.
         # pose_x_llj = pose_x_ll.dot(pose_ll_llj)  # static, should be dynamic tho
         # pose_sen_llj = pose_x_sen.inv().dot(pose_x_llj)  # dynamic, should be static tho
 
-        # Get unit screws wr2 link joints =============================================
-        uscrews_lj = []
-        for t, ax in zip(self.m.jnt_type, self.m.jnt_axis, strict=False):
-            us_lj = np.zeros(6)
-            if 2 == t:  # slider joint
-                us_lj[:3] += ax
-            elif 3 == t:  # hinge joint
-                us_lj[3:] += ax
-            else:
-                raise TypeError(
-                    "Only slide or hinge joints, represented as 2 or 3 for an element of m.jnt_type, are supported."
-                )
-
-            uscrews_lj.append(us_lj)
-        uscrews_lj = np.array(uscrews_lj)
 
         # Transfer the reference frame where each link's spatial inertia matrix is de-
         # fined from the body principal frame to the joint frame ======================
@@ -138,13 +91,13 @@ class Simulation:
 
         simat_sen_obj = np.zeros((6, 6))
 
-        for pose_x_bi, simat_bi_b in zip(self.poses.x_bi[id_ll + 1 :], simats_bi_b[id_ll + 1 :], strict=False):
+        for pose_x_bi, simat_bi_b in zip(self.poses.x_bi[self.id_ll + 1 :], simats_bi_b[self.id_ll + 1 :], strict=False):
             # "b" here is ∈ {attachment, object}
-            pose_x_llj = pose_x_ll.dot(pose_ll_llj)
+            pose_x_llj = pose_x_ll.dot(self.pose_ll_llj)
             pose_bi_llj = pose_x_bi.inv().dot(pose_x_llj)
             simat_llj_b = dyn.transfer_simat(pose_bi_llj.inv(), simat_bi_b)
             simat_sen_obj += simat_llj_b
-            simats_lj_l[id_ll] += simat_llj_b
+            simats_lj_l[self.id_ll] += simat_llj_b
 
         # Get link joints' home poses wr2 their parents' joint frame ==================
         hposes_lj_kj = [SE3.identity()]  # for worldbody
@@ -161,7 +114,7 @@ class Simulation:
             dyn.inverse,
             hposes_body_parent=hposes_lj_kj,
             simats_body=simats_lj_l,
-            uscrews_body=np.array(uscrews_lj),
+            uscrews_body=self.uscrews_lj,
             twist_0=np.zeros(6),
             dtwist_0=gacc_x,
         )
@@ -209,11 +162,11 @@ class Simulation:
                 trajectory.append(act_traj)
 
                 # Get (d)twist_sen, and linacc_sen_obj for later verification
-                pose_sen_llj = pose_x_sen.inv().dot(pose_x_ll.dot(pose_ll_llj))
-                twist_llj = twists_lj_l[id_ll]
+                pose_sen_llj = pose_x_sen.inv().dot(pose_x_ll.dot(self.pose_ll_llj))
+                twist_llj = twists_lj_l[self.id_ll]
                 twist_sen = pose_sen_llj.adjoint() @ twist_llj
                 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-                dtwist_llj = dtwists_lj_l[id_ll]
+                dtwist_llj = dtwists_lj_l[self.id_ll]
                 pose_sen_llj_dadjoint = SE3.curlywedge(twist_sen) @ pose_sen_llj.adjoint()
                 dtwist_sen = pose_sen_llj_dadjoint @ twist_llj + pose_sen_llj.adjoint() @ dtwist_llj
                 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -247,19 +200,6 @@ class Simulation:
 
                 self.recorder.recursive_eval_data["frames"][f"{frame_count:04}"] = {"regressor": regressor.tolist(), "ft_sen": wrench.tolist()}
 
-                #            frame = dict(
-                #                file_path=str(recorder.complete_image_dir / file_name),
-                #                transform_matrix=pose_obj_cam.as_matrix().tolist(),
-                #                pose_sen_obj=pose_sen_obj.as_matrix().tolist(),
-                #                pose_sen_obji=pose_sen_obji.as_matrix().tolist(),
-                #                twist_sen=twist_sen.tolist(),
-                #                dtwist_sen=dtwist_sen.tolist(),
-                #                ft_sen=fts_sen[-1].tolist(),
-                #                linacc_sen_obji=linaccs_sen_obji[-1].tolist(),
-                #                )
-                #
-                #            #recorder.transform["frames"].append(frame)
-                #            frames.append(frame)
                 frame_count += 1
 
             # Get residual of state
@@ -301,14 +241,14 @@ class Simulation:
         frames = []
         data_containers = [file_paths, transform_matrices, poses_sen_obj, twists_sen, dtwists_sen, fts_sen]
         for fpath, tf, pose, t, dt, ft in zip(*data_containers, strict=False):
-            frame = dict(
-                file_path=fpath,
-                transform_matrix=tf,
-                pose_sen_obj=pose,
-                twist_sen=t,
-                dtwist_sen=dt,
-                ft_sen=ft.tolist(),
-            )
+            frame = {
+                "file_path": fpath,
+                "transform_matrix": tf,
+                "pose_sen_obj": pose,
+                "twist_sen": t,
+                "dtwist_sen": dt,
+                    "ft_sen": ft.tolist(),
+            }
 
             frames.append(frame)
 

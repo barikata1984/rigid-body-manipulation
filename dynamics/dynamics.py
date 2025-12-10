@@ -1,13 +1,15 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import partial
 
 import numpy as np
 from liegroups.numpy import SE3, SO3
 from mujoco._functions import mjd_transitionFD
-from mujoco._structs import MjData, MjModel
+from mujoco._structs import MjData, MjModel, MjOption
 from numpy.typing import NDArray
 
-from transformations import homogenize
+from transformations import Poses, homogenize
+from utilities import get_element_id
 
 
 @dataclass
@@ -288,7 +290,7 @@ def get_linacc(
     return _linacc if homogeneous else _linacc[:3]
 
 
-def _setup_robot_dynamics_parameters(
+def setup_robot_dynamics_parameters(
     m: MjModel,
     d: MjData,
     ee_body_name: str = "link6",
