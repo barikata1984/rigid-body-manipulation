@@ -178,19 +178,16 @@ class Simulation:
         self.tgt_trajectory.append(tgt_traj)
         self.act_trajectory.append(act_traj)
 
-        # Get (d)twist_sen, and linacc_sen_obj for verification
         twist_sen, dtwist_sen, regressor = calculate_frame_dynamics(
             act_traj, self.inverse, self.id_ll, self.pose_x_ll, self.pose_ll_llj, self.pose_x_sen
         )
+        self.twists_sen.append(twist_sen.tolist())
+        self.dtwists_sen.append(dtwist_sen.tolist())
 
         linacc_sen_obji = dyn.get_linacc(twist_sen, dtwist_sen, self.pose_sen_obji)
         self.linaccs_sen_obji.append(linacc_sen_obji)
 
-        # Get force-torque measurements
-        # force = self.sensors.get("force")
-        # torque = self.sensors.get("torque")
         wrench = self.sensors.get("wrench")
-        # wrench = np.concatenate([force, torque], axis=None)
         self.fts_sen.append(wrench)
 
         regressor = dyn.get_regressor_matrix(twist_sen, dtwist_sen)
@@ -203,13 +200,11 @@ class Simulation:
         # Log NeMD ingredients ============================================
         # Items which need to be computed at every frame recoding
         pose_obj_cam = self.pose_x_obj.inv().dot(self.poses.x_cam[self.recorder.cam_id])
-
-        self.file_paths.append(str(self.recorder.complete_image_dir / file_name))
         self.transform_matrices.append(pose_obj_cam.as_matrix().tolist())
+
         self.poses_sen_obj.append(self.pose_sen_obj.as_matrix().tolist())
         self.poses_sen_obji.append(self.pose_sen_obji.as_matrix().tolist())
-        self.twists_sen.append(twist_sen.tolist())
-        self.dtwists_sen.append(dtwist_sen.tolist())
+        self.file_paths.append(str(self.recorder.complete_image_dir / file_name))
 
         self.recorder.recursive_eval_data["frames"][f"{self.frame_count:04}"] = {
             "regressor": regressor.tolist(),
