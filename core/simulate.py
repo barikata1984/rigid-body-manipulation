@@ -24,6 +24,10 @@ class Simulation:
     d: MjData
 
     def __init__(self, m: MjModel, d: MjData, recorder, planner, controller):
+        # Set a random number generator ===========================================
+        rng = np.random.default_rng()
+        rng.standard_normal(10)
+
         self.m = m
         self.d = d
         self.recorder = recorder
@@ -82,22 +86,12 @@ class Simulation:
         if not self.recorder.videowriter.isOpened():
             print("Error: VideoWriter failed to open, inside simulation.")
 
-        # Set a random number generator ===========================================
-        rng = np.random.default_rng()
-        rng.standard_normal(10)
-
-        # Main loop
-        # =========================================================================
         for step in tqdm(range(self.planner.n_steps), desc="Progress"):
-            # Compute actuator controls and evolute the simulatoin
-            tgt_traj = self.planner.plan(step)
-            tgt_ctrl, _, _, _ = self.inverse(tgt_traj)
-
-            # Get current sensor measurements of joint variables by calling d.q***
-            qpos, qvel, qacc = self.d.qpos, self.d.qvel, self.d.qacc
-
-            act_traj = np.stack((qpos, qvel, qacc))
+            act_traj = np.stack(self.sensors.get("jointvars", perturbed=True))  # hape: (6,), (6,), (6,)0
             _, _, twists_lj_l, dtwists_lj_l = self.inverse(act_traj)
+
+            # Compute actuator controls and evolute the simulation
+            tgt_traj = self.planner.plan(step)
 
             if self.frame_count <= self.d.time * self.recorder.fps:
                 self.time.append(self.d.time)
@@ -149,14 +143,22 @@ class Simulation:
             mj_differentiatePos(  # Use this func to differenciate quat properly
                 self.m,  # MjModel
                 self.qpos_err,  # data container for the residual of qpos
-                1,  # idx of a joint up to which qpos_error are calculated
-                tgt_traj[0],  # target qpos or next qpos to calkculate dqvel
-                qpos,  # current qpos
+                1,  # timestep used to numerically differentiate the pos
+                tgt_traj[0],  # target qpos
+                act_traj[0],  # actual qpos
             )
 
-            res_state = np.concatenate((self.qpos_err, qvel - tgt_traj[1]))
-            # Compute and set control, or actuator inputs
-            self.d.ctrl = tgt_ctrl - self.controller.gain_matrix @ res_state
+            # Get feedforward signal
+            feedforward_ctrl, _, _, _ = self.inverse(tgt_traj)
+            # Get feedback signal
+            traj_err = act_traj- tgt_traj
+            state_err = np.concatenate((self.qpos_err, traj_err[1]))
+            feedback_ctrl = self.controller.gain_matrix @ state_err
+            self.d.ctrl = feedforward_ctrl - feedback_ctrl
+
+            self.qpos_errors.append(self.qpos_err)
+            self.qvel_errors.append(traj_err[1])
+            self.qacc_errors.append(traj_err[2])
 
             mj_step(self.m, self.d)  # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< Evolve the simulation
 
