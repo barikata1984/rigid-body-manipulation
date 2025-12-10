@@ -1,17 +1,14 @@
 import matplotlib as mpl
 import numpy as np
-from liegroups import SE3
 from matplotlib import pyplot as plt
 from mujoco._functions import mj_differentiatePos, mj_step
-from mujoco._structs import MjData, MjModel, MjOption
-from numpy import linalg as nla
+from mujoco._structs import MjData, MjModel
 from tqdm import tqdm
 
 import dynamics as dyn
 import visualization_ as vis
-from dynamics import setup_robot_dynamics_parameters
+from dynamics import calculate_frame_dynamics, setup_robot_dynamics_parameters
 from sensors import Sensors
-
 
 # Remove redundant space at the head and tail of the horizontal axis's scale
 mpl.rcParams["axes.xmargin"] = 0
@@ -59,7 +56,7 @@ class Simulation:
         # self.pose_sen_llj = pose_x_sen.inv().dot(pose_x_llj)  # dynamic, should be static tho
 
         # Data buffer and storages =============================================================
-        self.qpos_err =  np.empty(m.nu)
+        self.qpos_err = np.empty(m.nu)
 
         self.qpos_errors = []
         self.qvel_errors = []
@@ -87,14 +84,14 @@ class Simulation:
             print("Error: VideoWriter failed to open, inside simulation.")
 
         for step in tqdm(range(self.planner.n_steps), desc="Progress"):
-            act_traj = np.stack(self.sensors.get("jointvars", perturbed=True))  # hape: (6,), (6,), (6,)0
+            act_traj = np.stack(self.sensors.get("jointvars", perturbed=True))  # type: ignore
             _, _, twists_lj_l, dtwists_lj_l = self.inverse(act_traj)
 
             # Compute actuator controls and evolute the simulation
             tgt_traj = self.planner.plan(step)
 
             if self.frame_count <= self.d.time * self.recorder.fps:
-                self.process_frame(tgt_traj, act_traj, twists_lj_l, dtwists_lj_l)
+                self.process_frame(tgt_traj, act_traj)
 
             # Get residual of state
             mj_differentiatePos(  # Use this func to differenciate quat properly
@@ -108,7 +105,7 @@ class Simulation:
             # Get feedforward signal
             feedforward_ctrl, _, _, _ = self.inverse(tgt_traj)
             # Get feedback signal
-            traj_err = act_traj- tgt_traj
+            traj_err = act_traj - tgt_traj
             state_err = np.concatenate((self.qpos_err, traj_err[1]))
             feedback_ctrl = self.controller.gain_matrix @ state_err
             self.d.ctrl = feedforward_ctrl - feedback_ctrl
@@ -117,7 +114,9 @@ class Simulation:
             self.qvel_errors.append(traj_err[1])
             self.qacc_errors.append(traj_err[2])
 
-            mj_step(self.m, self.d)  # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< Evolve the simulation
+            # >>> Evolve the simulation >>>
+            mj_step(self.m, self.d)
+            # <<< Evolve the simulation <<<
 
         # Post process data =======================================================
         # Cast data into ndarrays for concise conslicing
@@ -127,21 +126,16 @@ class Simulation:
         fts_sen = np.array(self.fts_sen)
         regressors = np.array(self.regressors)
 
-        # Perturb wrench ==========================================================
-        error_rate = 0.05
-        seed = 0
-        rng = np.random.default_rng(seed)
-
-        perturb_wrench = True  # False
-        if perturb_wrench:
-            fs_std = error_rate * nla.norm(fts_sen[..., :3], axis=1).max()
-            ts_std = error_rate * nla.norm(fts_sen[..., 3:], axis=1).max()
-            fts_sen[..., :3] += fs_std * rng.standard_normal((self.frame_count, 3))
-            fts_sen[..., 3:] += ts_std * rng.standard_normal((self.frame_count, 3))
-
         # Compose frames =========================================================
         frames = []
-        data_containers = [self.file_paths, self.transform_matrices, self.poses_sen_obj, self.twists_sen, self.dtwists_sen, fts_sen]
+        data_containers = [
+            self.file_paths,
+            self.transform_matrices,
+            self.poses_sen_obj,
+            self.twists_sen,
+            self.dtwists_sen,
+            fts_sen,
+        ]
         for fpath, tf, pose, t, dt, ft in zip(*data_containers, strict=False):
             frame = {
                 "file_path": fpath,
@@ -163,7 +157,9 @@ class Simulation:
         yls = ["q0-2 [m]", "q3-5 [rad]"]
         for i in range(len(qpos_axes)):
             slcr = slice(i * 3, (i + 1) * 3)
-            vis.ax_plot_lines_w_tgt(qpos_axes[i], self.time, trajectory[:, 0, slcr], tgt_trajectory[:, 0, slcr], yls[i])
+            vis.ax_plot_lines_w_tgt(
+                qpos_axes[i], self.time, trajectory[:, 0, slcr], tgt_trajectory[:, 0, slcr], yls[i]
+            )
 
         # Object linear acceleration and ft sensor measurements rel. to {sensor}
         acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)
@@ -175,31 +171,26 @@ class Simulation:
 
         plt.show()
 
-        return {"frames": frames, "regressors":regressors, "fts_sen": fts_sen}
+        return {"frames": frames, "regressors": regressors, "fts_sen": fts_sen}
 
-
-    def process_frame(self, tgt_traj, act_traj, twists_lj_l, dtwists_lj_l):
+    def process_frame(self, tgt_traj, act_traj):
         self.time.append(self.d.time)
         self.tgt_trajectory.append(tgt_traj)
         self.act_trajectory.append(act_traj)
 
-        # Get (d)twist_sen, and linacc_sen_obj for later verification
-        pose_sen_llj = self.pose_x_sen.inv().dot(self.pose_x_ll.dot(self.pose_ll_llj))
-        twist_llj = twists_lj_l[self.id_ll]
-        twist_sen = pose_sen_llj.adjoint() @ twist_llj
-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-        dtwist_llj = dtwists_lj_l[self.id_ll]
-        pose_sen_llj_dadjoint = SE3.curlywedge(twist_sen) @ pose_sen_llj.adjoint()
-        dtwist_sen = pose_sen_llj_dadjoint @ twist_llj + pose_sen_llj.adjoint() @ dtwist_llj
-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+        # Get (d)twist_sen, and linacc_sen_obj for verification
+        twist_sen, dtwist_sen, regressor = calculate_frame_dynamics(
+            act_traj, self.inverse, self.id_ll, self.pose_x_ll, self.pose_ll_llj, self.pose_x_sen
+        )
 
-        linacc_sen_obji = dyn.extract_linacc_frame_transferred(twist_sen, dtwist_sen, self.pose_sen_obji)
+        linacc_sen_obji = dyn.get_linacc(twist_sen, dtwist_sen, self.pose_sen_obji)
         self.linaccs_sen_obji.append(linacc_sen_obji)
 
         # Get force-torque measurements
-        force = self.sensors.get("force")
-        torque = self.sensors.get("torque")
-        wrench = np.concatenate([force, torque], axis=None)
+        # force = self.sensors.get("force")
+        # torque = self.sensors.get("torque")
+        wrench = self.sensors.get("wrench")
+        # wrench = np.concatenate([force, torque], axis=None)
         self.fts_sen.append(wrench)
 
         regressor = dyn.get_regressor_matrix(twist_sen, dtwist_sen)
@@ -220,6 +211,9 @@ class Simulation:
         self.twists_sen.append(twist_sen.tolist())
         self.dtwists_sen.append(dtwist_sen.tolist())
 
-        self.recorder.recursive_eval_data["frames"][f"{self.frame_count:04}"] = {"regressor": regressor.tolist(), "ft_sen": wrench.tolist()}
+        self.recorder.recursive_eval_data["frames"][f"{self.frame_count:04}"] = {
+            "regressor": regressor.tolist(),
+            "ft_sen": wrench.tolist(),
+        }
 
         self.frame_count += 1

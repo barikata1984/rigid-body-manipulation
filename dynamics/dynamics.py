@@ -153,61 +153,6 @@ def inverse(
     return ctrl_mat.sum(axis=1), poses, twists, dtwists
 
 
-def extract_linvel_frame_transferred(
-    twist: NDArray,
-    pose: SE3,
-    homogeneous: bool = False,
-) -> NDArray:
-    """
-    Given a twist and the pose to a target coordinate frame w.r.t the reference
-    frame of the twist, extract the linear velocity whose reference framae is
-    converted to the target frame.
-
-    Refer to Chap. 8.2.1 in Modern Robotics (Lynch and Park, 2017) and check the
-    second paragraph.
-
-    Parameters
-    ----------
-    twist: NDArray
-        Twist vector
-    pose: SE3(Matrix)
-        Pose of the target coordinate frame w.r.t the reference frame of the twist
-    """
-    _linvel = SE3.wedge(twist) @ homogenize(pose.trans)
-
-    return _linvel if homogeneous else _linvel[:3]
-
-
-def extract_linacc_frame_transferred(
-    twist: NDArray,
-    dtwist: NDArray,
-    pose: SE3,
-    homogeneous: bool = False,
-) -> NDArray:
-    """
-    Given a twist, its time-derivative, and the pose to a target coordinate frame
-    w.r.t the reference frame of the twist, extract the linear acceleration whose
-    reference framae is converted to the target frame.
-
-    Refer to Chap. 8.2.1 in Modern Robotics (Lynch and Park, 2017) and check the
-    second paragraph.
-
-
-    Parameters
-    ----------
-    twist: NDArray
-        Twist vector
-    dtwist: NDArray
-        Time-derivative of the twist
-    pose: SE3(Matrix)
-        Pose of the target coordinate frame w.r.t the reference frame of the twist
-    """
-    _linvel = extract_linvel_frame_transferred(twist, pose, homogeneous=True)
-    _linacc = SE3.wedge(dtwist) @ homogenize(pose.trans) + SE3.wedge(twist) @ _linvel
-
-    return _linacc if homogeneous else _linacc[:3]
-
-
 def get_regressor_matrix(
     twist: NDArray,
     dtwist: NDArray,
@@ -260,6 +205,31 @@ def coordinate_transfer_simat(pose_target_current, simat_current):
 
 
 # NEW METHODS; USE BELOW FROM NOW ON
+def get_linvel(
+    twist: NDArray,
+    pose: SE3,
+    homogeneous: bool = False,
+) -> NDArray:
+    """
+    Given a twist and the pose to a target coordinate frame w.r.t the reference
+    frame of the twist, extract the linear velocity whose reference framae is
+    converted to the target frame.
+
+    Refer to Chap. 8.2.1 in Modern Robotics (Lynch and Park, 2017) and check the
+    second paragraph.
+
+    Parameters
+    ----------
+    twist: NDArray
+        Twist vector
+    pose: SE3(Matrix)
+        Pose of the target coordinate frame w.r.t the reference frame of the twist
+    """
+    _linvel = SE3.wedge(twist) @ homogenize(pose.trans)
+
+    return _linvel if homogeneous else _linvel[:3]
+
+
 def get_linacc(
     twist: NDArray,
     dtwist: NDArray,
@@ -284,7 +254,7 @@ def get_linacc(
     pose: SE3(Matrix)
         Pose of the target coordinate frame w.r.t the reference frame of the twist
     """
-    _linvel = extract_linvel_frame_transferred(twist, pose, homogeneous=True)
+    _linvel = get_linvel(twist, pose, homogeneous=True)
     _linacc = SE3.wedge(dtwist) @ homogenize(pose.trans) + SE3.wedge(twist) @ _linvel
 
     return _linacc if homogeneous else _linacc[:3]
@@ -350,7 +320,7 @@ def setup_robot_dynamics_parameters(
     return poses, id_ll, pose_ll_llj, uscrews_lj, simats_lj_l, hposes_lj_kj, inverse_dynamics
 
 
-def _calculate_frame_dynamics(
+def calculate_frame_dynamics(
     act_traj: NDArray,
     inverse_dynamics_partial_func,
     id_ll: int,

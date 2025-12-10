@@ -14,8 +14,6 @@ from tqdm import tqdm
 from base_config import instantiate
 from controllers import LinearQuadraticRegulatorConfig
 from dynamics.dynamics import (
-    _calculate_frame_dynamics,
-    setup_robot_dynamics_parameters,
     get_linacc,
     get_regressor_matrix,
 )
