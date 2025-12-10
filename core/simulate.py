@@ -29,7 +29,9 @@ class Simulation:
         self.recorder = recorder
         self.planner = planner
         self.controller = controller
-        self.sensors = Sensors(self.m, self.d)
+
+        self.fps = self.recorder.fps
+        self.sensors = Sensors(self.m, self.d, self.fps)
 
         (
             self.poses,
@@ -52,6 +54,30 @@ class Simulation:
         # self.pose_x_llj = pose_x_ll.dot(pose_ll_llj)  # static, should be dynamic tho
         # self.pose_sen_llj = pose_x_sen.inv().dot(pose_x_llj)  # dynamic, should be static tho
 
+        # Data buffer and storages =============================================================
+        self.qpos_err =  np.empty(m.nu)
+
+        self.qpos_errors = []
+        self.qvel_errors = []
+        self.qacc_errors = []
+
+        self.act_trajectory = []
+        self.tgt_trajectory = []
+
+        self.poses_sen_obj = []
+        self.poses_sen_obji = []
+        self.twists_sen = []
+        self.dtwists_sen = []
+        self.linaccs_sen_obji = []
+        self.fts_sen = []
+        self.regressors = []
+
+        self.frame_count = 0
+        self.frames = []
+        self.file_paths = []
+        self.time = []
+        self.transform_matrices = []
+
     def run(self):
         if not self.recorder.videowriter.isOpened():
             print("Error: VideoWriter failed to open, inside simulation.")
@@ -60,26 +86,6 @@ class Simulation:
         rng = np.random.default_rng()
         rng.standard_normal(10)
 
-        # Prepare data containers =================================================
-        qpos_error = np.empty(self.m.nu)
-        tgt_trajectory = []
-        trajectory = []
-        fts_sen = []
-        time = []
-        linacc_sen_obji = []
-        frame_count = 0
-        regressors = []
-        frames = []
-
-        file_paths = []
-        transform_matrices = []
-        poses_sen_obj = []
-        poses_sen_obji = []
-        twists_sen = []
-        dtwists_sen = []
-        linaccs_sen_obji = []
-
-        # =========================================================================
         # Main loop
         # =========================================================================
         for step in tqdm(range(self.planner.n_steps), desc="Progress"):
@@ -93,10 +99,10 @@ class Simulation:
             act_traj = np.stack((qpos, qvel, qacc))
             _, _, twists_lj_l, dtwists_lj_l = self.inverse(act_traj)
 
-            if frame_count <= self.d.time * self.recorder.fps:
-                time.append(self.d.time)
-                tgt_trajectory.append(tgt_traj)
-                trajectory.append(act_traj)
+            if self.frame_count <= self.d.time * self.recorder.fps:
+                self.time.append(self.d.time)
+                self.tgt_trajectory.append(tgt_traj)
+                self.act_trajectory.append(act_traj)
 
                 # Get (d)twist_sen, and linacc_sen_obj for later verification
                 pose_sen_llj = self.pose_x_sen.inv().dot(self.pose_x_ll.dot(self.pose_ll_llj))
@@ -109,46 +115,46 @@ class Simulation:
                 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
                 linacc_sen_obji = dyn.extract_linacc_frame_transferred(twist_sen, dtwist_sen, self.pose_sen_obji)
-                linaccs_sen_obji.append(linacc_sen_obji)
+                self.linaccs_sen_obji.append(linacc_sen_obji)
 
                 # Get force-torque measurements
                 force = self.sensors.get("force")
                 torque = self.sensors.get("torque")
                 wrench = np.concatenate([force, torque], axis=None)
-                fts_sen.append(wrench)
+                self.fts_sen.append(wrench)
 
                 regressor = dyn.get_regressor_matrix(twist_sen, dtwist_sen)
-                regressors.append(regressor)
+                self.regressors.append(regressor)
 
                 # Writing a single frame of a dataset =============================
-                file_name = f"{frame_count:04}.png"
+                file_name = f"{self.frame_count:04}.png"
                 self.recorder.render(self.d, file_name)  # recorder.cam_id is selected internally
 
                 # Log NeMD ingredients ============================================
                 # Items which need to be computed at every frame recoding
                 pose_obj_cam = self.pose_x_obj.inv().dot(self.poses.x_cam[self.recorder.cam_id])
 
-                file_paths.append(str(self.recorder.complete_image_dir / file_name))
-                transform_matrices.append(pose_obj_cam.as_matrix().tolist())
-                poses_sen_obj.append(self.pose_sen_obj.as_matrix().tolist())
-                poses_sen_obji.append(self.pose_sen_obji.as_matrix().tolist())
-                twists_sen.append(twist_sen.tolist())
-                dtwists_sen.append(dtwist_sen.tolist())
+                self.file_paths.append(str(self.recorder.complete_image_dir / file_name))
+                self.transform_matrices.append(pose_obj_cam.as_matrix().tolist())
+                self.poses_sen_obj.append(self.pose_sen_obj.as_matrix().tolist())
+                self.poses_sen_obji.append(self.pose_sen_obji.as_matrix().tolist())
+                self.twists_sen.append(twist_sen.tolist())
+                self.dtwists_sen.append(dtwist_sen.tolist())
 
-                self.recorder.recursive_eval_data["frames"][f"{frame_count:04}"] = {"regressor": regressor.tolist(), "ft_sen": wrench.tolist()}
+                self.recorder.recursive_eval_data["frames"][f"{self.frame_count:04}"] = {"regressor": regressor.tolist(), "ft_sen": wrench.tolist()}
 
-                frame_count += 1
+                self.frame_count += 1
 
             # Get residual of state
             mj_differentiatePos(  # Use this func to differenciate quat properly
                 self.m,  # MjModel
-                qpos_error,  # data container for the residual of qpos
+                self.qpos_err,  # data container for the residual of qpos
                 1,  # idx of a joint up to which qpos_error are calculated
                 tgt_traj[0],  # target qpos or next qpos to calkculate dqvel
                 qpos,  # current qpos
             )
 
-            res_state = np.concatenate((qpos_error, qvel - tgt_traj[1]))
+            res_state = np.concatenate((self.qpos_err, qvel - tgt_traj[1]))
             # Compute and set control, or actuator inputs
             self.d.ctrl = tgt_ctrl - self.controller.gain_matrix @ res_state
 
@@ -156,11 +162,11 @@ class Simulation:
 
         # Post process data =======================================================
         # Cast data into ndarrays for concise conslicing
-        tgt_trajectory = np.array(tgt_trajectory)
-        trajectory = np.array(trajectory)
-        frame_iter = np.arange(frame_count)
-        fts_sen = np.array(fts_sen)
-        regressors = np.array(regressors)
+        tgt_trajectory = np.array(self.tgt_trajectory)
+        trajectory = np.array(self.act_trajectory)
+        frame_iter = np.arange(self.frame_count)
+        fts_sen = np.array(self.fts_sen)
+        regressors = np.array(self.regressors)
 
         # Perturb wrench ==========================================================
         error_rate = 0.05
@@ -171,12 +177,12 @@ class Simulation:
         if perturb_wrench:
             fs_std = error_rate * nla.norm(fts_sen[..., :3], axis=1).max()
             ts_std = error_rate * nla.norm(fts_sen[..., 3:], axis=1).max()
-            fts_sen[..., :3] += fs_std * rng.standard_normal((frame_count, 3))
-            fts_sen[..., 3:] += ts_std * rng.standard_normal((frame_count, 3))
+            fts_sen[..., :3] += fs_std * rng.standard_normal((self.frame_count, 3))
+            fts_sen[..., 3:] += ts_std * rng.standard_normal((self.frame_count, 3))
 
         # Compose frames =========================================================
         frames = []
-        data_containers = [file_paths, transform_matrices, poses_sen_obj, twists_sen, dtwists_sen, fts_sen]
+        data_containers = [self.file_paths, self.transform_matrices, self.poses_sen_obj, self.twists_sen, self.dtwists_sen, fts_sen]
         for fpath, tf, pose, t, dt, ft in zip(*data_containers, strict=False):
             frame = {
                 "file_path": fpath,
@@ -184,7 +190,7 @@ class Simulation:
                 "pose_sen_obj": pose,
                 "twist_sen": t,
                 "dtwist_sen": dt,
-                    "ft_sen": ft.tolist(),
+                "ft_sen": ft.tolist(),
             }
 
             frames.append(frame)
@@ -198,11 +204,11 @@ class Simulation:
         yls = ["q0-2 [m]", "q3-5 [rad]"]
         for i in range(len(qpos_axes)):
             slcr = slice(i * 3, (i + 1) * 3)
-            vis.ax_plot_lines_w_tgt(qpos_axes[i], time, trajectory[:, 0, slcr], tgt_trajectory[:, 0, slcr], yls[i])
+            vis.ax_plot_lines_w_tgt(qpos_axes[i], self.time, trajectory[:, 0, slcr], tgt_trajectory[:, 0, slcr], yls[i])
 
         # Object linear acceleration and ft sensor measurements rel. to {sensor}
         acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)
-        vis.ax_plot_lines(acc_ft_axes[0], frame_iter, linaccs_sen_obji, "recovered_linacc_sen_obji [m/s/s]")
+        vis.ax_plot_lines(acc_ft_axes[0], frame_iter, self.linaccs_sen_obji, "recovered_linacc_sen_obji [m/s/s]")
         vis.ax_plot_lines(acc_ft_axes[1], frame_iter, fts_sen[:, :3], "frc_sen [N]")
         vis.ax_plot_lines(acc_ft_axes[2], frame_iter, fts_sen[:, 3:], "trq_sen [N*m]")
         for ax in acc_ft_axes:
