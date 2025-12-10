@@ -1,5 +1,3 @@
-from functools import partial
-
 import matplotlib as mpl
 import numpy as np
 from liegroups import SE3
@@ -13,8 +11,6 @@ import dynamics as dyn
 import visualization_ as vis
 from dynamics import setup_robot_dynamics_parameters
 from sensors import Sensors
-from transformations import Poses
-from utilities import get_element_id
 
 
 # Remove redundant space at the head and tail of the horizontal axis's scale
@@ -45,79 +41,20 @@ class Simulation:
             self.inverse,
         ) = setup_robot_dynamics_parameters(self.m, self.d)
 
+        self.pose_obj_obji = self.poses.get_b_biof("target/object")
+        self.pose_x_obj = self.poses.get_x_("body", "target/object")
+        self.pose_x_obji = self.pose_x_obj.dot(self.pose_obj_obji)
+        self.pose_x_ll = self.poses.x_b[self.id_ll]  # dynamic
+        self.pose_x_sen = self.poses.get_x_("site", "target/ft_sensor")
+        self.pose_sen_obj = self.pose_x_sen.inv().dot(self.pose_x_obj)
+        self.pose_sen_obji = self.pose_x_sen.inv().dot(self.pose_x_obji)
+        # NOTE: Variables below should be declared not here but whenever necessary.
+        # self.pose_x_llj = pose_x_ll.dot(pose_ll_llj)  # static, should be dynamic tho
+        # self.pose_sen_llj = pose_x_sen.inv().dot(pose_x_llj)  # dynamic, should be static tho
 
     def run(self):
         if not self.recorder.videowriter.isOpened():
             print("Error: VideoWriter failed to open, inside simulation.")
-
-        # Instantiate register classes ================================================
-
-        # Get ids and indices for the sake of convenience =============================
-        id_x2ll = slice(0, self.id_ll + 1)
-
-        # Join the spatial inertia matrices of bodies later than the last link into the
-        # spatial inertia matrix of the link so that dyn.inverse() can consider the
-        # bodies' inertia =============================================================
-        pose_x_obj = self.poses.get_x_("body", "target/object")
-        pose_obj_obji = self.poses.get_b_biof("target/object")
-        pose_x_obji = pose_x_obj.dot(pose_obj_obji)
-        # FT sensor pose rel. to the object
-        pose_x_sen = self.poses.get_x_("site", "target/ft_sensor")
-        pose_sen_obj = pose_x_sen.inv().dot(pose_x_obj)
-        pose_sen_obji = pose_x_sen.inv().dot(pose_x_obji)
-        pose_x_ll = self.poses.x_b[self.id_ll]  # dynamic
-        # NOTE: Variables below should be declared not here but whenever neccessary.
-        # pose_x_llj = pose_x_ll.dot(pose_ll_llj)  # static, should be dynamic tho
-        # pose_sen_llj = pose_x_sen.inv().dot(pose_x_llj)  # dynamic, should be static tho
-
-
-        # Transfer the reference frame where each link's spatial inertia matrix is de-
-        # fined from the body principal frame to the joint frame ======================
-        # 下のメソッドが出力するのはボディの慣性座標系で記述された空間慣性テンソル
-        simats_bi_b = dyn.get_spatial_inertia_matrix(
-            self.m.body_mass,
-            self.m.body_inertia,
-        )
-
-        simats_lj_l = []
-        for pose_lj_li, simat_li_l in zip(self.poses.lj_li, simats_bi_b[id_x2ll], strict=False):  # x~last
-            simats_lj_l.append(dyn.transfer_simat(pose_lj_li, simat_li_l))
-
-        simats_lj_l = np.array(simats_lj_l)
-
-        # Join the spatial inertia matrices of the bodies later than the last link to
-        # its spatial inertia matrix so that dyn.inverse() can consider the bodies'
-        # inertia =====================================================================
-
-        simat_sen_obj = np.zeros((6, 6))
-
-        for pose_x_bi, simat_bi_b in zip(self.poses.x_bi[self.id_ll + 1 :], simats_bi_b[self.id_ll + 1 :], strict=False):
-            # "b" here is ∈ {attachment, object}
-            pose_x_llj = pose_x_ll.dot(self.pose_ll_llj)
-            pose_bi_llj = pose_x_bi.inv().dot(pose_x_llj)
-            simat_llj_b = dyn.transfer_simat(pose_bi_llj.inv(), simat_bi_b)
-            simat_sen_obj += simat_llj_b
-            simats_lj_l[self.id_ll] += simat_llj_b
-
-        # Get link joints' home poses wr2 their parents' joint frame ==================
-        hposes_lj_kj = [SE3.identity()]  # for worldbody
-        for k in range(self.m.njnt):
-            hpose_kj_k = self.poses.l_lj[k].inv()
-            hpose_l_lj = self.poses.l_lj[k + 1]
-            hpose_k_l = self.poses.a_b[k + 1]
-            hpose_kj_lj = hpose_kj_k.dot(hpose_k_l.dot(hpose_l_lj))
-            hposes_lj_kj.append(hpose_kj_lj.inv())
-
-        # Set some arguments of dyn.inverse() which dose not evolve along time ========
-        gacc_x = -1 * np.array([*MjOption().gravity, 0, 0, 0])
-        inverse = partial(
-            dyn.inverse,
-            hposes_body_parent=hposes_lj_kj,
-            simats_body=simats_lj_l,
-            uscrews_body=self.uscrews_lj,
-            twist_0=np.zeros(6),
-            dtwist_0=gacc_x,
-        )
 
         # Set a random number generator ===========================================
         rng = np.random.default_rng()
@@ -148,13 +85,13 @@ class Simulation:
         for step in tqdm(range(self.planner.n_steps), desc="Progress"):
             # Compute actuator controls and evolute the simulatoin
             tgt_traj = self.planner.plan(step)
-            tgt_ctrl, _, _, _ = inverse(tgt_traj)
+            tgt_ctrl, _, _, _ = self.inverse(tgt_traj)
 
             # Get current sensor measurements of joint variables by calling d.q***
             qpos, qvel, qacc = self.d.qpos, self.d.qvel, self.d.qacc
 
             act_traj = np.stack((qpos, qvel, qacc))
-            _, _, twists_lj_l, dtwists_lj_l = inverse(act_traj)
+            _, _, twists_lj_l, dtwists_lj_l = self.inverse(act_traj)
 
             if frame_count <= self.d.time * self.recorder.fps:
                 time.append(self.d.time)
@@ -162,7 +99,7 @@ class Simulation:
                 trajectory.append(act_traj)
 
                 # Get (d)twist_sen, and linacc_sen_obj for later verification
-                pose_sen_llj = pose_x_sen.inv().dot(pose_x_ll.dot(self.pose_ll_llj))
+                pose_sen_llj = self.pose_x_sen.inv().dot(self.pose_x_ll.dot(self.pose_ll_llj))
                 twist_llj = twists_lj_l[self.id_ll]
                 twist_sen = pose_sen_llj.adjoint() @ twist_llj
                 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -171,7 +108,7 @@ class Simulation:
                 dtwist_sen = pose_sen_llj_dadjoint @ twist_llj + pose_sen_llj.adjoint() @ dtwist_llj
                 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-                linacc_sen_obji = dyn.extract_linacc_frame_transferred(twist_sen, dtwist_sen, pose_sen_obji)
+                linacc_sen_obji = dyn.extract_linacc_frame_transferred(twist_sen, dtwist_sen, self.pose_sen_obji)
                 linaccs_sen_obji.append(linacc_sen_obji)
 
                 # Get force-torque measurements
@@ -189,12 +126,12 @@ class Simulation:
 
                 # Log NeMD ingredients ============================================
                 # Items which need to be computed at every frame recoding
-                pose_obj_cam = pose_x_obj.inv().dot(self.poses.x_cam[self.recorder.cam_id])
+                pose_obj_cam = self.pose_x_obj.inv().dot(self.poses.x_cam[self.recorder.cam_id])
 
                 file_paths.append(str(self.recorder.complete_image_dir / file_name))
                 transform_matrices.append(pose_obj_cam.as_matrix().tolist())
-                poses_sen_obj.append(pose_sen_obj.as_matrix().tolist())
-                poses_sen_obji.append(pose_sen_obji.as_matrix().tolist())
+                poses_sen_obj.append(self.pose_sen_obj.as_matrix().tolist())
+                poses_sen_obji.append(self.pose_sen_obji.as_matrix().tolist())
                 twists_sen.append(twist_sen.tolist())
                 dtwists_sen.append(dtwist_sen.tolist())
 
