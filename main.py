@@ -8,7 +8,7 @@ from numpy.linalg import lstsq, norm
 from omegaconf import OmegaConf
 from omegaconf.errors import MissingMandatoryValue
 
-from core import autoinstantiate, generate_model_data, get_element_id, simulate
+from core import Simulation, autoinstantiate, generate_model_data, get_element_id
 from omegaconf_custom_resolvers import pi_converter
 from regressions import total_lstsq
 from simulators import SimulatorConfig
@@ -70,7 +70,9 @@ def main():
     if not recorder.videowriter.isOpened():
         print("Error: VideoWriter failed to open, outside simulation")
 
-    result = simulate(m, d, recorder, planner, controller)  # main process
+    simulation = Simulation(m, d, recorder, planner, controller)
+
+    result = simulation.run()
 
     # Show inertial params identified with the least squares method
     gt_total_mass = gt["mass"]
@@ -92,9 +94,6 @@ def main():
         index=["gt_iparams", "ls_iparams", "tls_iparams"],
     )
 
-    import pdb
-    pdb.set_trace()
-    
     print("\nLeast Squares Results DataFrame:")
     print(df)
 
