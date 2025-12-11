@@ -145,8 +145,8 @@ if __name__ == "__main__":
         print(f"Loaded {len(frames)} frames from {json_path}")
 
         # 推定器の初期化
-        estimator_rtls = InertialParameterEstimatorNP(method='rtls')
-        estimator_rls = InertialParameterEstimatorNP(method='rls') # 比較用
+        estimator_rtls = InertialParameterEstimatorNP(method="rtls")
+        estimator_rls = InertialParameterEstimatorNP(method="rls") # 比較用
 
         # オンライン推定ループ
         print("\n--- Starting Online Estimation ---")
