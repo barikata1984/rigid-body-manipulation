@@ -3,18 +3,20 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 
+from base_trajectory import BaseTrajectory
 
-class QuinticSplineTrajectory:
+
+class QuinticSplineTrajectory(BaseTrajectory):
     """Generates a quintic (5th-order) polynomial trajectory for multiple joints.
     Ensures continuous position, velocity, and acceleration.
     """
 
     def __init__(
         self,
+        duration: float,
+        fps: float,
         start_pos: list[float],
         end_pos: list[float],
-        duration: float,
-        frequency: float,
         start_vel: list[float] | None = None,
         end_vel: list[float] | None = None,
         start_acc: list[float] | None = None,
@@ -33,10 +35,10 @@ class QuinticSplineTrajectory:
             end_acc: (Optional) List of end accelerations. Defaults to 0.
 
         """
+        super().__init__(duration, fps)
+
         self.start_pos = np.array(start_pos)
         self.end_pos = np.array(end_pos)
-        self.duration = duration
-        self.frequency = frequency
         self.num_joints = len(start_pos)
 
         if len(end_pos) != self.num_joints:
@@ -47,8 +49,8 @@ class QuinticSplineTrajectory:
         self.start_acc = np.array(start_acc) if start_acc is not None else np.zeros(self.num_joints)
         self.end_acc = np.array(end_acc) if end_acc is not None else np.zeros(self.num_joints)
 
-        self.time_steps = int(duration * frequency)
-        self.time_array = np.linspace(0, duration, self.time_steps)
+        self.time_steps = int(self.duration* self.fps)
+        self.time_array = np.linspace(0, self.duration, self.time_steps)
 
         # Pre-calculate coefficients
         self.coeffs = self._calculate_coefficients()
@@ -124,9 +126,9 @@ class QuinticSplineTrajectory:
             time_array: (num_steps,)
 
         """
-        positions = np.zeros((self.time_steps, self.num_joints))
-        velocities = np.zeros((self.time_steps, self.num_joints))
-        accelerations = np.zeros((self.time_steps, self.num_joints))
+        pos = np.zeros((self.time_steps, self.num_joints))
+        vel = np.zeros((self.time_steps, self.num_joints))
+        acc = np.zeros((self.time_steps, self.num_joints))
 
         for t_idx, t in enumerate(self.time_array):
             t2 = t * t
@@ -137,71 +139,14 @@ class QuinticSplineTrajectory:
             for j in range(self.num_joints):
                 a0, a1, a2, a3, a4, a5 = self.coeffs[j]
 
-                positions[t_idx, j] = a0 + a1 * t + a2 * t2 + a3 * t3 + a4 * t4 + a5 * t5
-                velocities[t_idx, j] = a1 + 2 * a2 * t + 3 * a3 * t2 + 4 * a4 * t3 + 5 * a5 * t4
-                accelerations[t_idx, j] = 2 * a2 + 6 * a3 * t + 12 * a4 * t2 + 20 * a5 * t3
+                pos[t_idx, j] = a0 + a1 * t + a2 * t2 + a3 * t3 + a4 * t4 + a5 * t5
+                vel[t_idx, j] = a1 + 2 * a2 * t + 3 * a3 * t2 + 4 * a4 * t3 + 5 * a5 * t4
+                acc[t_idx, j] = 2 * a2 + 6 * a3 * t + 12 * a4 * t2 + 20 * a5 * t3
 
-        return positions, velocities, accelerations, self.time_array
-
-    def save_to_json(self, filename: str) -> None:
-        """Saves the trajectory to a JSON file.
-
-        Args:
-            filename: The path to the JSON file.
-        """
-        pos, vel, acc, time = self.generate()
-
-        data = {
-            "duration": self.duration,
-            "frequency": self.frequency,
-            "num_joints": self.num_joints,
-            "time": time.tolist(),
-            "positions": pos.tolist(),
-            "velocities": vel.tolist(),
-            "accelerations": acc.tolist(),
-        }
-
-        with open(filename, "w") as f:
-            json.dump(data, f, indent=4)
-        print(f"Trajectory saved to {filename}")
-
-    def plot(self, show: bool = True, save_path: str | None = None):
-        """Visualizes the trajectory."""
-        pos, vel, acc, time = self.generate()
-
-        fig, axes = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
-
-        # Plot Positions
-        for j in range(self.num_joints):
-            axes[0].plot(time, pos[:, j], label=f"Joint {j + 1}")
-        axes[0].set_ylabel("Position [rad]")
-        axes[0].set_title("Joint Positions")
-        axes[0].legend()
-        axes[0].grid(True)
-
-        # Plot Velocities
-        for j in range(self.num_joints):
-            axes[1].plot(time, vel[:, j], label=f"Joint {j + 1}")
-        axes[1].set_ylabel("Velocity [rad/s]")
-        axes[1].set_title("Joint Velocities")
-        axes[1].grid(True)
-
-        # Plot Accelerations
-        for j in range(self.num_joints):
-            axes[2].plot(time, acc[:, j], label=f"Joint {j + 1}")
-        axes[2].set_ylabel("Acceleration [rad/s^2]")
-        axes[2].set_title("Joint Accelerations")
-        axes[2].set_xlabel("Time [s]")
-        axes[2].grid(True)
-
-        plt.tight_layout()
-
-        if save_path:
-            plt.savefig(save_path)
-            print(f"Plot saved to {save_path}")
-
-        if show:
-            plt.show()
+        self.save_to_json(pos, vel, acc, self.time_array, "test.json")
+        self.plot(pos, vel, acc, self.time_array)
+        
+        return pos, vel, acc, self.time_array
 
 
 if __name__ == "__main__":
@@ -209,12 +154,7 @@ if __name__ == "__main__":
     start_q = [0.0, 0.0, 0.0]
     end_q = [1.0, -0.5, 2.0]
     duration = 2.0
-    freq = 100.0
+    fps = 100.0
 
-    traj = QuinticSplineTrajectory(start_q, end_q, duration, freq)
-
-    # Save to JSON
-    output_path = "configurations/trajectories/spline_trajectory.json"
-    traj.save_to_json(output_path)
-
-    traj.plot()
+    traj = QuinticSplineTrajectory(duration, fps, start_q, end_q)
+    traj.generate()
