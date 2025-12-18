@@ -2,48 +2,60 @@ import json
 from abc import ABC, abstractmethod
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 # 抽象クラスの定義
 class BaseTrajectory(ABC):
-
     def __init__(self, duration: float, fps: float):
         self.duration = duration
         self.fps = fps
-    
+
+        self.time_steps = int(self.duration * self.fps)
+        self.time_array = np.linspace(0, self.duration, self.time_steps)
+
     @abstractmethod
-    def generate(self):
+    def generate(self, show_plot: bool = False, plot_path: str | None = None, json_path: str | None = None):
         """To be implemented in each child class"""
         pass
 
-    def save_to_json(self, pos, vel, acc, time, filename: str) -> None:
-        """Saves the trajectory to a JSON file.
-
-        Args:
-            filename: The path to the JSON file.
+    def _write_to_json(self, pos, vel, acc, json_path="spline_trajectory.json"):
         """
-        data = {
-            "duration": self.duration,
-            "fps": self.fps,
-            "time": time.tolist(),
-            "pos": pos.tolist(),
-            "vel": vel.tolist(),
-            "acc": acc.tolist(),
+        Save the trajectory to a JSON file.
+        Structure:
+        {
+            "duration": float,
+            "fps": float,
+            "frames": [
+                {
+                    "qpos": [float, ...],
+                    "qvel": [float, ...],
+                    "qacc": [float, ...]
+                },
+                ...
+            ]
         }
+        """
+        frames = []
+        for i in range(len(self.time_array)):
+            frame = {"qpos": pos[i].tolist(), "qvel": vel[i].tolist(), "qacc": acc[i].tolist()}
+            frames.append(frame)
 
-        with open(filename, "w") as f:
+        data = {"duration": self.duration, "fps": self.fps, "frames": frames}
+
+        with open(json_path, "w") as f:
             json.dump(data, f, indent=4)
-        print(f"Trajectory saved to {filename}")
 
+        print(f"Trajectory JSON saved to {json_path}")
 
-    def plot(self, pos, vel, acc, time, show: bool = True, filename: str | None = None):
-        """Visualizes the trajectory."""
+    def _plot(self, pos, vel, acc, show: bool = False, plot_path: str | None = None):
+        """Plot the trajectory."""
 
         fig, axes = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
 
         # Plot Positions
         for j in range(self.num_joints):
-            axes[0].plot(time, pos[:, j], label=f"Joint {j + 1}")
+            axes[0].plot(self.time_array, pos[:, j], label=f"Joint {j + 1}")
         axes[0].set_ylabel("Position [rad]")
         axes[0].set_title("Joint Positions")
         axes[0].legend()
@@ -51,14 +63,14 @@ class BaseTrajectory(ABC):
 
         # Plot Velocities
         for j in range(self.num_joints):
-            axes[1].plot(time, vel[:, j], label=f"Joint {j + 1}")
+            axes[1].plot(self.time_array, vel[:, j], label=f"Joint {j + 1}")
         axes[1].set_ylabel("Velocity [rad/s]")
         axes[1].set_title("Joint Velocities")
         axes[1].grid(True)
 
         # Plot Accelerations
         for j in range(self.num_joints):
-            axes[2].plot(time, acc[:, j], label=f"Joint {j + 1}")
+            axes[2].plot(self.time_array, acc[:, j], label=f"Joint {j + 1}")
         axes[2].set_ylabel("Acceleration [rad/s^2]")
         axes[2].set_title("Joint Accelerations")
         axes[2].set_xlabel("Time [s]")
@@ -66,9 +78,9 @@ class BaseTrajectory(ABC):
 
         plt.tight_layout()
 
-        if filename:
-            plt.savefig(filename)
-            print(f"Plot saved to {filename}")
+        if plot_path:
+            plt.savefig(plot_path)
+            print(f"Plot saved to {plot_path}")
 
         if show:
             plt.show()

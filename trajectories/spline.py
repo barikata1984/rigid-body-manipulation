@@ -1,8 +1,4 @@
-import json
-
-import matplotlib.pyplot as plt
 import numpy as np
-
 from base_trajectory import BaseTrajectory
 
 
@@ -49,7 +45,7 @@ class QuinticSplineTrajectory(BaseTrajectory):
         self.start_acc = np.array(start_acc) if start_acc is not None else np.zeros(self.num_joints)
         self.end_acc = np.array(end_acc) if end_acc is not None else np.zeros(self.num_joints)
 
-        self.time_steps = int(self.duration* self.fps)
+        self.time_steps = int(self.duration * self.fps)
         self.time_array = np.linspace(0, self.duration, self.time_steps)
 
         # Pre-calculate coefficients
@@ -116,7 +112,7 @@ class QuinticSplineTrajectory(BaseTrajectory):
 
         return coeffs
 
-    def generate(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def generate(self, show_plot: bool = False, plot_path: str | None = None, json_path: str | None = None):
         """Generates the trajectory.
 
         Returns:
@@ -143,9 +139,11 @@ class QuinticSplineTrajectory(BaseTrajectory):
                 vel[t_idx, j] = a1 + 2 * a2 * t + 3 * a3 * t2 + 4 * a4 * t3 + 5 * a5 * t4
                 acc[t_idx, j] = 2 * a2 + 6 * a3 * t + 12 * a4 * t2 + 20 * a5 * t3
 
-        self.save_to_json(pos, vel, acc, self.time_array, "test.json")
-        self.plot(pos, vel, acc, self.time_array)
-        
+        self._plot(pos, vel, acc, show=show_plot, plot_path=plot_path)
+
+        if json_path is not None:
+            self._write_to_json(pos, vel, acc, json_path)
+
         return pos, vel, acc, self.time_array
 
 
@@ -157,4 +155,4 @@ if __name__ == "__main__":
     fps = 100.0
 
     traj = QuinticSplineTrajectory(duration, fps, start_q, end_q)
-    traj.generate()
+    traj.generate(show_plot=True, plot_path="test.png", json_path="test.json")
