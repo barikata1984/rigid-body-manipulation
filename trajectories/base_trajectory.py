@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.axes import Axes
 
 
 # 抽象クラスの定義
@@ -84,3 +85,12 @@ class BaseTrajectory(ABC):
 
         if show:
             plt.show()
+
+    def _plot_single_ax(self, ax: Axes, data: np.ndarray, title: str, xlabel: str, ylabel: str):
+        # Plot Accelerations
+        for j in range(self.num_joints):
+            ax.plot(self.time_array, data[:, j], label=f"Joint {j + 1}")
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.set_title(title)
+        ax.grid(True)

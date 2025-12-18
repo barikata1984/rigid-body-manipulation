@@ -52,11 +52,6 @@ class ExcitationTrajectory(BaseTrajectory):
         # [a_flat, b_flat, q0]
         x0 = np.concatenate([self.a.flatten(), self.b.flatten(), self.q0])
 
-        # Pre-compute time steps for optimization (one full period is sufficient for condition number usually)
-        # Or use self.duration
-        dt = 1.0 / self.fps
-        t_eval = np.arange(0, self.duration, dt)
-
         def objective(x):
             # Unpack
             split1 = self.dof * self.num_harmonics

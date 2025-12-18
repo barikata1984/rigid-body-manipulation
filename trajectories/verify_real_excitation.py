@@ -81,7 +81,9 @@ def main():
     # 6. Run Optimization using BFGS
     print("Running Optimization (this uses REAL dynamics)...")
     # Increase iterations to allow convergence to a non-trivial shape
-    exc.generate()  # max_iter=10) # 10 iterations should be enough to show shape change
+    exc.generate(
+        show_plot=True, plot_path="real_excitation_verification.png", json_path="real_excitation_verification.json"
+    )  # max_iter=10) # 10 iterations should be enough to show shape change
 
     # Check optimization result
     coeffs = exc.get_coefficients()
