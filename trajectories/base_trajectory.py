@@ -16,11 +16,11 @@ class BaseTrajectory(ABC):
         self.time_array = np.linspace(0, self.duration, self.time_steps)
 
     @abstractmethod
-    def generate(self, show_plot: bool = False, plot_path: str | None = None, json_path: str | None = None):
+    def generate(self, *args, **kwargs):
         """To be implemented in each child class"""
         pass
 
-    def _write_to_json(self, pos, vel, acc, json_path="spline_trajectory.json"):
+    def write_to_json(self, pos, vel, acc, json_path="spline_trajectory.json"):
         """
         Save the trajectory to a JSON file.
         Structure:
@@ -49,33 +49,14 @@ class BaseTrajectory(ABC):
 
         print(f"Trajectory JSON saved to {json_path}")
 
-    def _plot(self, pos, vel, acc, show: bool = False, plot_path: str | None = None):
+    def plot(self, pos, vel, acc, show: bool = False, plot_path: str | None = None):
         """Plot the trajectory."""
 
         fig, axes = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
 
-        # Plot Positions
-        for j in range(self.num_joints):
-            axes[0].plot(self.time_array, pos[:, j], label=f"Joint {j + 1}")
-        axes[0].set_ylabel("Position [rad]")
-        axes[0].set_title("Joint Positions")
-        axes[0].legend()
-        axes[0].grid(True)
-
-        # Plot Velocities
-        for j in range(self.num_joints):
-            axes[1].plot(self.time_array, vel[:, j], label=f"Joint {j + 1}")
-        axes[1].set_ylabel("Velocity [rad/s]")
-        axes[1].set_title("Joint Velocities")
-        axes[1].grid(True)
-
-        # Plot Accelerations
-        for j in range(self.num_joints):
-            axes[2].plot(self.time_array, acc[:, j], label=f"Joint {j + 1}")
-        axes[2].set_ylabel("Acceleration [rad/s^2]")
-        axes[2].set_title("Joint Accelerations")
-        axes[2].set_xlabel("Time [s]")
-        axes[2].grid(True)
+        self._plot_single_ax(axes[0], pos, "Joint Positions", "Time [s]", "Position [rad]")
+        self._plot_single_ax(axes[1], vel, "Joint Velocities", "Time [s]", "Velocity [rad/s]")
+        self._plot_single_ax(axes[2], acc, "Joint Accelerations", "Time [s]", "Acceleration [rad/s^2]")
 
         plt.tight_layout()
 
@@ -88,8 +69,9 @@ class BaseTrajectory(ABC):
 
     def _plot_single_ax(self, ax: Axes, data: np.ndarray, title: str, xlabel: str, ylabel: str):
         # Plot Accelerations
-        for j in range(self.num_joints):
-            ax.plot(self.time_array, data[:, j], label=f"Joint {j + 1}")
+        for j, d in enumerate(data.T):
+            ax.plot(self.time_array, d, label=f"Joint {j + 1}")
+
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         ax.set_title(title)

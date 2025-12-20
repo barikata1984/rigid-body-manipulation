@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 import numpy as np
 from scipy.optimize import minimize
 
@@ -6,7 +8,7 @@ from trajectories.fourier import FourierTrajectory
 
 
 class ExcitationTrajectory(BaseTrajectory):
-    def __init__(self, duration: float, fps: int, dof: int, num_harmonics, base_frequency, kinematics_func=None):
+    def __init__(self, duration: float, fps: int, num_joints: int, num_harmonics, base_freq: float, kinematics_func: Callable | None = None):
         """
         Excitation Trajectory Generator using Finite Fourier Series Optimization.
 
@@ -21,10 +23,9 @@ class ExcitationTrajectory(BaseTrajectory):
         """
         super().__init__(duration, fps)
 
-        self.dof = dof
-        self.num_joints = dof
+        self.num_joints = num_joints
         self.num_harmonics = num_harmonics
-        self.base_frequency = base_frequency
+        self.base_freq = base_freq
 
         self.kinematics_func = kinematics_func
 
@@ -35,9 +36,9 @@ class ExcitationTrajectory(BaseTrajectory):
         # Using random to avoid stuck at zero gradient if initial guess matters
         # Flat vector size: dof * num_harmonics * 2 (a and b) + dof (q0) -> actually q0 often can be 0 or mid range
         # Let's keep separate storage for convenience, but for optimize we flatten.
-        self.a = np.random.uniform(-0.1, 0.1, (dof, num_harmonics))
-        self.b = np.random.uniform(-0.1, 0.1, (dof, num_harmonics))
-        self.q0 = np.zeros(dof)
+        self.a = np.random.uniform(-0.1, 0.1, (num_joints, num_harmonics))
+        self.b = np.random.uniform(-0.1, 0.1, (num_joints, num_harmonics))
+        self.q0 = np.zeros(num_joints)
 
     def _optimize(self, max_iter=100):
         """
@@ -46,7 +47,7 @@ class ExcitationTrajectory(BaseTrajectory):
         if self.kinematics_func is None:
             raise ValueError("kinematics_func must be provided for optimization.")
 
-        print(f"Starting optimization (dof={self.dof}, N={self.num_harmonics}, f={self.base_frequency})...")
+        print(f"Starting optimization (num_joints={self.num_joints}, num_harmonics={self.num_harmonics}, base_freq={self.base_freq})...")
 
         # Initial guess (flattened)
         # [a_flat, b_flat, q0]
@@ -54,24 +55,24 @@ class ExcitationTrajectory(BaseTrajectory):
 
         def objective(x):
             # Unpack
-            split1 = self.dof * self.num_harmonics
+            split1 = self.num_joints * self.num_harmonics
             split2 = split1 * 2
 
             a_flat = x[:split1]
             b_flat = x[split1:split2]
             q0_flat = x[split2:]
 
-            a = a_flat.reshape(self.dof, self.num_harmonics)
-            b = b_flat.reshape(self.dof, self.num_harmonics)
+            a = a_flat.reshape(self.num_joints, self.num_harmonics)
+            b = b_flat.reshape(self.num_joints, self.num_harmonics)
             q0 = q0_flat  # size dof
 
             # Create Trajectory Model
             coeffs = {"a": a, "b": b, "q0": q0}
-            traj = FourierTrajectory(self.dof, self.num_harmonics, self.base_frequency, coeffs)
+            traj = FourierTrajectory(self.duration, self.fps, self.num_joints, self.num_harmonics, self.base_freq, coeffs)
 
             # Generate (q, dq, ddq) for all t
             # Vectorized get_value is efficient
-            q, dq, ddq = traj.get_value(self.time_array)
+            q, dq, ddq = traj.get_value()
 
             # Compute Regressor Stack
             # We need to iterate because kinematics_func (calculate_frame_dynamics wrappers) usually expect single time step or act differently
@@ -113,11 +114,11 @@ class ExcitationTrajectory(BaseTrajectory):
 
         # Update coefficients
         x_opt = res.x
-        split1 = self.dof * self.num_harmonics
+        split1 = self.num_joints * self.num_harmonics
         split2 = split1 * 2
 
-        self.a = x_opt[:split1].reshape(self.dof, self.num_harmonics)
-        self.b = x_opt[split1:split2].reshape(self.dof, self.num_harmonics)
+        self.a = x_opt[:split1].reshape(self.num_joints, self.num_harmonics)
+        self.b = x_opt[split1:split2].reshape(self.num_joints, self.num_harmonics)
         self.q0 = x_opt[split2:]
 
         self._is_optimized = True
@@ -137,23 +138,16 @@ class ExcitationTrajectory(BaseTrajectory):
                 print("Warning: generating without optimization (kinematics_func missing).")
 
         coeffs = {"a": self.a, "b": self.b, "q0": self.q0}
-        traj = FourierTrajectory(self.dof, self.num_harmonics, self.base_frequency, coeffs)
+        traj = FourierTrajectory(self.duration, self.fps, self.num_joints, self.num_harmonics, self.base_freq, coeffs)
 
-        # Calculate dt locally
-        dt = 1.0 / self.fps
-        # generate() in FourierTrajectory likely expects dt.
-        # But wait, looking at user code (Step 176): traj.generate(self.duration, self.dt) gave t, pos, vel, acc.
-        # So we can use that if we have dt.
-        # But BaseTrajectory has self.time_array.
-        # If FourierTrajectory.generate returns t, pos, vel, acc, we can use that.
-        t, pos, vel, acc = traj.generate(self.duration, dt)
+        pos, vel, acc = traj.generate()
 
-        self._plot(pos, vel, acc, show=show_plot, plot_path=plot_path)
+        self.plot(pos, vel, acc, show=show_plot, plot_path=plot_path)
 
         if json_path is not None:
-            self._write_to_json(pos, vel, acc, json_path)
+            self.write_to_json(pos, vel, acc, json_path)
 
-        return pos, vel, acc, t
+        return pos, vel, acc
 
     def get_coefficients(self):
         return {"a": self.a, "b": self.b, "q0": self.q0}

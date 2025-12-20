@@ -71,9 +71,9 @@ def main():
     print("Initializing ExcitationTrajectory...")
     exc = ExcitationTrajectory(
         duration=2.0,
-        dof=dof,
+        num_joints=dof,
         num_harmonics=5,  # Keep complexity
-        base_frequency=1,  # Higher freq -> shorter duration (5s)
+        base_freq=1,  # Higher freq -> shorter duration (5s)
         fps=60,  # Coarser time step for speed (125 steps vs 1000)
         kinematics_func=kinematics_func,
     )

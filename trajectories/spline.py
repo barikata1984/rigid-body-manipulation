@@ -139,12 +139,12 @@ class QuinticSplineTrajectory(BaseTrajectory):
                 vel[t_idx, j] = a1 + 2 * a2 * t + 3 * a3 * t2 + 4 * a4 * t3 + 5 * a5 * t4
                 acc[t_idx, j] = 2 * a2 + 6 * a3 * t + 12 * a4 * t2 + 20 * a5 * t3
 
-        self._plot(pos, vel, acc, show=show_plot, plot_path=plot_path)
+        self.plot(pos, vel, acc, show=show_plot, plot_path=plot_path)
 
         if json_path is not None:
-            self._write_to_json(pos, vel, acc, json_path)
+            self.write_to_json(pos, vel, acc, json_path)
 
-        return pos, vel, acc, self.time_array
+        return pos, vel, acc
 
 
 if __name__ == "__main__":
