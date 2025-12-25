@@ -133,7 +133,7 @@ class FourierTrajectory(BaseTrajectory):
              
         pos, vel, acc = self.get_value()
 
-        #self.plot(pos, vel, acc, show=show_plot, plot_path=plot_path)
+        self.plot(pos, vel, acc, show=show_plot, plot_path=plot_path)
 
         if json_path is not None:
             self.write_to_json(pos, vel, acc, json_path)
