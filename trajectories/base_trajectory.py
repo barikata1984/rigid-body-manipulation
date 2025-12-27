@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from abc import ABC, abstractmethod
 
 import matplotlib.pyplot as plt
@@ -44,8 +45,10 @@ class BaseTrajectory(ABC):
 
         data = {"duration": self.duration, "fps": self.fps, "frames": frames}
 
-        with open(json_path, "w") as f:
-            json.dump(data, f, indent=4)
+        if json_path:
+            Path(json_path).parent.mkdir(parents=True, exist_ok=True)
+            with open(json_path, "w") as f:
+                json.dump(data, f, indent=4)
 
         print(f"Trajectory JSON saved to {json_path}")
 
@@ -61,6 +64,7 @@ class BaseTrajectory(ABC):
         plt.tight_layout()
 
         if plot_path:
+            Path(plot_path).parent.mkdir(parents=True, exist_ok=True)
             plt.savefig(plot_path)
             print(f"Plot saved to {plot_path}")
 
