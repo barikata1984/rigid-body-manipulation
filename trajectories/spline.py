@@ -155,4 +155,4 @@ if __name__ == "__main__":
     fps = 100.0
 
     traj = QuinticSplineTrajectory(duration, fps, start_q, end_q)
-    traj.generate(show_plot=True, plot_path="test.png", json_path="test.json")
+    traj.generate(show_plot=True, plot_path="spline.png", json_path="spline.json")
