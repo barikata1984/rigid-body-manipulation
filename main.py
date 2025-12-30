@@ -9,7 +9,8 @@ from numpy.linalg import lstsq, norm
 from omegaconf import OmegaConf
 from omegaconf.errors import MissingMandatoryValue
 
-from core import Simulation, autoinstantiate, generate_model_data, get_element_id
+from builder.builders import instantiate
+from core import Simulation, generate_model_data, get_element_id
 from omegaconf_custom_resolvers import pi_converter
 from regressions import total_lstsq
 from simulators import SimulatorConfig
@@ -62,14 +63,19 @@ def main():
             excitation_slice = slice(start, end)
             print(f"Excitation trajectory slice found: {start} to {end}")
 
+    _cfg = OmegaConf.to_object(cfg)
 
     # Instantiate necessary classes ===============================================
-    recorder = autoinstantiate(cfg.recorder, m, d)
-    planner = autoinstantiate(cfg.planner, m, d)
-    controller = autoinstantiate(cfg.controller, m, d)
+    recorder = instantiate(_cfg.recorder, m, d)
+    planner = instantiate(_cfg.planner, m, d)
+    controller = instantiate(_cfg.controller, m, d)
 
     if not recorder.videowriter.isOpened():
         print("Error: VideoWriter failed to open, outside simulation")
+
+    import pdb
+
+    pdb.set_trace()
 
     simulation = Simulation(m, d, recorder, planner, controller)
 

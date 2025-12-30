@@ -4,5 +4,5 @@ from builder import InstantiateConfig
 
 
 @dataclass
-class BaseRecorderConfig(InstantiateConfig):
-    module_name: str = "recorders"
+class BasePlannerConfig(InstantiateConfig):
+    module_name: str = "planners"

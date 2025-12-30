@@ -11,9 +11,11 @@ from numpy.typing import ArrayLike, NDArray
 from omegaconf import MISSING
 from omegaconf.errors import MissingMandatoryValue
 
+from .base_planner import BasePlannerConfig
+
 
 @dataclass
-class JointPositionPlannerConfig:
+class JointPositionPlannerConfig(BasePlannerConfig):
     target_class: str = "JointPositionPlanner"
     duration: float = MISSING
     timestep: float = -1

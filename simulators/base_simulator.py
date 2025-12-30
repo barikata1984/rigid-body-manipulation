@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 
-from base_config import InstantiateConfig
+from builder import InstantiateConfig
 
 
 @dataclass
 class BaseSimulatorConfig(InstantiateConfig):
-    module_name: str = "simulator"  # type: ignore
+    module_name: str = "simulators"  # type: ignore
