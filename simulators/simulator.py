@@ -16,6 +16,7 @@ from controllers import LinearQuadraticRegulatorConfig
 from dynamics.dynamics import (
     get_linacc,
     get_regressor_matrix,
+    setup_robot_dynamics_parameters,
 )
 from planners import JointPositionPlannerConfig
 from recorders import BasicRecorderConfig, StandardRecorderConfig
@@ -48,7 +49,7 @@ class SimulationConfig:
 
 @dataclass
 class SimulatorConfig(BaseSimulatorConfig):
-    target_class: str = "Simulator"  # type: ignore
+    target_class: str = "Simulation"  # type: ignore
     manipulator: str = "xml_models/manipulators/sequential"
     object: str = MISSING
     reset_keyframe: str = MISSING  # | None = None

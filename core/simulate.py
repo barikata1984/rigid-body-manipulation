@@ -7,8 +7,10 @@ from tqdm import tqdm
 
 import dynamics as dyn
 import visualization_ as vis
+from builder.builders import instantiate
 from dynamics import calculate_frame_dynamics, setup_robot_dynamics_parameters
 from sensors import Sensors
+from simulators import SimulatorConfig
 
 # Remove redundant space at the head and tail of the horizontal axis's scale
 mpl.rcParams["axes.xmargin"] = 0
@@ -20,16 +22,24 @@ class Simulation:
     m: MjModel
     d: MjData
 
-    def __init__(self, m: MjModel, d: MjData, recorder, planner, controller):
+    #def __init__(self, m: MjModel, d: MjData, recorder, planner, controller):
+    def __init__(self,
+                 cfg: SimulatorConfig,
+                 m: MjModel,
+                 d: MjData,
+                 ) -> None:
+
+        self.recorder = instantiate(cfg.recorder, m, d)
+        self.planner = instantiate(cfg.planner, m, d)
+        self.controller = instantiate(cfg.controller, m, d)
+
+        
         # Set a random number generator ===========================================
         rng = np.random.default_rng()
         rng.standard_normal(10)
 
         self.m = m
         self.d = d
-        self.recorder = recorder
-        self.planner = planner
-        self.controller = controller
 
         self.fps = self.recorder.fps
         self.sensors = Sensors(self.m, self.d, self.fps)

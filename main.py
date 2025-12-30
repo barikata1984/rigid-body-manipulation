@@ -66,18 +66,19 @@ def main():
     _cfg = OmegaConf.to_object(cfg)
 
     # Instantiate necessary classes ===============================================
-    recorder = instantiate(_cfg.recorder, m, d)
-    planner = instantiate(_cfg.planner, m, d)
-    controller = instantiate(_cfg.controller, m, d)
+    #recorder = instantiate(_cfg.recorder, m, d)
+    #planner = instantiate(_cfg.planner, m, d)
+    #controller = instantiate(_cfg.controller, m, d)
 
-    if not recorder.videowriter.isOpened():
-        print("Error: VideoWriter failed to open, outside simulation")
+    #if not recorder.videowriter.isOpened():
+    #    print("Error: VideoWriter failed to open, outside simulation")
 
     import pdb
 
     pdb.set_trace()
 
-    simulation = Simulation(m, d, recorder, planner, controller)
+    #simulation = Simulation(m, d, recorder, planner, controller)
+    simulation = instantiate(_cfg, m, d)
 
     result = simulation.run()
 
@@ -106,7 +107,7 @@ def main():
 
     # Log the identified inertial params and their ground truth
     # logger.transform["globalinertia"] = comparison.to_json()
-    recorder.finish(result["frames"], result["regressors"], gt_iparams)  # video and dataset json generated
+    simulation.recorder.finish(result["frames"], result["regressors"], gt_iparams)  # video and dataset json generated
 
 
 if __name__ == "__main__":
