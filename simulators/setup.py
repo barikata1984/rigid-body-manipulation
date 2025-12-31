@@ -1,64 +1,59 @@
-import inspect
 import logging
-import sys
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
+import numpy as np
 import pandas as pd
 from dm_control import mjcf
-from mujoco._functions import mj_resetDataKeyframe
+from liegroups import SE3, SO3
+from mujoco._enums import mjtObj
+from mujoco._functions import mj_name2id, mj_resetDataKeyframe
 from mujoco._structs import MjData, MjModel
-from omegaconf import MISSING, OmegaConf
 from omegaconf.dictconfig import DictConfig
-from omegaconf.errors import ConfigAttributeError, MissingMandatoryValue
 from omegaconf.listconfig import ListConfig
 from transforms3d.euler import euler2mat
 from transforms3d.quaternions import mat2quat, quat2mat
 
 # all the modules of the packages below are imported to enable autoinstantiate()
 import dynamics as dyn
-from controllers import *
-from dynamics import *
-from planners import *
-from recorders import *
 from utilities import get_element_id
 
 
-@dataclass
-class SimulationConfig:
-    manipulator_name: str = "sequential"
-    target_name: str = MISSING
-    reset_keyframe: str = "initial_state"
-    recorder: BasicRecorderConfig = field(default_factory=BasicRecorderConfig)
-    planner: JointPositionPlannerConfig = field(default_factory=JointPositionPlannerConfig)
-    controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
-    config: str = "configurations/base.yaml"
-    config_export_path: str = MISSING
+def generate_model_data(
+    cfg: DictConfig | ListConfig,
+) -> tuple[MjModel, MjData, dict[str, float | list[float]]]:
+    # Get the ground truth data output by a CAD application ========================
+    target_dir = Path(cfg.object)
+    target_object_path = target_dir / "object.xml"
+    target_object_cad_gt_path = target_dir / "object_cad_gt.csv"
+    target_object, assets, ground_truth = spawn_target_object(
+        target_object_path, target_object_cad_gt_path, compare_cad_mujoco=False
+    )
 
+    # Load the .xml of a manipulator and attach the target object to it
+    manipulator_dir = Path(cfg.manipulator)
+    manipulator_path = manipulator_dir / "manipulator.xml"
+    manipulator = mjcf.from_path(manipulator_path)
+    attachment_site = manipulator.find("site", "attachment")
+    attachment_site.attach(target_object)  # type: ignore
 
-def load_config():
-    # _cfg = tyro.cli(SimulationConfig)
-    cfg = OmegaConf.structured(SimulationConfig)
-    base_cfg = OmegaConf.load(cfg.config)
-    OmegaConf.structured(SimulationConfig)
+    # import pdb; pdb.set_trace()
 
-    cli_cfg = OmegaConf.from_cli()
+    # Set camera position
+    aabb_scale = manipulator.custom.numeric["target/aabb_scale"].data[0]  # type: ignore
+    track_cam_pos = [0, 0, 4 * aabb_scale]
+    track_cam = manipulator.find("camera", cfg.recorder.track_cam_name)
+    track_cam.pos = track_cam_pos  # type: ignore
 
-    try:
-        yaml_cfg = OmegaConf.load(cli_cfg.config)
-    except ConfigAttributeError:  # if read_config not provided on cli, cli_cfg
-        yaml_cfg = {}  # does not have it as its attribute, so using
-        # this error rather than MissingMandatoryValue
+    # Spawn a mujoco model and a mujoco data
+    m = MjModel.from_xml_string(manipulator.to_xml_string(filename_with_hash=False), assets=assets)
+    d = MjData(m)
 
-    cfg = OmegaConf.merge(cfg, base_cfg, yaml_cfg, cli_cfg)
+    show_comparison(m, "target/object", ground_truth, mode="diaginertia")
 
-    try:
-        OmegaConf.save(cfg, cfg.config_export_path)
-    except MissingMandatoryValue:
-        pass
+    if cfg.reset_keyframe is not None:
+        mj_resetDataKeyframe(m, d, get_element_id(m, "keyframe", cfg.reset_keyframe))
 
-    return cfg
+    return m, d, ground_truth
 
 
 def show_comparison(
@@ -196,13 +191,13 @@ def spawn_target_object(
     ground_truth = get_target_object_ground_truth(target_object_cad_gt_path)
     # Get mass and diaginertia computed by mujoco =========================
     target_object = mjcf.from_path(target_object_path)
-    target_object.custom.add(
+    target_object.custom.add(  # type: ignore
         "numeric",
         name="aabb_scale",
         data=str(ground_truth["aabb_scale"]),
     )
 
-    headlight = target_object.visual.headlight
+    headlight = target_object.visual.headlight  # type: ignore
     headlight.ambient = ".5 .5 .5"
     headlight.diffuse = ".4 .4 .4"
     headlight.specular = ".5 .5 .5"
@@ -210,19 +205,16 @@ def spawn_target_object(
     # Get asset files
     assets = {}
     meshes = []
-    for each_mesh in iter(target_object.asset.mesh):
+    for each_mesh in iter(target_object.asset.mesh):  # type: ignore
         file = each_mesh.get_attributes()["file"]
         assets[file.prefix + file.extension] = file.contents
         meshes.append(file.prefix)
 
-    for elem_texture in iter(target_object.asset.texture):
-        try:
-            file = elem_texture.get_attributes()["file"]
-            assets[file.prefix + file.extension] = file.contents
-        except:
-            print(f"'{elem_texture.type}' type texture, '{elem_texture.name}', does not have 'file' attribute.")
+    for elem_texture in iter(target_object.asset.texture):  # type: ignore
+        file = elem_texture.get_attributes()["file"]
+        assets[file.prefix + file.extension] = file.contents
 
-    target_object.asset.add(
+    target_object.asset.add(  # type: ignore
         "texture",
         name="white_background",
         type="skybox",
@@ -232,8 +224,8 @@ def spawn_target_object(
         width="1",
     )
 
-    if target_object.worldbody.find("site", "ft_sensor") is None:
-        target_object.worldbody.add("site", name="ft_sensor", euler="0 0 180", rgba="0 0 0 0")
+    if target_object.worldbody.find("site", "ft_sensor") is None:  # type: ignore
+        target_object.worldbody.add("site", name="ft_sensor", euler="0 0 180", rgba="0 0 0 0")  # type: ignore
     target_object_body = target_object.find("body", "object")
 
     inertial = {
@@ -278,63 +270,10 @@ def spawn_target_object(
         inertiagrouprange = " ".join(str(i) for i in [0, len(component_mass_densities) - 1])
         target_object.compiler.inertiagrouprange = inertiagrouprange
 
-    target_object_body.add("inertial", **inertial)
+    target_object_body.add("inertial", **inertial)  # type: ignore
 
     if compare_cad_mujoco:
         m = MjModel.from_xml_string(target_object.to_xml_string(), assets=assets)
         show_comparison(m, "object", ground_truth)
 
     return target_object, assets, ground_truth
-
-
-def generate_model_data(
-    cfg: DictConfig | ListConfig,
-) -> tuple[MjModel, MjData, dict[str, float | list[float]]]:
-    # Get the ground truth data output by a CAD application ========================
-    # Get the ground truth data output by a CAD application ========================
-    target_dir = Path(cfg.object)
-    target_object_path = target_dir / "object.xml"
-    target_object_cad_gt_path = target_dir / "object_cad_gt.csv"
-    target_object, assets, ground_truth = spawn_target_object(
-        target_object_path, target_object_cad_gt_path, compare_cad_mujoco=False
-    )
-
-    # Load the .xml of a manipulator and attach the target object to it
-    manipulator_dir = Path(cfg.manipulator)
-    manipulator_path = manipulator_dir / "manipulator.xml"
-    manipulator = mjcf.from_path(manipulator_path)
-    attachment_site = manipulator.find("site", "attachment")
-    attachment_site.attach(target_object)  # type: ignore
-
-    # Set camera position
-    aabb_scale = manipulator.custom.numeric["target/aabb_scale"].data[0]
-    track_cam_pos = [0, 0, 4 * aabb_scale]
-    track_cam = manipulator.find("camera", cfg.recorder.track_cam_name)
-    track_cam.pos = track_cam_pos
-
-    # Spawn a mujoco model and a mujoco data
-    m = MjModel.from_xml_string(manipulator.to_xml_string(filename_with_hash=False), assets=assets)
-    d = MjData(m)
-
-    show_comparison(m, "target/object", ground_truth, mode="diaginertia")
-
-    mj_resetDataKeyframe(m, d, get_element_id(m, "keyframe", cfg.reset_keyframe))
-
-    return m, d, ground_truth
-
-    # print("Configure manipulator and object ============================")
-    # xml_file = config.xml.system_file
-    # print(f"    Loaded xml file: {xml_file}")
-    # xml_path = os.path.join("./xml_models", xml_file)
-    # m = MjModel.from_xml_path(xml_path)
-    # print("Number of ===================================================\n"
-    #     f"    coorindates in joint space (nv):    {m.nv:>2}\n"
-    #     f"    degrees of freedom (nu):            {m.nu:>2}\n"
-    #     f"    actuator activations (na):          {m.na:>2}\n"
-    #     f"    sensor outputs (nsensordata):       {m.nsensordata:>2}")
-
-
-def autoinstantiate(cfg: DictConfig, m: MjModel, d: MjData, *args, **kwargs) -> Any:  # TODO: reasonable but rough
-    for name, _class in inspect.getmembers(sys.modules[__name__], inspect.isclass):
-        if cfg.target_class == name:
-            return _class(cfg, m, d, *args, **kwargs)

@@ -7,7 +7,7 @@ from omegaconf import OmegaConf
 # Add project root
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core import generate_model_data
+from simulators.setup import generate_model_data
 from dynamics import calculate_frame_dynamics, setup_robot_dynamics_parameters
 from simulators import SimulatorConfig
 from trajectories.excitation import ExcitationTrajectory

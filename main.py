@@ -9,8 +9,8 @@ from numpy.linalg import lstsq, norm
 from omegaconf import OmegaConf
 from omegaconf.errors import MissingMandatoryValue
 
-from builder.builders import instantiate
-from core import Simulation, generate_model_data, get_element_id
+from factory import instantiate
+from simulators.setup import generate_model_data, get_element_id
 from omegaconf_custom_resolvers import pi_converter
 from regressions import total_lstsq
 from simulators import SimulatorConfig

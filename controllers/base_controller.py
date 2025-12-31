@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from builder import InstantiateConfig
+from factory import InstantiateConfig
 
 
 @dataclass

@@ -1,10 +1,10 @@
-from .env_builder import (
+from .setup import (
     generate_model_data,
-    get_element_id,
     get_target_object_ground_truth,
     show_comparison,
     spawn_target_object,
 )
+from utilities import get_element_id
 from .simulator import Simulator, SimulatorConfig
 
 __all__ = [

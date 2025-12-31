@@ -11,7 +11,7 @@ from mujoco._structs import MjData, MjModel, MjOption
 from omegaconf import MISSING
 from tqdm import tqdm
 
-from builder import instantiate
+from factory import instantiate
 from controllers import LinearQuadraticRegulatorConfig
 from dynamics import dynamics as dyn
 from dynamics.dynamics import (
