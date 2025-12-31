@@ -73,10 +73,6 @@ def main():
     #if not recorder.videowriter.isOpened():
     #    print("Error: VideoWriter failed to open, outside simulation")
 
-    import pdb
-
-    pdb.set_trace()
-
     #simulation = Simulation(m, d, recorder, planner, controller)
     simulation = instantiate(_cfg, m, d)
 

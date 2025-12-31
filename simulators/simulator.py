@@ -13,7 +13,9 @@ from tqdm import tqdm
 
 from builder import instantiate
 from controllers import LinearQuadraticRegulatorConfig
+from dynamics import dynamics as dyn
 from dynamics.dynamics import (
+    calculate_frame_dynamics,
     get_linacc,
     get_regressor_matrix,
     setup_robot_dynamics_parameters,
@@ -22,6 +24,7 @@ from planners import JointPositionPlannerConfig
 from recorders import BasicRecorderConfig, StandardRecorderConfig
 from sensors import Sensors
 from transformations import Poses
+from visualization import visualization as vis
 from visualization.visualization import cb_rgb  # color palette for consistency
 from visualization_ import ax_plot_lines, ax_plot_lines_w_tgt
 
@@ -34,22 +37,8 @@ np.set_printoptions(precision=5, suppress=True)
 
 
 @dataclass
-class SimulationConfig:
-    """Deprecated. Will be deleted soon."""
-
-    manipulator_name: str = "sequential"
-    target_name: str = MISSING
-    reset_keyframe: str = MISSING
-    recorder: BasicRecorderConfig = field(default_factory=BasicRecorderConfig)
-    planner: JointPositionPlannerConfig = field(default_factory=JointPositionPlannerConfig)
-    controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
-    config: str = "configurations/base.yaml"
-    config_export_path: str = MISSING
-
-
-@dataclass
 class SimulatorConfig(BaseSimulatorConfig):
-    target_class: str = "Simulation"  # type: ignore
+    target_class: str = "Simulator"  # type: ignore
     manipulator: str = "xml_models/manipulators/sequential"
     object: str = MISSING
     reset_keyframe: str = MISSING  # | None = None
@@ -109,54 +98,29 @@ class SimulatorConfig(BaseSimulatorConfig):
 
 
 class Simulator:
-    def __init__(
-        self,
-        cfg: SimulatorConfig,
-        m: MjModel,
-        d: MjData,
-    ):
+    m: MjModel
+    d: MjData
+
+    #def __init__(self, m: MjModel, d: MjData, recorder, planner, controller):
+    def __init__(self,
+                 cfg: SimulatorConfig,
+                 m: MjModel,
+                 d: MjData,
+                 ) -> None:
+
+        self.recorder = instantiate(cfg.recorder, m, d)
+        self.planner = instantiate(cfg.planner, m, d)
+        self.controller = instantiate(cfg.controller, m, d)
+
+        
+        # Set a random number generator ===========================================
+        rng = np.random.default_rng()
+        rng.standard_normal(10)
+
         self.m = m
         self.d = d
 
-        if cfg.target_trajectory is not None:
-            import json
-
-            try:
-                with open(cfg.target_trajectory) as f:
-                    self.trajectory_data = json.load(f)
-                self.duration = self.trajectory_data["duration"]
-                self.fps = self.trajectory_data["fps"]
-                self.target_jointvars = self.trajectory_data["jointvars"]
-
-            except FileNotFoundError as e:
-                print(f"{e}: Target rajectory file not found at {cfg.target_trajectory}")
-                return
-
-            except json.JSONDecodeError as e:
-                print(
-                    f"{e}: Could not decode JSON from {cfg.target_trajectory}. Please ensure it's a valid JSON file."
-                )
-                return
-
-        if cfg.target_trajectory is not None:
-            # Offset the joint pos according to the initial target trajcttory
-            self.d.qpos = self.target_jointvars[0]["qpos"]
-        else:
-            # Fall back to provided duration/fps if no trajectory file
-            if cfg.duration is None or cfg.fps is None:
-                raise ValueError("Either target_trajectory or (duration & fps) must be provided in SimulatorConfig")
-            self.duration = cfg.duration
-            self.fps = cfg.fps
-            self.target_jointvars = []  # placeholder; controller logic may expect list
-
-        self.finite_differentiation_dt = cfg.finite_differentiation_dt
-        self.timestep = MjOption().timestep
-        self.n_steps = int(self.duration / self.timestep)
-        self.recorder = instantiate(cfg.recorder, m, d, fps=self.fps)
-        self.controller = instantiate(cfg.controller, m, d)
-
-        # Instantiate register classes
-        self.poses = Poses(self.m, self.d)
+        self.fps = self.recorder.fps
         self.sensors = Sensors(self.m, self.d, self.fps)
 
         (
@@ -167,135 +131,99 @@ class Simulator:
             self.simats_lj_l,
             self.hposes_lj_kj,
             self.inverse,
-        ) = _setup_robot_dynamics_parameters(self.m, self.d)
+        ) = setup_robot_dynamics_parameters(self.m, self.d)
 
-        # Store static poses (pose_obj_obji is still needed here)
         self.pose_obj_obji = self.poses.get_b_biof("target/object")
-
-        # Accessors to the registers that store the data of poses in interest.
-        # NOTE: Maybe MuJoco overrives the data on registers once step() is called.
-        # So, computing these poses at every step is not necessary.
-        self.pose_x_ll = self.poses.x_b[self.id_ll]
-        self.pose_x_sen = self.poses.get_x_("site", "target/ft_sensor")
         self.pose_x_obj = self.poses.get_x_("body", "target/object")
         self.pose_x_obji = self.pose_x_obj.dot(self.pose_obj_obji)
-        self.pose_obj_cam = self.pose_x_obj.inv().dot(self.poses.x_cam[self.recorder.cam_id])
+        self.pose_x_ll = self.poses.x_b[self.id_ll]  # dynamic
+        self.pose_x_sen = self.poses.get_x_("site", "target/ft_sensor")
         self.pose_sen_obj = self.pose_x_sen.inv().dot(self.pose_x_obj)
         self.pose_sen_obji = self.pose_x_sen.inv().dot(self.pose_x_obji)
-        self.pose_sen_llj = self.pose_x_sen.inv().dot(self.pose_x_ll.dot(self.pose_ll_llj))  # type: ignore
+        # NOTE: Variables below should be declared not here but whenever necessary.
+        # self.pose_x_llj = pose_x_ll.dot(pose_ll_llj)  # static, should be dynamic tho
+        # self.pose_sen_llj = pose_x_sen.inv().dot(pose_x_llj)  # dynamic, should be static tho
 
-        # Prepare data containers
-        self.file_paths = []
-        self.frames = []
-        self.fts_sen = []
+        # Data buffer and storages =============================================================
+        self.qpos_err = np.empty(m.nu)
+
+        self.qpos_errors = []
+        self.qvel_errors = []
+        self.qacc_errors = []
+
+        self.act_trajectory = []
+        self.tgt_trajectory = []
+
+        self.poses_sen_obj = []
+        self.poses_sen_obji = []
+        self.twists_sen = []
+        self.dtwists_sen = []
         self.linaccs_sen_obji = []
-        self.n_processed_frames = 0
-        self.poses_sen_obj, self.poses_sen_obji = [], []
+        self.fts_sen = []
         self.regressors = []
-        self.qpos_error = np.empty(self.m.nu)
+
+        self.frame_count = 0
+        self.frames = []
+        self.file_paths = []
         self.time = []
-        self.trajectory, self.tgt_trajectory = [], []
         self.transform_matrices = []
-        self.twists_sen, self.dtwists_sen = [], []
-        self.feedforward_ctrls, self.feedback_ctrls, self.total_ctrls = [], [], []
-        self.qpos_errors = []  # Added for position errors
-        self.qvel_errors = []  # Added for velocity errors
-        self.qacc_errors = []  # Added for acceleration errors
 
     def run(self):
-        for _ in tqdm(range(self.n_steps), desc="Simulation Progress"):
-            current_frame_idx = int(self.d.time * self.fps)
-            if self.n_processed_frames <= current_frame_idx:
-                self.procoess_frame(current_frame_idx)
+        if not self.recorder.videowriter.isOpened():
+            print("Error: VideoWriter failed to open, inside simulation.")
 
-            # step the simulate
+        for step in tqdm(range(self.planner.n_steps), desc="Progress"):
+            act_traj = np.stack(self.sensors.get("jointvars", perturbed=True))  # type: ignore
+            _, _, twists_lj_l, dtwists_lj_l = self.inverse(act_traj)
+
+            # Compute actuator controls and evolute the simulation
+            tgt_traj = self.planner.plan(step)
+
+            if self.frame_count <= self.d.time * self.recorder.fps:
+                self.process_frame(tgt_traj, act_traj)
+
+            # Get residual of state
+            mj_differentiatePos(  # Use this func to differenciate quat properly
+                self.m,  # MjModel
+                self.qpos_err,  # data container for the residual of qpos
+                1,  # timestep used to numerically differentiate the pos
+                tgt_traj[0],  # target qpos
+                act_traj[0],  # actual qpos
+            )
+
+            # Get feedforward signal
+            feedforward_ctrl, _, _, _ = self.inverse(tgt_traj)
+            # Get feedback signal
+            traj_err = act_traj - tgt_traj
+            state_err = np.concatenate((self.qpos_err, traj_err[1]))
+            feedback_ctrl = self.controller.gain_matrix @ state_err
+            self.d.ctrl = feedforward_ctrl - feedback_ctrl
+
+            self.qpos_errors.append(self.qpos_err)
+            self.qvel_errors.append(traj_err[1])
+            self.qacc_errors.append(traj_err[2])
+
+            # >>> Evolve the simulation >>>
             mj_step(self.m, self.d)
+            # <<< Evolve the simulation <<<
 
-        self._post_process_data()
-        self._visualize_results()
+        # Post process data =======================================================
+        # Cast data into ndarrays for concise conslicing
+        tgt_trajectory = np.array(self.tgt_trajectory)
+        trajectory = np.array(self.act_trajectory)
+        frame_iter = np.arange(self.frame_count)
+        fts_sen = np.array(self.fts_sen)
+        regressors = np.array(self.regressors)
 
-        return {"frames": self.frames, "regressors": self.regressors, "fts_sen": self.fts_sen}
-
-    def procoess_frame(self, current_frame_idx):
-        act_qpos, act_qvel, act_qacc = self.sensors.get("jointvars", perturbed=True)  # shape: (6,), (6,), (6,)
-        act_traj = np.stack((act_qpos, act_qvel, act_qacc))
-        self.trajectory.append(act_traj)  # type: ignore
-
-        _, tgt_qpos, tgt_qvel, tgt_qacc, _ = self.target_jointvars[current_frame_idx].values()
-        tgt_traj = np.stack((tgt_qpos, tgt_qvel, tgt_qacc))
-        self.tgt_trajectory.append(tgt_traj)  # type: ignore
-
-        # Get (d)twist_sen, and linacc_sen_obj for verification
-        twist_sen, dtwist_sen, regressor = _calculate_frame_dynamics(
-            act_traj, self.inverse, self.id_ll, self.pose_x_ll, self.pose_ll_llj, self.pose_x_sen
-        )
-
-        # Compute the residuals and control signals, and set the control singals
-        mj_differentiatePos(
-            self.m, self.qpos_error, self.finite_differentiation_dt, tgt_traj[0], act_qpos
-        )  # tgt should comes first, not sure why this order but refer to LQR.ipynb of MuJoCo
-        qvel_error = act_qvel - tgt_traj[1]  # act should comes first
-        qacc_error = act_qacc - tgt_traj[2]
-        state_error = np.concatenate((self.qpos_error, qvel_error))
-        feedforward_ctrl, _, _, _ = self.inverse(tgt_traj)
-        feedback_ctrl = self.controller.gain_matrix @ state_error
-        ctrl = feedforward_ctrl - feedback_ctrl
-        self.d.ctrl = ctrl
-
-        self.feedforward_ctrls.append(feedforward_ctrl)
-        self.feedback_ctrls.append(feedback_ctrl)
-        self.total_ctrls.append(ctrl)
-
-        self.qpos_errors.append(np.copy(self.qpos_error))  # Added for position errors
-        self.qvel_errors.append(np.copy(qvel_error))  # Added for velocity errors
-        self.qacc_errors.append(np.copy(qacc_error))  # Added for acceleration errors
-
-        # Get and log the regressor matrix for Least Squares-based identification of the target object's iparams
-        regressor = get_regressor_matrix(twist_sen, dtwist_sen)
-        self.regressors.append(regressor)  # type: ignore
-
-        # Get and log the linear acceleration at the target object's inertial center w.r.t. the sensor frame
-        linacc_sen_obji = get_linacc(twist_sen, dtwist_sen, self.pose_sen_obji)
-        self.linaccs_sen_obji.append(linacc_sen_obji)
-
-        # Measure and log the force and torque measurements
-        ft = self.sensors.get("ft", perturbed=True)
-        self.fts_sen.append(ft)  # type: ignore
-
-        # Render the camera observatio
-        file_name = f"{self.n_processed_frames:04}.png"
-        self.recorder.render(self.d, file_name)
-
-        # Log the other Neural Mass Distribution ingredients
-        self.file_paths.append(str(self.recorder.complete_image_dir / file_name))
-        self.transform_matrices.append(self.pose_obj_cam.as_matrix().tolist())  # type: ignore
-        self.poses_sen_obj.append(self.pose_sen_obj.as_matrix().tolist())  # type: ignore
-        self.poses_sen_obji.append(self.pose_sen_obji.as_matrix().tolist())  # type: ignore
-        self.twists_sen.append(twist_sen.tolist())
-        self.dtwists_sen.append(dtwist_sen.tolist())
-
-        self.n_processed_frames += 1
-        self.time.append(self.d.time)
-
-    def _post_process_data(self):
-        self.tgt_trajectory = np.array(self.tgt_trajectory)
-        self.trajectory = np.array(self.trajectory)
-        self.fts_sen = np.array(self.fts_sen)
-        self.regressors = np.array(self.regressors)
-        self.feedforward_ctrls = np.array(self.feedforward_ctrls)
-        self.feedback_ctrls = np.array(self.feedback_ctrls)
-        self.total_ctrls = np.array(self.total_ctrls)
-        self.qpos_errors = np.array(self.qpos_errors)  # Added for position errors
-        self.qvel_errors = np.array(self.qvel_errors)  # Added for velocity errors
-        self.qacc_errors = np.array(self.qacc_errors)  # Added for acceleration errors
-
+        # Compose frames =========================================================
+        frames = []
         data_containers = [
             self.file_paths,
             self.transform_matrices,
             self.poses_sen_obj,
             self.twists_sen,
             self.dtwists_sen,
-            self.fts_sen,
+            fts_sen,
         ]
         for fpath, tf, pose, t, dt, ft in zip(*data_containers, strict=False):
             frame = {
@@ -306,123 +234,70 @@ class Simulator:
                 "dtwist_sen": dt,
                 "ft_sen": ft.tolist(),
             }
-            self.frames.append(frame)
 
-    def _visualize_results(self):
-        frame_iter = np.arange(self.n_processed_frames)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            frames.append(frame)
 
+        # Visualize data ==========================================================
+        # Object linear acceleration and ft sensor measurements rel. to {sensor}
         # Actual and target joint positions
-        n_row = 2
-        n_col = 1
-        qpos_fig, qpos_axes = plt.subplots(n_row, n_col, sharex="col", tight_layout=True)
+        qpos_fig, qpos_axes = plt.subplots(2, 1, sharex="col", tight_layout=True)
         qpos_fig.suptitle("qpos")
         qpos_axes[1].set(xlabel="time [s]")
         yls = ["q0-2 [m]", "q3-5 [rad]"]
-
-        for i in range(n_row):
-            slcr = slice(i * 3, (i + 1) * 3)  # (0:3), (3:6)
-            ax_plot_lines_w_tgt(
-                qpos_axes[i],
-                self.time,
-                self.trajectory[:, 0, slcr],  # type: ignore
-                self.tgt_trajectory[:, 0, slcr],  # type: ignore
-                yls[i],  # type: ignore
-            )
-            # Add legend mapping joint index to color (solid=actual, dashed=target)
-            joint_indices = range(slcr.start, slcr.stop)
-            legend_handles: list[Line2D] = []
-            for local_j, j in enumerate(joint_indices):
-                color = cb_rgb[local_j % len(cb_rgb)]
-                legend_handles.append(Line2D([0], [0], color=color, linestyle="-", label=f"q{j} act"))
-                legend_handles.append(Line2D([0], [0], color=color, linestyle="--", label=f"q{j} tgt"))
-            qpos_axes[i].legend(handles=legend_handles, ncol=3, fontsize="x-small")
-
-        # Feedforward and feedback control signals
-        ctrl_fig, ctrl_axes = plt.subplots(self.m.nu, 1, sharex=True, tight_layout=True, figsize=(8, 12))
-        ctrl_fig.suptitle("Control Signals (Feedforward vs. Feedback)")
-        for j in range(self.m.nu):
-            ax = ctrl_axes[j]
-            ax.plot(self.time, self.feedforward_ctrls[:, j], color=cb_rgb[0], linestyle="-", label="Feedforward")
-            ax.plot(self.time, self.feedback_ctrls[:, j], color=cb_rgb[1], linestyle="--", label="Feedback")
-            ax.set_ylabel(f"q{j} [Nm]")
-            ax.legend(fontsize="x-small")
-            ax.grid(True, linestyle="--", alpha=0.6)
-        ctrl_axes[-1].set_xlabel("time [s]")
-
-        # Save plots and data
-        try:
-            # Save qpos figure
-            qpos_debug_dir = Path("debug_log/dev-jointpos_limits/qpos")
-            qpos_debug_dir.mkdir(parents=True, exist_ok=True)
-            qpos_fname = qpos_debug_dir / f"qpos_{timestamp}.png"
-            qpos_fig.savefig(qpos_fname)
-            print(f"Saved qpos figure: {qpos_fname}")
-
-            # Save ctrl figure
-            ctrl_debug_dir = Path("debug_log/dev-jointpos_limits/ctrl")
-            ctrl_debug_dir.mkdir(parents=True, exist_ok=True)
-            ctrl_fname = ctrl_debug_dir / f"ctrl_{timestamp}.png"
-            ctrl_fig.savefig(ctrl_fname)
-            print(f"Saved ctrl figure: {ctrl_fname}")
-
-            # Save raw data to a CSV file
-            data_debug_dir = Path("debug_log/dev-jointpos_limits/data")
-            data_debug_dir.mkdir(parents=True, exist_ok=True)
-
-            # 1. Create header
-            header_parts = []
-            for prefix in [
-                "tgt_qpos",
-                "tgt_qvel",
-                "tgt_qacc",
-                "act_qpos",
-                "act_qvel",
-                "act_qacc",
-                "qpos_error",  # Added for position errorsu
-                "qvel_error",  # Added for velocity errors
-                "qacc_error",  # Added for acceleration errors
-                "ff_ctrl",
-                "fb_ctrl",
-                "total_ctrl",
-            ]:
-                for i in range(self.m.nu):
-                    header_parts.append(f"{prefix}_{i}")
-            header = "time," + ",".join(header_parts)
-
-            # 2. Reshape and combine data arrays
-            time_col = np.array(self.time).reshape(-1, 1)
-            tgt_traj_flat = self.tgt_trajectory.reshape(self.n_processed_frames, -1)
-            act_traj_flat = self.trajectory.reshape(self.n_processed_frames, -1)
-
-            data_to_save = np.hstack(
-                [
-                    time_col,
-                    tgt_traj_flat,
-                    act_traj_flat,
-                    self.qpos_errors,  # Added for position errors
-                    self.qvel_errors,  # Added for velocity errors
-                    self.qacc_errors,  # Added for acceleration errors
-                    self.feedforward_ctrls,
-                    self.feedback_ctrls,
-                    self.total_ctrls,
-                ]
+        for i in range(len(qpos_axes)):
+            slcr = slice(i * 3, (i + 1) * 3)
+            vis.ax_plot_lines_w_tgt(
+                qpos_axes[i], self.time, trajectory[:, 0, slcr], tgt_trajectory[:, 0, slcr], yls[i]
             )
 
-            # 3. Save to CSV
-            data_fname = data_debug_dir / f"data_{timestamp}.csv"
-            np.savetxt(data_fname, data_to_save, delimiter=",", header=header, comments="")
-            print(f"Saved data CSV: {data_fname}")
-
-        except Exception as e:
-            print(f"Failed to save plots or data: {e}")
-
-        # Object linear acceleration and ft sensor measurements
+        # Object linear acceleration and ft sensor measurements rel. to {sensor}
         acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)
-        ax_plot_lines(acc_ft_axes[0], frame_iter, np.array(self.linaccs_sen_obji), "recovered_linacc_sen_obji [m/s/s]")
-        ax_plot_lines(acc_ft_axes[1], frame_iter, self.fts_sen[:, :3], "frc_sen [N]")  # type: ignore
-        ax_plot_lines(acc_ft_axes[2], frame_iter, self.fts_sen[:, 3:], "trq_sen [N*m]")  # type: ignore
+        vis.ax_plot_lines(acc_ft_axes[0], frame_iter, self.linaccs_sen_obji, "recovered_linacc_sen_obji [m/s/s]")
+        vis.ax_plot_lines(acc_ft_axes[1], frame_iter, fts_sen[:, :3], "frc_sen [N]")
+        vis.ax_plot_lines(acc_ft_axes[2], frame_iter, fts_sen[:, 3:], "trq_sen [N*m]")
         for ax in acc_ft_axes:
             ax.hlines(0.0, frame_iter[0], frame_iter[-1], ls="dashed", alpha=0.5)
 
         plt.show()
+
+        return {"frames": frames, "regressors": regressors, "fts_sen": fts_sen}
+
+    def process_frame(self, tgt_traj, act_traj):
+        self.time.append(self.d.time)
+        self.tgt_trajectory.append(tgt_traj)
+        self.act_trajectory.append(act_traj)
+
+        twist_sen, dtwist_sen, regressor = calculate_frame_dynamics(
+            act_traj, self.inverse, self.id_ll, self.pose_x_ll, self.pose_ll_llj, self.pose_x_sen
+        )
+        self.twists_sen.append(twist_sen.tolist())
+        self.dtwists_sen.append(dtwist_sen.tolist())
+
+        linacc_sen_obji = dyn.get_linacc(twist_sen, dtwist_sen, self.pose_sen_obji)
+        self.linaccs_sen_obji.append(linacc_sen_obji)
+
+        wrench = self.sensors.get("wrench")
+        self.fts_sen.append(wrench)
+
+        regressor = dyn.get_regressor_matrix(twist_sen, dtwist_sen)
+        self.regressors.append(regressor)
+
+        # Writing a single frame of a dataset =============================
+        file_name = f"{self.frame_count:04}.png"
+        self.recorder.render(self.d, file_name)  # recorder.cam_id is selected internally
+
+        # Log NeMD ingredients ============================================
+        # Items which need to be computed at every frame recoding
+        pose_obj_cam = self.pose_x_obj.inv().dot(self.poses.x_cam[self.recorder.cam_id])
+        self.transform_matrices.append(pose_obj_cam.as_matrix().tolist())
+
+        self.poses_sen_obj.append(self.pose_sen_obj.as_matrix().tolist())
+        self.poses_sen_obji.append(self.pose_sen_obji.as_matrix().tolist())
+        self.file_paths.append(str(self.recorder.complete_image_dir / file_name))
+
+        self.recorder.recursive_eval_data["frames"][f"{self.frame_count:04}"] = {
+            "regressor": regressor.tolist(),
+            "ft_sen": wrench.tolist(),
+        }
+
+        self.frame_count += 1
