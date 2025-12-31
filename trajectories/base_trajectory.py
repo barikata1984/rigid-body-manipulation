@@ -40,7 +40,8 @@ class BaseTrajectory(ABC):
         """
         frames = []
         for i in range(len(self.time_array)):
-            frame = {"qpos": pos[i].tolist(), "qvel": vel[i].tolist(), "qacc": acc[i].tolist()}
+            #frame = {"qpos": pos[i].tolist(), "qvel": vel[i].tolist(), "qacc": acc[i].tolist()}
+            frame = [pos[i].tolist(), vel[i].tolist(), acc[i].tolist()]
             frames.append(frame)
 
         data = {"duration": self.duration, "fps": self.fps, "frames": frames}

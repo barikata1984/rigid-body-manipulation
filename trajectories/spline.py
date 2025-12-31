@@ -139,10 +139,6 @@ class QuinticSplineTrajectory(BaseTrajectory):
                 vel[t_idx, j] = a1 + 2 * a2 * t + 3 * a3 * t2 + 4 * a4 * t3 + 5 * a5 * t4
                 acc[t_idx, j] = 2 * a2 + 6 * a3 * t + 12 * a4 * t2 + 20 * a5 * t3
 
-        import pdb
-
-        pdb.set_trace()
-
         self.plot(pos, vel, acc, show=show_plot, plot_path=plot_path)
 
         if json_path is not None:
@@ -153,10 +149,26 @@ class QuinticSplineTrajectory(BaseTrajectory):
 
 if __name__ == "__main__":
     # Example usage
-    start_q = [0.0, 0.0, 0.0]
-    end_q = [1.0, -0.5, 2.0]
-    duration = 2.0
-    fps = 100.0
+    start_q = [
+        1.0,
+        1.0, 
+        1.0,
+        0.0, 
+        0.0, 
+        0.0, 
+        ]
+
+    end_q = [
+        0.2,
+        1.4,
+        0.6,
+        3.141592653589793,  # 1π
+        0.0,
+        25.1327412287,  # 8
+        ]
+
+    duration = 5.0
+    fps = 60.0
 
     traj = QuinticSplineTrajectory(duration, fps, start_q, end_q)
     traj.generate(show_plot=True, plot_path="debug/spline.png", json_path="configurations/trajectories/spline.json")

@@ -7,13 +7,13 @@ def linear_model(regressors, params):
     return regressors.T @ params
 
 
-def total_lstsq(regressors: np.ndarray, fts_sen: np.ndarray, initbeta_scale: float = 1.0) -> tuple:
+def total_lstsq(regressors: np.ndarray, wrenches: np.ndarray, initbeta_scale: float = 1.0) -> tuple:
     """Perform Total Least Squares (TLS) regression. Since TLS regression is essentially the same as
     Orthogonal Distance Regression (ODR), scipy.odr's odr() method is used.
 
     Args:
         regressors (np.ndarray): The regressor matrix.
-        fts_sen (np.ndarray): The sensor measurements.
+        wrenches (np.ndarray): The sensor measurements.
         initbeta_scale (float, optional): The initial scale for the beta parameters. Defaults to 1.0.
 
     Returns:
@@ -24,7 +24,7 @@ def total_lstsq(regressors: np.ndarray, fts_sen: np.ndarray, initbeta_scale: flo
     return odr(
         fcn=linear_model,
         initbeta=initbeta,
-        y=fts_sen,
+        y=wrenches,
         # Not sure but odr would expect x's shape to be (num_params, num_samples) rather than
         # (num_samples, num_params) like torch. So, configure the argument below in such a way
         x=regressors.T,

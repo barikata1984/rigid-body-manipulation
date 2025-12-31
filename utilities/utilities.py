@@ -1,7 +1,18 @@
 from collections.abc import Iterable
+from types import SimpleNamespace
 
 from mujoco._enums import mjtObj
 from mujoco._functions import mj_name2id
+
+
+def json_to_namespace(data):
+    """Recursively convert dict to SimpleNamespace for dot-access."""
+    if isinstance(data, dict):
+        return SimpleNamespace(**{k: json_to_namespace(v) for k, v in data.items()})
+    elif isinstance(data, list):
+        return [json_to_namespace(item) for item in data]
+    else:
+        return data
 
 
 def categorize_dict_kargs(dict_kargs):

@@ -126,7 +126,7 @@ class StandardRecorder:
 
     def _process_split(self, frames, regressors, gt_iparams, split=None):
         suffix = ""
-        fts_sen = []
+        wrenches = []
 
         if split:
             suffix = f"_{split}"
@@ -134,17 +134,17 @@ class StandardRecorder:
             split_image_dir.mkdir(parents=True, exist_ok=True)
 
             for frame in frames:
-                fts_sen.append(frame["ft_sen"])
+                wrenches.append(frame["wrench"])
                 image_path = Path(frame["file_path"])
                 shutil.copy(image_path, split_image_dir / image_path.name)
         else:
             for frame in frames:
-                fts_sen.append(frame["ft_sen"])
+                wrenches.append(frame["wrench"])
 
         regressors = np.reshape(regressors, (-1, 10))
-        fts_sen = np.reshape(fts_sen, -1)
-        ls_iparams = lstsq(regressors, fts_sen)[0]
-        tls_iparams = total_lstsq(regressors, fts_sen)[0]
+        wrenches = np.reshape(wrenches, -1)
+        ls_iparams = lstsq(regressors, wrenches)[0]
+        tls_iparams = total_lstsq(regressors, wrenches)[0]
         labels = ["total_mass", "mx", "my", "mz", "ixx", "iyy", "izz", "ixy", "iyz", "izx", "aabb_scale"]
 
         split_transform = self.base_transform.copy()
@@ -160,8 +160,8 @@ class StandardRecorder:
     def finish(self, frames, regressors, gt_iparams):
         self.videowriter.release()
 
-        with open(self.dataset_dir / "rtls_eval.json", mode="wt", encoding="utf-8") as f:
-            json.dump(self.recursive_eval_data, f, ensure_ascii=False, indent=2)
+        #with open(self.dataset_dir / "rtls_eval.json", mode="wt", encoding="utf-8") as f:
+            #json.dump(self.recursive_eval_data, f, ensure_ascii=False, indent=2)
 
         train_frames, valid_frames, test_frames = self._split(frames)
         train_regressors, valid_regressors, test_regressors = self._split(regressors)

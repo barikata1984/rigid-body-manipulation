@@ -14,7 +14,7 @@ from transforms3d.euler import euler2mat
 from transforms3d.quaternions import mat2quat, quat2mat
 
 # all the modules of the packages below are imported to enable autoinstantiate()
-import dynamics as dyn
+from dynamics import coordinate_transfer_imat
 from utilities import get_element_id
 
 
@@ -155,7 +155,7 @@ def get_target_object_ground_truth(target_object_cad_gt_path):
 
     # Get the inertia tensor w.r.t the object's aabb frame
     pose_aabb_obji = SE3(SO3.identity(), pos_aabb_obji)
-    _globalinertia = dyn.coordinate_transfer_imat(
+    _globalinertia = coordinate_transfer_imat(
         pose_aabb_obji,
         _fullinertia,
         mass,

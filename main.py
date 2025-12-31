@@ -63,18 +63,9 @@ def main():
             excitation_slice = slice(start, end)
             print(f"Excitation trajectory slice found: {start} to {end}")
 
-    _cfg = OmegaConf.to_object(cfg)
-
-    # Instantiate necessary classes ===============================================
-    #recorder = instantiate(_cfg.recorder, m, d)
-    #planner = instantiate(_cfg.planner, m, d)
-    #controller = instantiate(_cfg.controller, m, d)
-
-    #if not recorder.videowriter.isOpened():
-    #    print("Error: VideoWriter failed to open, outside simulation")
-
-    #simulation = Simulation(m, d, recorder, planner, controller)
-    simulation = instantiate(_cfg, m, d)
+    # Instantiate the simulator ===============================================
+    simulator_cfg = OmegaConf.to_object(cfg)
+    simulation = instantiate(simulator_cfg, m, d)
 
     result = simulation.run()
 
@@ -84,10 +75,10 @@ def main():
     gt_moms_i = gt["globalinertia"]
     gt_iparams = np.array([gt_total_mass, *gt_f_moms, *gt_moms_i])
 
-    regressors = result["regressors"]
-    fts_sen = result["fts_sen"]
-    ls_iparams = lstsq(regressors.reshape(-1, 10), fts_sen.reshape(-1))[0]
-    tls_iparams = total_lstsq(regressors.reshape(-1, 10), fts_sen.reshape(-1))[0]
+    regressors = np.array(result["regressors"])
+    wrenches = np.array(result["wrenches"])
+    ls_iparams = lstsq(regressors.reshape(-1, 10), wrenches.reshape(-1))[0]
+    tls_iparams = total_lstsq(regressors.reshape(-1, 10), wrenches.reshape(-1))[0]
     l2_ls = norm(ls_iparams - np.array(gt_iparams), 2)
     l2_tls = norm(tls_iparams - np.array(gt_iparams), 2)
     labels = ["total_mass", "mx", "my", "mz", "ixx", "iyy", "izz", "ixy", "iyz", "izx", "l2"]
@@ -102,7 +93,6 @@ def main():
     print(df)
 
     # Log the identified inertial params and their ground truth
-    # logger.transform["globalinertia"] = comparison.to_json()
     simulation.recorder.finish(result["frames"], result["regressors"], gt_iparams)  # video and dataset json generated
 
 

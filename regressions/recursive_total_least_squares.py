@@ -8,7 +8,7 @@ import numpy as np
 class FrameData:
     """rtls_eval.json の1フレーム分に対応するデータ構造"""
     frame_id: str                        # "0000", "0001" などのキー
-    ft_sen: list[float]                  # 6要素: 力・トルク測定値
+    wrench: list[float]                  # 6要素: 力・トルク測定値
     regressor: list[list[float]]         # 6x10要素: 回帰行列
     # RIV用データは今回無視しますが、将来的な拡張のためOptionalで残します
     regressor_instrument: list[list[float]] | None = None
@@ -16,7 +16,7 @@ class FrameData:
     def to_numpy(self) -> tuple[np.ndarray, np.ndarray]:
         """NumPy計算用に変換 (y, A) を返す"""
         # 観測ベクトル y: (6, 1)
-        y = np.array(self.ft_sen, dtype=np.float64).reshape(6, 1)
+        y = np.array(self.wrench, dtype=np.float64).reshape(6, 1)
 
         # 回帰行列 A: (6, 10)
         A = np.array(self.regressor, dtype=np.float64)
@@ -43,7 +43,7 @@ def load_rtls_eval_json(filepath: str) -> list[FrameData]:
         # JSONの内容をdataclassにマッピング
         frame_data = FrameData(
             frame_id=key,
-            ft_sen=frame_content["ft_sen"],
+            wrench=frame_content["wrench"],
             regressor=frame_content["regressor"]
         )
         data_list.append(frame_data)

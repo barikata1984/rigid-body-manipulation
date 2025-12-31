@@ -1,7 +1,7 @@
 from math import pi
 
 import numpy as np
-from numpy import linalg as la
+from numpy import linalg as nla
 from liegroups.numpy import SO3, SE3
 
 
@@ -20,7 +20,7 @@ Ad = pose.adjoint()
 Ad_T = Ad.T
 
 Ad_inv = pose.inv().adjoint()
-pinv_Ad = la.pinv(pose.adjoint())
+pinv_Ad = nla.pinv(pose.adjoint())
 
 
 print(f"{np.allclose(Ad_T, Ad_inv)=}")

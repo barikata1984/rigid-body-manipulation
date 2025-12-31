@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -13,20 +14,17 @@ from tqdm import tqdm
 
 from factory import instantiate
 from controllers import LinearQuadraticRegulatorConfig
-from dynamics import dynamics as dyn
 from dynamics.dynamics import (
     calculate_frame_dynamics,
     get_linacc,
     get_regressor_matrix,
     setup_robot_dynamics_parameters,
 )
-from planners import JointPositionPlannerConfig
-from recorders import BasicRecorderConfig, StandardRecorderConfig
+from recorders import StandardRecorderConfig
 from sensors import Sensors
 from transformations import Poses
-from visualization import visualization as vis
-from visualization.visualization import cb_rgb  # color palette for consistency
-from visualization_ import ax_plot_lines, ax_plot_lines_w_tgt
+from utilities import json_to_namespace
+from visualization.visualization import ax_plot_lines, ax_plot_lines_w_tgt, cb_rgb
 
 from .base_simulator import BaseSimulatorConfig
 
@@ -46,7 +44,6 @@ class SimulatorConfig(BaseSimulatorConfig):
     duration: float | None = None
     fps: int | None = None
     recorder: StandardRecorderConfig = field(default_factory=StandardRecorderConfig)
-    planner: JointPositionPlannerConfig = field(default_factory=JointPositionPlannerConfig)
     controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
     exp_setup: str = "configurations/simulations/base.yaml"
     config_export_path: str | None = None
@@ -108,11 +105,20 @@ class Simulator:
                  d: MjData,
                  ) -> None:
 
+        # Load target trajectory JSON as dot-accessible object
+        self.target_trajectory = None
+        if cfg.target_trajectory:
+            with open(cfg.target_trajectory) as f:
+                trajectory_data = json.load(f)
+            self.target_trajectory = json_to_namespace(trajectory_data)
+
         self.recorder = instantiate(cfg.recorder, m, d)
-        self.planner = instantiate(cfg.planner, m, d)
         self.controller = instantiate(cfg.controller, m, d)
 
-        
+        self.timestep = MjOption().timestep  # if cfg.timestep <= 0 else cfg.timestep
+        self.n_steps = int(self.target_trajectory.duration / self.timestep)
+        self.fps = self.target_trajectory.fps
+
         # Set a random number generator ===========================================
         rng = np.random.default_rng()
         rng.standard_normal(10)
@@ -120,7 +126,6 @@ class Simulator:
         self.m = m
         self.d = d
 
-        self.fps = self.recorder.fps
         self.sensors = Sensors(self.m, self.d, self.fps)
 
         (
@@ -159,7 +164,7 @@ class Simulator:
         self.twists_sen = []
         self.dtwists_sen = []
         self.linaccs_sen_obji = []
-        self.fts_sen = []
+        self.wrenches = []
         self.regressors = []
 
         self.frame_count = 0
@@ -172,16 +177,86 @@ class Simulator:
         if not self.recorder.videowriter.isOpened():
             print("Error: VideoWriter failed to open, inside simulation.")
 
-        for step in tqdm(range(self.planner.n_steps), desc="Progress"):
+        for step in tqdm(range(self.n_steps), desc="Progress"):
             act_traj = np.stack(self.sensors.get("jointvars", perturbed=True))  # type: ignore
             _, _, twists_lj_l, dtwists_lj_l = self.inverse(act_traj)
 
-            # Compute actuator controls and evolute the simulation
-            tgt_traj = self.planner.plan(step)
+            if self.frame_count <= self.d.time * self.fps:
+                _tgt_traj = self.target_trajectory.frames[self.frame_count]
+                tgt_traj = np.array(_tgt_traj)
+                self._store_current_data(tgt_traj, act_traj)
+                self._set_ctrl(tgt_traj, act_traj)
 
-            if self.frame_count <= self.d.time * self.recorder.fps:
-                self.process_frame(tgt_traj, act_traj)
+                self.frame_count += 1
 
+            # >>> Evolve the simulation >>>
+            mj_step(self.m, self.d)
+            # <<< Evolve the simulation <<<
+
+        # Compose frames =========================================================
+        data_containers = [
+            self.file_paths,
+            self.transform_matrices,
+            self.poses_sen_obj,
+            self.twists_sen,
+            self.dtwists_sen,
+            self.wrenches,
+            self.regressors,
+        ]
+
+        frames = []
+        for fpath, tf, pose, t, dt, w, r in zip(*data_containers, strict=False):
+            frame = {
+                "file_path": fpath,
+                "transform_matrix": tf,
+                "pose_sen_obj": pose,
+                "twist_sen": t,
+                "dtwist_sen": dt,
+                "wrench": w.tolist(),
+                "regressor": r.tolist(),
+            }
+
+            frames.append(frame)
+
+        # Visualize data
+        self._visualize()
+
+        return {"frames": frames, "regressors": self.regressors, "wrenches": self.wrenches}
+
+    def _store_current_data(self, tgt_traj, act_traj):
+        self.time.append(self.d.time)
+        self.tgt_trajectory.append(tgt_traj)
+        self.act_trajectory.append(act_traj)
+
+        twist_sen, dtwist_sen, regressor = calculate_frame_dynamics(
+            act_traj, self.inverse, self.id_ll, self.pose_x_ll, self.pose_ll_llj, self.pose_x_sen
+        )
+        self.twists_sen.append(twist_sen.tolist())
+        self.dtwists_sen.append(dtwist_sen.tolist())
+
+        linacc_sen_obji = get_linacc(twist_sen, dtwist_sen, self.pose_sen_obji)
+        self.linaccs_sen_obji.append(linacc_sen_obji)
+
+        wrench = self.sensors.get("wrench")
+        self.wrenches.append(wrench)
+
+        regressor = get_regressor_matrix(twist_sen, dtwist_sen)
+        self.regressors.append(regressor)
+
+        # Writing a single frame of a dataset =============================
+        file_name = f"{self.frame_count:04}.png"
+        self.recorder.render(self.d, file_name)  # recorder.cam_id is selected internally
+
+        # Log NeMD ingredients ============================================
+        # Items which need to be computed at every frame recoding
+        pose_obj_cam = self.pose_x_obj.inv().dot(self.poses.x_cam[self.recorder.cam_id])
+        self.transform_matrices.append(pose_obj_cam.as_matrix().tolist())
+
+        self.poses_sen_obj.append(self.pose_sen_obj.as_matrix().tolist())
+        self.poses_sen_obji.append(self.pose_sen_obji.as_matrix().tolist())
+        self.file_paths.append(str(self.recorder.complete_image_dir / file_name))
+
+    def _set_ctrl(self, tgt_traj, act_traj):
             # Get residual of state
             mj_differentiatePos(  # Use this func to differenciate quat properly
                 self.m,  # MjModel
@@ -203,42 +278,14 @@ class Simulator:
             self.qvel_errors.append(traj_err[1])
             self.qacc_errors.append(traj_err[2])
 
-            # >>> Evolve the simulation >>>
-            mj_step(self.m, self.d)
-            # <<< Evolve the simulation <<<
-
-        # Post process data =======================================================
-        # Cast data into ndarrays for concise conslicing
+    def _visualize(self):
+        """Visualize simulation results."""
+        # Cast data into ndarrays for visualization
         tgt_trajectory = np.array(self.tgt_trajectory)
         trajectory = np.array(self.act_trajectory)
         frame_iter = np.arange(self.frame_count)
-        fts_sen = np.array(self.fts_sen)
-        regressors = np.array(self.regressors)
+        wrenches = np.array(self.wrenches)
 
-        # Compose frames =========================================================
-        frames = []
-        data_containers = [
-            self.file_paths,
-            self.transform_matrices,
-            self.poses_sen_obj,
-            self.twists_sen,
-            self.dtwists_sen,
-            fts_sen,
-        ]
-        for fpath, tf, pose, t, dt, ft in zip(*data_containers, strict=False):
-            frame = {
-                "file_path": fpath,
-                "transform_matrix": tf,
-                "pose_sen_obj": pose,
-                "twist_sen": t,
-                "dtwist_sen": dt,
-                "ft_sen": ft.tolist(),
-            }
-
-            frames.append(frame)
-
-        # Visualize data ==========================================================
-        # Object linear acceleration and ft sensor measurements rel. to {sensor}
         # Actual and target joint positions
         qpos_fig, qpos_axes = plt.subplots(2, 1, sharex="col", tight_layout=True)
         qpos_fig.suptitle("qpos")
@@ -246,58 +293,16 @@ class Simulator:
         yls = ["q0-2 [m]", "q3-5 [rad]"]
         for i in range(len(qpos_axes)):
             slcr = slice(i * 3, (i + 1) * 3)
-            vis.ax_plot_lines_w_tgt(
+            ax_plot_lines_w_tgt(
                 qpos_axes[i], self.time, trajectory[:, 0, slcr], tgt_trajectory[:, 0, slcr], yls[i]
             )
 
         # Object linear acceleration and ft sensor measurements rel. to {sensor}
         acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)
-        vis.ax_plot_lines(acc_ft_axes[0], frame_iter, self.linaccs_sen_obji, "recovered_linacc_sen_obji [m/s/s]")
-        vis.ax_plot_lines(acc_ft_axes[1], frame_iter, fts_sen[:, :3], "frc_sen [N]")
-        vis.ax_plot_lines(acc_ft_axes[2], frame_iter, fts_sen[:, 3:], "trq_sen [N*m]")
+        ax_plot_lines(acc_ft_axes[0], frame_iter, self.linaccs_sen_obji, "recovered_linacc_sen_obji [m/s/s]")
+        ax_plot_lines(acc_ft_axes[1], frame_iter, wrenches[:, :3], "frc_sen [N]")
+        ax_plot_lines(acc_ft_axes[2], frame_iter, wrenches[:, 3:], "trq_sen [N*m]")
         for ax in acc_ft_axes:
             ax.hlines(0.0, frame_iter[0], frame_iter[-1], ls="dashed", alpha=0.5)
 
         plt.show()
-
-        return {"frames": frames, "regressors": regressors, "fts_sen": fts_sen}
-
-    def process_frame(self, tgt_traj, act_traj):
-        self.time.append(self.d.time)
-        self.tgt_trajectory.append(tgt_traj)
-        self.act_trajectory.append(act_traj)
-
-        twist_sen, dtwist_sen, regressor = calculate_frame_dynamics(
-            act_traj, self.inverse, self.id_ll, self.pose_x_ll, self.pose_ll_llj, self.pose_x_sen
-        )
-        self.twists_sen.append(twist_sen.tolist())
-        self.dtwists_sen.append(dtwist_sen.tolist())
-
-        linacc_sen_obji = dyn.get_linacc(twist_sen, dtwist_sen, self.pose_sen_obji)
-        self.linaccs_sen_obji.append(linacc_sen_obji)
-
-        wrench = self.sensors.get("wrench")
-        self.fts_sen.append(wrench)
-
-        regressor = dyn.get_regressor_matrix(twist_sen, dtwist_sen)
-        self.regressors.append(regressor)
-
-        # Writing a single frame of a dataset =============================
-        file_name = f"{self.frame_count:04}.png"
-        self.recorder.render(self.d, file_name)  # recorder.cam_id is selected internally
-
-        # Log NeMD ingredients ============================================
-        # Items which need to be computed at every frame recoding
-        pose_obj_cam = self.pose_x_obj.inv().dot(self.poses.x_cam[self.recorder.cam_id])
-        self.transform_matrices.append(pose_obj_cam.as_matrix().tolist())
-
-        self.poses_sen_obj.append(self.pose_sen_obj.as_matrix().tolist())
-        self.poses_sen_obji.append(self.pose_sen_obji.as_matrix().tolist())
-        self.file_paths.append(str(self.recorder.complete_image_dir / file_name))
-
-        self.recorder.recursive_eval_data["frames"][f"{self.frame_count:04}"] = {
-            "regressor": regressor.tolist(),
-            "ft_sen": wrench.tolist(),
-        }
-
-        self.frame_count += 1
