@@ -32,8 +32,8 @@ class StandardRecorderConfig(BaseRecorderConfig):
     videcodec: str = "mp4v"
     dataset_dir: str = MISSING
     aabb_scale: float = MISSING  # | None = None
+    fps: int = MISSING  # | None = None
     # gt_mass_distr_file_path: str = MISSING
-    fps: int = 30
 
 class StandardRecorder:
     def __init__(
@@ -91,7 +91,7 @@ class StandardRecorder:
         self.renderer.update_scene(d, cam_id)
         bgr = self.renderer.render()[:, :, [2, 1, 0]]
         # Make an alpha mask to remove the white background
-        alpha = np.where(np.all(bgr == 0, axis=-1), 0, 255)[..., np.newaxis]
+        alpha = np.where(np.all(bgr == 0, axis=-1), 0, 255).astype(np.uint8)[..., np.newaxis]
         cv2.imwrite(str(self.complete_image_dir / file_name), np.append(bgr, alpha, axis=2))  # image (bgr + alpha)
         # Write a video frame
         self.videowriter.write(bgr)
@@ -160,9 +160,6 @@ class StandardRecorder:
     def finish(self, frames, regressors, gt_iparams):
         self.videowriter.release()
 
-        #with open(self.dataset_dir / "rtls_eval.json", mode="wt", encoding="utf-8") as f:
-            #json.dump(self.recursive_eval_data, f, ensure_ascii=False, indent=2)
-
         train_frames, valid_frames, test_frames = self._split(frames)
         train_regressors, valid_regressors, test_regressors = self._split(regressors)
         train_regressors, valid_regressors, test_regressors = self._split(regressors)
@@ -171,11 +168,6 @@ class StandardRecorder:
         self._process_split(train_frames, train_regressors, gt_iparams, split="train")
         self._process_split(valid_frames, valid_regressors, gt_iparams, split="valid")
         self._process_split(test_frames, test_regressors, gt_iparams, split="test")
-
-
-#        with open(self.dataset_dir / "transform.json", "w") as f:
-#            json.dump(self.transform, f, indent=2)
-
 
 #        print("Tracking camera setup =======================================\n"
 #             f"    Tracking camera id:         {self.id}\n"

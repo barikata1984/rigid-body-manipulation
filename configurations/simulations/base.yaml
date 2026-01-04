@@ -1,11 +1,10 @@
 manipulator: xml_models/manipulators/sequential
 reset_keyframe: initial_state
 recorder:
-  target_class: BasicRecorder
+  target_class: StandardRecorder
   track_cam_name: tracking
   fig_height: 800
   fig_width: 800
-  fps: 60
   videoname: output.mp4
   videcodec: mp4v
 controller:
@@ -14,7 +13,6 @@ controller:
     epsilon: 0.002
     centered: true
   state_gain:
-  # [1000000.0, 1000000.0, 1000000.0, 10000.0, 10000.0, 10000.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
   # qpos
   - 1000000
   - 1000000
@@ -30,17 +28,9 @@ controller:
   - 10
   - 10
   input_gain:
-  # [0.000004, 0.000004, 0.000004, 0.00025, 0.00025, 0.00025]
   - 0.01
   - 0.01
   - 0.01
   - 0.1
   - 0.1
   - 0.1
-displacements:
-- 0.2
-- 1.4
-- 0.6
-- ${pi:1pi}  # converted by a omegaconf custom resolver
-- 0.0
-- ${pi:8pi}  # converted by a omegaconf custom resolver

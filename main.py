@@ -14,6 +14,7 @@ from simulators.setup import generate_model_data, get_element_id
 from omegaconf_custom_resolvers import pi_converter
 from regressions import total_lstsq
 from simulators import SimulatorConfig
+from utilities import json_to_namespace
 
 OmegaConf.register_new_resolver("pi", pi_converter)
 
@@ -27,46 +28,59 @@ def main():
     cfg = OmegaConf.merge(base_config, yaml_config, cli_config)  # priority: cli > cli-specified yaml > vanilla
     m, d, gt = generate_model_data(cfg)
 
-    # Fill (potentially) missing fields of a logger configulation =================
+    # Load trajectory and extract excitation indices if available
+    excitation_slice = slice(None)  # Default to full trajectory
+    if cfg.target_trajectory:
+        with open(cfg.target_trajectory) as f:
+            trajectory_data = json.load(f)
+
+        target_trajectory = json_to_namespace(trajectory_data)
+
+        #with open(cfg.target_trajectory) as f:
+        #    target_trajectory = json.load(f)
+        #if "excitation" in trajectory_data and "start_index" in trajectory_data["excitation"]:
+        #    start = trajectory_data["excitation"]["start_index"]
+        #    end = trajectory_data["excitation"]["end_index"]
+        #    excitation_slice = slice(start, end)
+        #    print(f"Excitation trajectory slice found: {start} to {end}")
+
+        # Load target trajectory JSON as dot-accessible object
+        #self.target_trajectory = None
+        #if cfg.target_trajectory:
+
+    # Fill the recorder's fps with the target_trajectory's ===========================
+    try:
+        cfg.recorder.fps = int(cfg.recorder.fps)
+    except MissingMandatoryValue:
+        cfg.recorder.fps = int(target_trajectory.fps)
+
+    # Fill (potentially) missing fields of the recorder configulation =================
     try:
         cfg.recorder.aabb_scale = float(cfg.recorder.aabb_scale)
     except MissingMandatoryValue:
         aabb_scale = m.numeric_data[get_element_id(m, "numeric", "target/aabb_scale")]
         cfg.recorder.aabb_scale = float(aabb_scale)
 
+    # Get/set and make the dataset dir ================================================
     object_dir = Path(cfg.object)
-    object_gt = object_dir / "ground_truth.csv"
-
     try:
         dataset_dir = Path(cfg.recorder.dataset_dir)
     except MissingMandatoryValue:
         dataset_dir = Path.cwd() / "datasets" / object_dir.name
         cfg.recorder.dataset_dir = dataset_dir
-
     dataset_dir.mkdir(parents=True, exist_ok=True)
 
-    # Copy the ground truth mass distribution file to the dataset file ============
+    # Copy the ground truth mass distribution file to the dataset file ================
+    object_gt = object_dir / "ground_truth.csv"
     dataset_gt = dataset_dir / "ground_truth.csv"
     if dataset_gt.is_file():
         print("'ground_truth.csv' is not copied to the dataset dir since the file with the same name already existsd.")
     else:
         copy(object_gt, dataset_gt)
 
-    # Load trajectory and extract excitation indices if available
-    excitation_slice = slice(None)  # Default to full trajectory
-    if cfg.target_trajectory:
-        with open(cfg.target_trajectory) as f:
-            trajectory_data = json.load(f)
-        if "excitation" in trajectory_data and "start_index" in trajectory_data["excitation"]:
-            start = trajectory_data["excitation"]["start_index"]
-            end = trajectory_data["excitation"]["end_index"]
-            excitation_slice = slice(start, end)
-            print(f"Excitation trajectory slice found: {start} to {end}")
-
-    # Instantiate the simulator ===============================================
+    # Instantiate and run the simulator ===============================================
     simulator_cfg = OmegaConf.to_object(cfg)
-    simulation = instantiate(simulator_cfg, m, d)
-
+    simulation = instantiate(simulator_cfg, m, d, target_trajectory=target_trajectory)
     result = simulation.run()
 
     # Show inertial params identified with the least squares method

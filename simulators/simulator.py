@@ -23,7 +23,6 @@ from dynamics.dynamics import (
 from recorders import StandardRecorderConfig
 from sensors import Sensors
 from transformations import Poses
-from utilities import json_to_namespace
 from visualization.visualization import ax_plot_lines, ax_plot_lines_w_tgt, cb_rgb
 
 from .base_simulator import BaseSimulatorConfig
@@ -47,10 +46,9 @@ class SimulatorConfig(BaseSimulatorConfig):
     controller: LinearQuadraticRegulatorConfig = field(default_factory=LinearQuadraticRegulatorConfig)
     exp_setup: str = "configurations/simulations/base.yaml"
     config_export_path: str | None = None
-    displacements: list[float] = MISSING
     target_trajectory: str | None = None
     generate_trajectory: str | None = None
-    finite_differentiation_dt: float = 1.0
+    diffpos_dt: float = 1.0
 
 
 # Naming convention of spatial and dynamics variables:
@@ -103,14 +101,14 @@ class Simulator:
                  cfg: SimulatorConfig,
                  m: MjModel,
                  d: MjData,
+                 *args,
+                 **kwargs,
                  ) -> None:
 
-        # Load target trajectory JSON as dot-accessible object
-        self.target_trajectory = None
-        if cfg.target_trajectory:
-            with open(cfg.target_trajectory) as f:
-                trajectory_data = json.load(f)
-            self.target_trajectory = json_to_namespace(trajectory_data)
+        try:
+            self.target_trajectory = kwargs["target_trajectory"]
+        except:
+            pass
 
         self.recorder = instantiate(cfg.recorder, m, d)
         self.controller = instantiate(cfg.controller, m, d)
@@ -118,6 +116,7 @@ class Simulator:
         self.timestep = MjOption().timestep  # if cfg.timestep <= 0 else cfg.timestep
         self.n_steps = int(self.target_trajectory.duration / self.timestep)
         self.fps = self.target_trajectory.fps
+        self.diffpos_dt = cfg.diffpos_dt
 
         # Set a random number generator ===========================================
         rng = np.random.default_rng()
@@ -167,11 +166,12 @@ class Simulator:
         self.wrenches = []
         self.regressors = []
 
-        self.frame_count = 0
-        self.frames = []
-        self.file_paths = []
         self.time = []
+        self.file_paths = []
         self.transform_matrices = []
+
+        self.frames = []
+        self.frame_count = 0
 
     def run(self):
         if not self.recorder.videowriter.isOpened():
@@ -261,7 +261,7 @@ class Simulator:
             mj_differentiatePos(  # Use this func to differenciate quat properly
                 self.m,  # MjModel
                 self.qpos_err,  # data container for the residual of qpos
-                1,  # timestep used to numerically differentiate the pos
+                self.diffpos_dt,  # timestep used to numerically differentiate the pos
                 tgt_traj[0],  # target qpos
                 act_traj[0],  # actual qpos
             )
