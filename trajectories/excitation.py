@@ -53,7 +53,12 @@ class ExcitationTrajectory(BaseTrajectory):
         # [a_flat, b_flat, q0]
         x0 = np.concatenate([self.a.flatten(), self.b.flatten(), self.q0])
 
+        # Track iteration and condition number
+        it_count = 0
+        current_cond = float('inf')
+
         def objective(x):
+            nonlocal current_cond
             # Unpack
             split1 = self.num_joints * self.num_harmonics
             split2 = split1 * 2
@@ -64,53 +69,47 @@ class ExcitationTrajectory(BaseTrajectory):
 
             a = a_flat.reshape(self.num_joints, self.num_harmonics)
             b = b_flat.reshape(self.num_joints, self.num_harmonics)
-            q0 = q0_flat  # size dof
+            q0 = q0_flat
 
             # Create Trajectory Model
             coeffs = {"a": a, "b": b, "q0": q0}
             traj = FourierTrajectory(self.duration, self.fps, self.num_joints, self.num_harmonics, self.base_freq, coeffs)
 
-            # Generate (q, dq, ddq) for all t
-            # Vectorized get_value is efficient
             q, dq, ddq = traj.get_value()
 
-            # Compute Regressor Stack
-            # We need to iterate because kinematics_func (calculate_frame_dynamics wrappers) usually expect single time step or act differently
-            # The blueprint says calculate_frame_dynamics takes act_traj of shape (3, N) maybe?
-            # Looking at simulate.py line 88: _, _, twists, dtwists = self.inverse(act_traj) where act_traj is (3, dof) ?
-            # No, simulate.py loop runs PER STEP. act_traj is (dof,) probably or (3, dof) for pos/vel/acc?
-            # Actually simulate.py: act_traj = np.stack(self.sensors.get("jointvars")) -> shape (3, dof) likely.
-            # So kinematics_func likely processes ONE sample at a time.
-
-            # Accumulate Y = sum(A.T @ A)
-            Y = np.zeros((10, 10))  # Assuming 10 parameters (mass, com*3, inertias*6)
-
-            # Loop over time for regressor
-            # This might be slow in Python loop, but necessary if kinematics_func is opaque
+            Y = np.zeros((10, 10))
             for i in range(len(self.time_array)):
-                # inputs: q[i], dq[i], ddq[i] -> shape (dof,)
-                # kinematics_func expects inputs to form act_traj
                 A_k = self.kinematics_func(q[i], dq[i], ddq[i])
-                # A_k shape should be (6, 10)
                 Y += A_k.T @ A_k
 
-            # Condition number
-            # kappa = max_eig / min_eig
-            eigvals = np.linalg.eigvalsh(Y)  # Hermitian/Symmetric eigs
+            eigvals = np.linalg.eigvalsh(Y)
             min_eig = np.min(eigvals)
             max_eig = np.max(eigvals)
 
             if min_eig < 1e-9:
-                return 1e9  # Penalty for singularity
-
-            cond_num = max_eig / min_eig
+                cond_num = 1e9
+            else:
+                cond_num = max_eig / min_eig
+            
+            current_cond = cond_num
             return cond_num
 
-        # Run Optimization
-        # Bounds? Amplitudes shouldn't be too huge.
-        bounds = [(-1.0, 1.0)] * len(x0)  # Reasonable bounds for joints
+        def callback(xk):
+            nonlocal it_count
+            it_count += 1
+            print(f"Iteration {it_count}: Condition Number = {current_cond:.4f}")
 
-        res = minimize(objective, x0, method="L-BFGS-B", bounds=bounds, options={"maxiter": max_iter, "disp": True})
+        # Run Optimization
+        bounds = [(-1.0, 1.0)] * len(x0)
+        
+        res = minimize(
+            objective, 
+            x0, 
+            method="L-BFGS-B", 
+            bounds=bounds, 
+            callback=callback,
+            options={"maxiter": max_iter, "disp": True}
+        )
 
         # Update coefficients
         x_opt = res.x
