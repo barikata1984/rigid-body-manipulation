@@ -3,8 +3,8 @@ from collections.abc import Callable
 import numpy as np
 from scipy.optimize import minimize
 
-from trajectories.base_trajectory import BaseTrajectory
-from trajectories.fourier import FourierTrajectory
+from .base_trajectory import BaseTrajectory
+from .fourier import FourierTrajectory
 
 
 class ExcitedTrajectory(BaseTrajectory):

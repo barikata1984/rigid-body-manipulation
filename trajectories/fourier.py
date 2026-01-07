@@ -1,6 +1,6 @@
 import numpy as np
 
-from trajectories.base_trajectory import BaseTrajectory
+from .base_trajectory import BaseTrajectory
 
 
 class FourierTrajectory(BaseTrajectory):

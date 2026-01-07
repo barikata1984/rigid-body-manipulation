@@ -1,5 +1,5 @@
 import numpy as np
-from base_trajectory import BaseTrajectory
+from .base_trajectory import BaseTrajectory
 
 
 class QuinticSplineTrajectory(BaseTrajectory):

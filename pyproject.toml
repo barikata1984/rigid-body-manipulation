@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "rigid-body-manipulation"
 version = "0.1"
@@ -18,6 +22,9 @@ dependencies = [
     "opencv-python>=4.11.0.86",
     "pyqt6>=6.9.0",
 ]
+
+[project.scripts]
+generate-trajectory = "trajectories.generate:main"
 
 [tool.ruff]
 line-length = 119 # 行の最大文字数
@@ -47,16 +54,12 @@ unsafe-fixes = false # 安全でない修正も有効にする
 [tool.setuptools]
 # エラーに出ていたフォルダ名をすべてリストアップして許可します
 packages = [
-    'base_config',
     'configurations',
     'controllers',
-    'core',
     'datasets',
-    'debug_log',
     'dynamics',
     'literature',
     'omegaconf_custom_resolvers',
-    'planners',
     'recorders',
     'regressions',
     'sensors',

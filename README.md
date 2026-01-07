@@ -24,3 +24,26 @@ parent's body id of:
      object.xml (body_id==7): 6,
   target/object (body_id==8): 7,
 ```
+
+## Trajectory Generation
+
+You can generate trajectories (Spline, Fourier, Excited) using the `generate-trajectory` command.
+
+### Basic Usage
+```bash
+uv run generate-trajectory spline --duration 5.0 --fps 60
+```
+
+### Using Configuration File
+You can specify a configuration file using `--config`. You can also specify the trajectory type using `--type`.
+
+```bash
+uv run generate-trajectory --type spline --config configurations/trajectory_generation/spline_6dof.yaml
+```
+
+Overrides are also supported:
+```bash
+uv run generate-trajectory --type spline --config configurations/trajectory_generation/spline_6dof.yaml --duration 10.0
+```
+
+Supported types: `spline`, `fourier`, `excited`.
