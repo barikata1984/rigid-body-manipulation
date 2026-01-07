@@ -172,5 +172,4 @@ cython_debug/
 
 # This repo specific
 datasets/*
-configurations/*
 debug/*
