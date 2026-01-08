@@ -6,12 +6,30 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
 
+from dataclasses import dataclass
+
+from dataclasses import dataclass
+from typing import Optional
+from pathlib import Path
+
+from factory import InstantiateConfig
+
+
+@dataclass
+class BaseTrajectoryConfig(InstantiateConfig):
+    duration: float = 5.0
+    fps: float = 60.0
+    module_name: str = "trajectories"
+    
+    # CLI-specific arguments (shared across all trajectories)
+    output: Optional[Path] = None
+    no_plot: bool = False
 
 # 抽象クラスの定義
 class BaseTrajectory(ABC):
-    def __init__(self, duration: float, fps: float):
-        self.duration = duration
-        self.fps = fps
+    def __init__(self, cfg: BaseTrajectoryConfig, *args, **kwargs):
+        self.duration = cfg.duration
+        self.fps = cfg.fps
 
         self.time_steps = int(self.duration * self.fps)
         self.time_array = np.linspace(0, self.duration, self.time_steps)

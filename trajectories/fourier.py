@@ -1,6 +1,20 @@
 import numpy as np
 
-from .base_trajectory import BaseTrajectory
+from dataclasses import dataclass, field
+from typing import Optional
+
+from .base_trajectory import BaseTrajectory, BaseTrajectoryConfig
+
+
+@dataclass
+class FourierTrajectoryConfig(BaseTrajectoryConfig):
+    num_joints: int = 1
+    num_harmonics: int = 5
+    base_freq: float = 0.1
+    coefficients: Optional[dict] = None
+    q0: Optional[list[float]] = None
+    target_class: str = "FourierTrajectory"
+
 
 
 class FourierTrajectory(BaseTrajectory):
@@ -16,47 +30,35 @@ class FourierTrajectory(BaseTrajectory):
     b -> cosine coefficients (delta in paper)
     """
     def __init__(
-            self,
-            duration: float,
-            fps:int, 
-            num_joints: int, 
-            num_harmonics: int, 
-            base_freq: float, 
-            coefficients=None, 
-            q0=None,
-            ):
+        self,
+        cfg: FourierTrajectoryConfig,
+        *args,
+        **kwargs,
+    ):
         """
         Args:
-            num_joints (int): Number of joints.
-            num_harmonics (int): Number of harmonics N.
-            base_frequency (float): Fundamental frequency f_b [Hz].
-            coefficients (dict, optional): Dictionary containing:
-                - 'a': (num_joints, num_harmonics) array (Sine coeffs)
-                - 'b': (num_joints, num_harmonics) array (Cosine coeffs)
-                - 'q0': (num_joints,) array (Offset)
-                If None, initializes with zeros.
-            q0 (array, optional): Explicit offset if not in coefficients dictionary.
+            cfg: Configuration object.
         """
-        super().__init__(duration, fps)
+        super().__init__(cfg, *args, **kwargs)
 
-        self.num_joints = num_joints
-        self.num_harmonics = num_harmonics
-        self.base_freq = base_freq
-        self.omega_b = 2 * np.pi * base_freq
+        self.num_joints = cfg.num_joints
+        self.num_harmonics = cfg.num_harmonics
+        self.base_freq = cfg.base_freq
+        self.omega_b = 2 * np.pi * cfg.base_freq
 
-        if coefficients is None:
-            self.a = np.zeros((num_joints, num_harmonics))
-            self.b = np.zeros((num_joints, num_harmonics))
-            self.q0 = np.zeros(num_joints)
+        if cfg.coefficients is None:
+            self.a = np.zeros((self.num_joints, self.num_harmonics))
+            self.b = np.zeros((self.num_joints, self.num_harmonics))
+            self.q0 = np.zeros(self.num_joints)
         else:
-            self.a = np.array(coefficients.get('a', np.zeros((num_joints, num_harmonics))))
-            self.b = np.array(coefficients.get('b', np.zeros((num_joints, num_harmonics))))
-            if 'q0' in coefficients:
-                self.q0 = np.array(coefficients['q0'])
-            elif q0 is not None:
-                self.q0 = np.array(q0)
+            self.a = np.array(cfg.coefficients.get('a', np.zeros((self.num_joints, self.num_harmonics))))
+            self.b = np.array(cfg.coefficients.get('b', np.zeros((self.num_joints, self.num_harmonics))))
+            if 'q0' in cfg.coefficients:
+                self.q0 = np.array(cfg.coefficients['q0'])
+            elif cfg.q0 is not None:
+                self.q0 = np.array(cfg.q0)
             else:
-                self.q0 = np.zeros(num_joints)
+                self.q0 = np.zeros(self.num_joints)
 
     def get_value(self):
         """

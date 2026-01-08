@@ -10,7 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from simulators.setup import generate_model_data
 from dynamics import calculate_frame_dynamics, setup_robot_dynamics_parameters
 from simulators import SimulatorConfig
-from trajectories.excitation import ExcitationTrajectory
+from trajectories.excitation import ExcitationTrajectory, ExcitationTrajectoryConfig
 
 
 def main():
@@ -69,12 +69,15 @@ def main():
     # 5. Instantiate Excitation Trajectory
     dof = m.nu
     print("Initializing ExcitationTrajectory...")
-    exc = ExcitationTrajectory(
+    cfg = ExcitationTrajectoryConfig(
         duration=2.0,
         num_joints=dof,
         num_harmonics=5,  # Keep complexity
         base_freq=1,  # Higher freq -> shorter duration (5s)
         fps=60,  # Coarser time step for speed (125 steps vs 1000)
+    )
+    exc = ExcitationTrajectory(
+        cfg,
         kinematics_func=kinematics_func,
     )
 

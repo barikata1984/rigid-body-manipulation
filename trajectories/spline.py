@@ -1,5 +1,20 @@
 import numpy as np
-from .base_trajectory import BaseTrajectory
+from dataclasses import dataclass, field
+from typing import Optional
+
+from .base_trajectory import BaseTrajectory, BaseTrajectoryConfig
+
+
+@dataclass
+class QuinticSplineTrajectoryConfig(BaseTrajectoryConfig):
+    start_pos: list[float] = field(default_factory=list)
+    end_pos: list[float] = field(default_factory=list)
+    start_vel: Optional[list[float]] = None
+    end_vel: Optional[list[float]] = None
+    start_acc: Optional[list[float]] = None
+    end_acc: Optional[list[float]] = None
+    target_class: str = "QuinticSplineTrajectory"
+
 
 
 class QuinticSplineTrajectory(BaseTrajectory):
@@ -9,41 +24,28 @@ class QuinticSplineTrajectory(BaseTrajectory):
 
     def __init__(
         self,
-        duration: float,
-        fps: float,
-        start_pos: list[float],
-        end_pos: list[float],
-        start_vel: list[float] | None = None,
-        end_vel: list[float] | None = None,
-        start_acc: list[float] | None = None,
-        end_acc: list[float] | None = None,
+        cfg: QuinticSplineTrajectoryConfig,
+        *args,
+        **kwargs,
     ):
         """Initialize the trajectory generator.
 
         Args:
-            start_pos: List of start positions for each joint.
-            end_pos: List of end positions for each joint.
-            duration: Total duration of the trajectory in seconds.
-            frequency: Sampling frequency in Hz.
-            start_vel: (Optional) List of start velocities. Defaults to 0.
-            end_vel: (Optional) List of end velocities. Defaults to 0.
-            start_acc: (Optional) List of start accelerations. Defaults to 0.
-            end_acc: (Optional) List of end accelerations. Defaults to 0.
-
+           cfg: Configuration object.
         """
-        super().__init__(duration, fps)
+        super().__init__(cfg, *args, **kwargs)
 
-        self.start_pos = np.array(start_pos)
-        self.end_pos = np.array(end_pos)
-        self.num_joints = len(start_pos)
+        self.start_pos = np.array(cfg.start_pos)
+        self.end_pos = np.array(cfg.end_pos)
+        self.num_joints = len(cfg.start_pos)
 
-        if len(end_pos) != self.num_joints:
+        if len(cfg.end_pos) != self.num_joints:
             raise ValueError("Start and end positions must have the same length.")
 
-        self.start_vel = np.array(start_vel) if start_vel is not None else np.zeros(self.num_joints)
-        self.end_vel = np.array(end_vel) if end_vel is not None else np.zeros(self.num_joints)
-        self.start_acc = np.array(start_acc) if start_acc is not None else np.zeros(self.num_joints)
-        self.end_acc = np.array(end_acc) if end_acc is not None else np.zeros(self.num_joints)
+        self.start_vel = np.array(cfg.start_vel) if cfg.start_vel is not None else np.zeros(self.num_joints)
+        self.end_vel = np.array(cfg.end_vel) if cfg.end_vel is not None else np.zeros(self.num_joints)
+        self.start_acc = np.array(cfg.start_acc) if cfg.start_acc is not None else np.zeros(self.num_joints)
+        self.end_acc = np.array(cfg.end_acc) if cfg.end_acc is not None else np.zeros(self.num_joints)
 
         self.time_steps = int(self.duration * self.fps)
         self.time_array = np.linspace(0, self.duration, self.time_steps)
@@ -170,5 +172,13 @@ if __name__ == "__main__":
     duration = 5.0
     fps = 60.0
 
-    traj = QuinticSplineTrajectory(duration, fps, start_q, end_q)
+    cfg = QuinticSplineTrajectoryConfig(
+        duration=duration,
+        fps=fps,
+        start_pos=start_q,
+        end_pos=end_q,
+    )
+
+    traj = QuinticSplineTrajectory(cfg)
+
     traj.generate(show_plot=True, plot_path="debug/spline.png", json_path="configurations/trajectories/spline.json")

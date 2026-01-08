@@ -3,17 +3,30 @@ from collections.abc import Callable
 import numpy as np
 from scipy.optimize import minimize
 
-from .base_trajectory import BaseTrajectory
-from .fourier import FourierTrajectory
+from dataclasses import dataclass
+from typing import Any
+
+from factory import instantiate
+from .base_trajectory import BaseTrajectory, BaseTrajectoryConfig
+from .fourier import FourierTrajectory, FourierTrajectoryConfig
+from .spline import QuinticSplineTrajectoryConfig
+
+
+@dataclass
+class ExcitedTrajectoryConfig(BaseTrajectoryConfig):
+    main_trajectory: FourierTrajectoryConfig | QuinticSplineTrajectoryConfig | None = None
+    num_harmonics: int = 5
+    base_freq: float = 0.1
+    target_class: str = "ExcitedTrajectory"
+
 
 
 class ExcitedTrajectory(BaseTrajectory):
     def __init__(
         self,
-        main_trajectory: BaseTrajectory,
-        num_harmonics: int,
-        base_freq: float,
-        kinematics_func: Callable | None = None,
+        cfg: ExcitedTrajectoryConfig,
+        *args,
+        **kwargs
     ):
         """
         Excited Trajectory: A base trajectory enriched with an optimized Fourier series excitation component.
@@ -23,27 +36,28 @@ class ExcitedTrajectory(BaseTrajectory):
         of the main trajectory.
 
         Args:
-            main_trajectory: Experience base trajectory (e.g. Spline)
-            num_harmonics (int): Number of Fourier harmonics
-            base_freq (float): Fundamental frequency [Hz]
-            kinematics_func (callable): f(q, dq, ddq) -> regressor_matrix.
+            cfg: Configuration object.
+            kinematics_func (callable): f(q, dq, ddq) -> regressor_matrix. (passed via kwargs)
         """
-        super().__init__(main_trajectory.duration, main_trajectory.fps)
+        super().__init__(cfg, *args, **kwargs)
 
-        self.main_trajectory = main_trajectory
+        # Instantiate main_trajectory using factory.instantiate
+        # We assume cfg.main_trajectory is a Config object compatible with instantiate
+        self.main_trajectory = instantiate(cfg.main_trajectory, *args, **kwargs)
+
         # Assuming main_trajectory exposes num_joints via its data or attribute
         # We need to generate it once to get basic info if not available
         # But let's assume valid access.
-        if hasattr(main_trajectory, "num_joints"):
-            self.num_joints = main_trajectory.num_joints
+        if hasattr(self.main_trajectory, "num_joints"):
+            self.num_joints = self.main_trajectory.num_joints
         else:
             # Fallback: trigger generation to find out
-            pos, _, _ = main_trajectory.generate()
+            pos, _, _ = self.main_trajectory.generate()
             self.num_joints = pos.shape[1]
 
-        self.num_harmonics = num_harmonics
-        self.base_freq = base_freq
-        self.kinematics_func = kinematics_func
+        self.num_harmonics = cfg.num_harmonics
+        self.base_freq = cfg.base_freq
+        self.kinematics_func = kwargs.get("kinematics_func", None)
 
         self._is_optimized = False
 
@@ -151,7 +165,8 @@ class ExcitedTrajectory(BaseTrajectory):
             
             # Pure Fourier (offset 0)
             coeffs = {"a": a, "b": b, "q0": np.zeros(self.num_joints)}
-            f_traj = FourierTrajectory(self.duration, self.fps, self.num_joints, self.num_harmonics, self.base_freq, coeffs)
+            f_cfg = FourierTrajectoryConfig(duration=self.duration, fps=self.fps, num_joints=self.num_joints, num_harmonics=self.num_harmonics, base_freq=self.base_freq, coefficients=coeffs)
+            f_traj = FourierTrajectory(f_cfg)
             
             # 1. Fourier Raw
             q_raw, dq_raw, ddq_raw = f_traj.get_value()
@@ -229,7 +244,8 @@ class ExcitedTrajectory(BaseTrajectory):
 
         # Generate final
         coeffs = {"a": self.a, "b": self.b, "q0": np.zeros(self.num_joints)}
-        f_traj = FourierTrajectory(self.duration, self.fps, self.num_joints, self.num_harmonics, self.base_freq, coeffs)
+        f_cfg = FourierTrajectoryConfig(duration=self.duration, fps=self.fps, num_joints=self.num_joints, num_harmonics=self.num_harmonics, base_freq=self.base_freq, coefficients=coeffs)
+        f_traj = FourierTrajectory(f_cfg)
         
         q_raw, dq_raw, ddq_raw = f_traj.get_value()
         q_exc, dq_exc, ddq_exc = self._apply_window(q_raw, dq_raw, ddq_raw)

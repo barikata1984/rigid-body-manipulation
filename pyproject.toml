@@ -58,6 +58,7 @@ packages = [
     'controllers',
     'datasets',
     'dynamics',
+    'factory',
     'literature',
     'omegaconf_custom_resolvers',
     'recorders',

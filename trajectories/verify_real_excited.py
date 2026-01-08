@@ -10,8 +10,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from simulators.setup import generate_model_data
 from dynamics import calculate_frame_dynamics, setup_robot_dynamics_parameters
 from simulators import SimulatorConfig
-from trajectories.excited import ExcitedTrajectory
-from trajectories.spline import QuinticSplineTrajectory
+from trajectories.excited import ExcitedTrajectory, ExcitedTrajectoryConfig
+from trajectories.spline import QuinticSplineTrajectory, QuinticSplineTrajectoryConfig
 
 
 def main():
@@ -64,14 +64,24 @@ def main():
     
     duration = 2.0
     fps = 60
-    spline = QuinticSplineTrajectory(duration, fps, start_q, end_q)
+    spline_cfg = QuinticSplineTrajectoryConfig(
+        duration=duration,
+        fps=fps,
+        start_pos=start_q,
+        end_pos=end_q,
+    )
+    # spline = QuinticSplineTrajectory(spline_cfg) # We don't need to instantiate it manually if passing config to Excited
 
     # 6. Instantiate ExcitedTrajectory
     print("Initializing ExcitedTrajectory...")
-    excited_traj = ExcitedTrajectory(
-        main_trajectory=spline,
+    excited_cfg = ExcitedTrajectoryConfig(
+        main_trajectory=spline_cfg, # Pass config, not instance
         num_harmonics=5,
         base_freq=0.5, # 1 cycle in 2.0s
+    )
+    
+    excited_traj = ExcitedTrajectory(
+        excited_cfg,
         kinematics_func=kinematics_func,
     )
 

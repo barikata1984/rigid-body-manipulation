@@ -3,31 +3,43 @@ from collections.abc import Callable
 import numpy as np
 from scipy.optimize import minimize
 
-from trajectories.base_trajectory import BaseTrajectory
-from trajectories.fourier import FourierTrajectory
+from dataclasses import dataclass
+
+from trajectories.base_trajectory import BaseTrajectory, BaseTrajectoryConfig
+from trajectories.fourier import FourierTrajectory, FourierTrajectoryConfig
+
+
+@dataclass
+class ExcitationTrajectoryConfig(BaseTrajectoryConfig):
+    num_joints: int = 1
+    num_harmonics: int = 5
+    base_freq: float = 0.1
+    target_class: str = "ExcitationTrajectory"
+
 
 
 class ExcitationTrajectory(BaseTrajectory):
-    def __init__(self, duration: float, fps: int, num_joints: int, num_harmonics, base_freq: float, kinematics_func: Callable | None = None):
+    def __init__(
+        self,
+        cfg: ExcitationTrajectoryConfig,
+        *args,
+        **kwargs
+    ):
         """
         Excitation Trajectory Generator using Finite Fourier Series Optimization.
 
         Args:
-            dof (int): Degrees of Freedom.
-            num_harmonics (int): Number of harmonics N.
-            base_frequency (float): Fundamental frequency [Hz].
-            dt (float): Time step for generation and optimization.
-            duration (float, optional): Duration of trajectory. Defaults to 1 period (1/base_frequency).
+            cfg: Configuration object.
             kinematics_func (callable, optional): function f(q, dq, ddq) -> regressor_matrix.
                 Required for optimization.
         """
-        super().__init__(duration, fps)
+        super().__init__(cfg, *args, **kwargs)
 
-        self.num_joints = num_joints
-        self.num_harmonics = num_harmonics
-        self.base_freq = base_freq
+        self.num_joints = cfg.num_joints
+        self.num_harmonics = cfg.num_harmonics
+        self.base_freq = cfg.base_freq
 
-        self.kinematics_func = kinematics_func
+        self.kinematics_func = kwargs.get("kinematics_func", None)
 
         # Internal state
         self._is_optimized = False
@@ -73,7 +85,8 @@ class ExcitationTrajectory(BaseTrajectory):
 
             # Create Trajectory Model
             coeffs = {"a": a, "b": b, "q0": q0}
-            traj = FourierTrajectory(self.duration, self.fps, self.num_joints, self.num_harmonics, self.base_freq, coeffs)
+            f_cfg = FourierTrajectoryConfig(duration=self.duration, fps=self.fps, num_joints=self.num_joints, num_harmonics=self.num_harmonics, base_freq=self.base_freq, coefficients=coeffs)
+            traj = FourierTrajectory(f_cfg)
 
             q, dq, ddq = traj.get_value()
 
@@ -137,7 +150,8 @@ class ExcitationTrajectory(BaseTrajectory):
                 print("Warning: generating without optimization (kinematics_func missing).")
 
         coeffs = {"a": self.a, "b": self.b, "q0": self.q0}
-        traj = FourierTrajectory(self.duration, self.fps, self.num_joints, self.num_harmonics, self.base_freq, coeffs)
+        f_cfg = FourierTrajectoryConfig(duration=self.duration, fps=self.fps, num_joints=self.num_joints, num_harmonics=self.num_harmonics, base_freq=self.base_freq, coefficients=coeffs)
+        traj = FourierTrajectory(f_cfg)
 
         pos, vel, acc = traj.generate()
 
