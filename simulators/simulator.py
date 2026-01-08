@@ -99,8 +99,6 @@ class Simulator:
     #def __init__(self, m: MjModel, d: MjData, recorder, planner, controller):
     def __init__(self,
                  cfg: SimulatorConfig,
-                 m: MjModel,
-                 d: MjData,
                  *args,
                  **kwargs,
                  ) -> None:
@@ -110,8 +108,11 @@ class Simulator:
         except:
             pass
 
-        self.recorder = instantiate(cfg.recorder, m, d)
-        self.controller = instantiate(cfg.controller, m, d)
+        m = kwargs["model"]
+        d = kwargs["data"]
+
+        self.recorder = instantiate(cfg.recorder, model=m, data=d)
+        self.controller = instantiate(cfg.controller, model=m, data=d)
 
         self.timestep = MjOption().timestep  # if cfg.timestep <= 0 else cfg.timestep
         self.n_steps = int(self.target_trajectory.duration / self.timestep)

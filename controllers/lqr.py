@@ -23,9 +23,12 @@ class LinearQuadraticRegulator:
     def __init__(
         self,
         cfg: LinearQuadraticRegulatorConfig,
-        m: MjModel,
-        d: MjData,
+        *args,
+        **kwargs,
     ) -> None:
+        m = kwargs["model"]
+        d = kwargs["data"]
+        
         self.ss = StateSpace(cfg.state_space, m, d)
 
         # Fill a potentially missing field of a planner configuration

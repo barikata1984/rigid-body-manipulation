@@ -39,11 +39,11 @@ class StandardRecorder:
     def __init__(
         self,
         cfg: StandardRecorderConfig,
-        m: MjModel,
-        d: MjData,
         *ars,
         **kwargs,
     ) -> None:
+        m = kwargs["model"]
+        d = kwargs["data"]
         self.cam_name = cfg.track_cam_name
         self.cam_id = get_element_id(m, "camera", self.cam_name)
         self.fig_height = cfg.fig_height

@@ -80,7 +80,7 @@ def main():
 
     # Instantiate and run the simulator ===============================================
     simulator_cfg = OmegaConf.to_object(cfg)
-    simulation = instantiate(simulator_cfg, m, d, target_trajectory=target_trajectory)
+    simulation = instantiate(simulator_cfg, model=m, data=d, target_trajectory=target_trajectory)
     result = simulation.run()
 
     # Show inertial params identified with the least squares method
