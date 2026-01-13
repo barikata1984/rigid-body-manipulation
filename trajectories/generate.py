@@ -11,11 +11,15 @@ from trajectories.fourier import FourierTrajectoryConfig
 # Import from package
 from trajectories.spline import QuinticSplineTrajectoryConfig
 
+# Import from package
+from trajectories.window import WindowTrajectoryConfig
+
 # Top-level union for the CLI
 TrajectoryConfig = (
     Annotated[QuinticSplineTrajectoryConfig, tyro.conf.subcommand(name="spline")]
     | Annotated[FourierTrajectoryConfig, tyro.conf.subcommand(name="fourier")]
     | Annotated[ExcitedTrajectoryConfig, tyro.conf.subcommand(name="excited")]
+    | Annotated[WindowTrajectoryConfig, tyro.conf.subcommand(name="window")]
 )
 
 
@@ -121,7 +125,9 @@ def main():
         else:
             plot_path = Path("output.png")
 
-    json_path = config.output if config.output else None
+    json_path = None
+    if config.output:
+        json_path = config.output.with_suffix(".json")
 
     # generate() accepts kwargs which will be passed to plot etc
     traj.generate(

@@ -10,6 +10,7 @@ from factory import instantiate
 from .base_trajectory import BaseTrajectory, BaseTrajectoryConfig
 from .fourier import FourierTrajectory, FourierTrajectoryConfig
 from .spline import QuinticSplineTrajectoryConfig
+from .window import WindowTrajectory, WindowTrajectoryConfig
 
 
 @dataclass
@@ -18,6 +19,9 @@ class ExcitedTrajectoryConfig(BaseTrajectoryConfig):
     main_trajectory: Any = field(default_factory=lambda: MISSING)
     num_harmonics: int = MISSING
     base_freq: float = MISSING
+
+    # Optional window trajectory config (will be auto-created if not provided)
+    window_trajectory: WindowTrajectoryConfig | None = None
 
     # MuJoCo model paths for kinematics_func construction (optional)
     manipulator: str | None = field(default_factory=lambda: MISSING)
@@ -80,73 +84,34 @@ class ExcitedTrajectory(BaseTrajectory):
         # Pre-calculation of main trajectory is lazy or done in generate
         self._main_cache = None
 
-    def _apply_window(self, q_raw: np.ndarray, dq_raw: np.ndarray, ddq_raw: np.ndarray):
+        # Setup Window Trajectory
+        if cfg.window_trajectory is None or cfg.window_trajectory == MISSING:
+            # Create default window config matching this trajectory
+            win_cfg = WindowTrajectoryConfig(duration=self.duration, fps=self.fps, num_joints=self.num_joints)
+        else:
+            win_cfg = cfg.window_trajectory
+            # Ensure it matches essential params
+            win_cfg.duration = self.duration
+            win_cfg.fps = self.fps
+            win_cfg.num_joints = self.num_joints
+
+        self.window_trajectory = WindowTrajectory(win_cfg, *args, **kwargs)
+
+    def _apply_window_trajectory(self, q_raw: np.ndarray, dq_raw: np.ndarray, ddq_raw: np.ndarray):
         """
-        Apply a polynomial window function s(r) = 256 * r^4 * (1-r)^4 to enforce zero boundaries.
-        r = t / T (normalized time)
-
-        Args:
-            q_raw, dq_raw, ddq_raw: Arrays of shape (N, dof) from pure Fourier
-
-        Returns:
-            q_exc, dq_exc, ddq_exc: Windowed excitation arrays
+        Apply window trajectory to raw excitation.
         """
-        T = self.duration
-        # Avoid division by zero
-        if T == 0:
-            return np.zeros_like(q_raw), np.zeros_like(dq_raw), np.zeros_like(ddq_raw)
+        # Get window values
+        s, ds, dds = self.window_trajectory.get_value()
 
-        # r: (N,)
-        r = self.time_array / T
-
-        # Window s(r)
-        # s = 256 * r^4 * (1-r)^4
-        # Let u = r * (1-r) = r - r^2
-        # s = 256 * u^4
-        u = r * (1.0 - r)
-        s = 256.0 * (u**4)
-
-        # Derivatives with respect to time t
-        # dr/dt = 1/T
-        # du/dr = 1 - 2r
-        # du/dt = (1 - 2r) / T
-
-        # ds/dt = ds/du * du/dt = 4 * 256 * u^3 * (1-2r)/T
-        #       = 1024 * u^3 * (1-2r) / T
-
-        dr_dt = 1.0 / T
-        du_dr = 1.0 - 2.0 * r
-
-        ds_du = 4.0 * 256.0 * (u**3)
-        ds_dt = ds_du * du_dr * dr_dt
-
-        # d2s/dt2
-        # d(ds_dt)/dt = d/dt [ 1024/T * u^3 * (1-2r) ]
-        #             = 1024/T * [ (d(u^3)/dt)*(1-2r) + u^3 * d(1-2r)/dt ]
-        # d(u^3)/dt = 3u^2 * du/dt
-        #           = 3u^2 * du_dr * dr_dt
-        # d(1-2r)/dt = -2 * dr_dt = -2/T
-
-        # So:
-        # dds_dt2 = 1024/T * [ (3u^2 * du_dr * dr_dt) * (1-2r) + u^3 * (-2/T) ]
-        #         = 1024/T * [ 3u^2 * (1-2r)^2 / T - 2u^3 / T ]
-        #         = 1024/T^2 * [ 3u^2*(1-2r)^2 - 2u^3 ]
-
-        dds_dt2 = (1024.0 / (T**2)) * (3.0 * (u**2) * (du_dr**2) - 2.0 * (u**3))
-
-        # Reshape for broadcasting along joints (N, 1) if necessary, but numpy usually handles (N,) * (N, J)
-        s = s[:, np.newaxis]
-        ds_dt = ds_dt[:, np.newaxis]
-        dds_dt2 = dds_dt2[:, np.newaxis]
-
-        # Apply chain rule for product
+        # Apply product rule
         # q_exc = s * q
         # dq_exc = s'q + sq'
         # ddq_exc = s''q + 2s'q' + sq''
 
         q_exc = s * q_raw
-        dq_exc = ds_dt * q_raw + s * dq_raw
-        ddq_exc = dds_dt2 * q_raw + 2 * ds_dt * dq_raw + s * ddq_raw
+        dq_exc = ds * q_raw + s * dq_raw
+        ddq_exc = dds * q_raw + 2 * ds * dq_raw + s * ddq_raw
 
         return q_exc, dq_exc, ddq_exc
 
@@ -191,7 +156,7 @@ class ExcitedTrajectory(BaseTrajectory):
             q_raw, dq_raw, ddq_raw = f_traj.get_value()
 
             # 2. Apply Window
-            q_exc, dq_exc, ddq_exc = self._apply_window(q_raw, dq_raw, ddq_raw)
+            q_exc, dq_exc, ddq_exc = self._apply_window_trajectory(q_raw, dq_raw, ddq_raw)
 
             # 3. Superposition
             q_total = q_main + q_exc
@@ -276,7 +241,7 @@ class ExcitedTrajectory(BaseTrajectory):
         f_traj = FourierTrajectory(f_cfg)
 
         q_raw, dq_raw, ddq_raw = f_traj.get_value()
-        q_exc, dq_exc, ddq_exc = self._apply_window(q_raw, dq_raw, ddq_raw)
+        q_exc, dq_exc, ddq_exc = self._apply_window_trajectory(q_raw, dq_raw, ddq_raw)
 
         q_total = q_main + q_exc
         dq_total = dq_main + dq_exc
