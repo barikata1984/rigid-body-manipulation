@@ -1,29 +1,27 @@
 import json
-from pathlib import Path
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
-
-from dataclasses import dataclass
-
-from dataclasses import dataclass
-from typing import Optional
-from pathlib import Path
+from omegaconf import MISSING
 
 from factory import InstantiateConfig
 
 
 @dataclass
 class BaseTrajectoryConfig(InstantiateConfig):
-    duration: float = 5.0
-    fps: float = 60.0
+    duration: float = MISSING
+    fps: float = MISSING
     module_name: str = "trajectories"
-    
+
     # CLI-specific arguments (shared across all trajectories)
-    output: Optional[Path] = None
+    config: Path | None = None  # Path to YAML configuration file
+    output: Path | None = None
     no_plot: bool = False
+
 
 # 抽象クラスの定義
 class BaseTrajectory(ABC):
@@ -58,7 +56,7 @@ class BaseTrajectory(ABC):
         """
         frames = []
         for i in range(len(self.time_array)):
-            #frame = {"qpos": pos[i].tolist(), "qvel": vel[i].tolist(), "qacc": acc[i].tolist()}
+            # frame = {"qpos": pos[i].tolist(), "qvel": vel[i].tolist(), "qacc": acc[i].tolist()}
             frame = [pos[i].tolist(), vel[i].tolist(), acc[i].tolist()]
             frames.append(frame)
 

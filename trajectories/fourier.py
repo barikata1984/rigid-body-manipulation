@@ -1,34 +1,34 @@
-import numpy as np
-
 from dataclasses import dataclass, field
-from typing import Optional
+
+import numpy as np
+from omegaconf import MISSING
 
 from .base_trajectory import BaseTrajectory, BaseTrajectoryConfig
 
 
 @dataclass
 class FourierTrajectoryConfig(BaseTrajectoryConfig):
-    num_joints: int = 1
-    num_harmonics: int = 5
-    base_freq: float = 0.1
-    coefficients: Optional[dict] = None
-    q0: Optional[list[float]] = None
+    num_joints: int = MISSING
+    num_harmonics: int = MISSING
+    base_freq: float = MISSING
+    coefficients: dict | None = field(default_factory=lambda: MISSING)
+    q0: list[float] | None = field(default_factory=lambda: MISSING)
     target_class: str = "FourierTrajectory"
-
 
 
 class FourierTrajectory(BaseTrajectory):
     """
     Finite Fourier Series Trajectory.
-    
+
     Represents the trajectory q_i(t) as:
     q_i(t) = q_{i,0} + sum_{k=1}^{N} ( a_{i,k} sin(2*pi*k*f*t) + b_{i,k} cos(2*pi*k*f*t) )
-    
+
     Note: The paper uses rho for sine coeff and delta for cosine coeff.
     Here we use a generic name but map them consistently.
     a -> sine coefficients (rho in paper)
     b -> cosine coefficients (delta in paper)
     """
+
     def __init__(
         self,
         cfg: FourierTrajectoryConfig,
@@ -51,10 +51,10 @@ class FourierTrajectory(BaseTrajectory):
             self.b = np.zeros((self.num_joints, self.num_harmonics))
             self.q0 = np.zeros(self.num_joints)
         else:
-            self.a = np.array(cfg.coefficients.get('a', np.zeros((self.num_joints, self.num_harmonics))))
-            self.b = np.array(cfg.coefficients.get('b', np.zeros((self.num_joints, self.num_harmonics))))
-            if 'q0' in cfg.coefficients:
-                self.q0 = np.array(cfg.coefficients['q0'])
+            self.a = np.array(cfg.coefficients.get("a", np.zeros((self.num_joints, self.num_harmonics))))
+            self.b = np.array(cfg.coefficients.get("b", np.zeros((self.num_joints, self.num_harmonics))))
+            if "q0" in cfg.coefficients:
+                self.q0 = np.array(cfg.coefficients["q0"])
             elif cfg.q0 is not None:
                 self.q0 = np.array(cfg.q0)
             else:
@@ -63,14 +63,14 @@ class FourierTrajectory(BaseTrajectory):
     def get_value(self):
         """
         Calculate q, dq, ddq at time t.
-        
+
         Returns:
             q (num_joints,), dq (num_joints,), ddq (num_joints,)
         """
         q = np.copy(self.q0)
         dq = np.zeros(self.num_joints)
         ddq = np.zeros(self.num_joints)
-        
+
         # Determine if t is scalar or array
         is_scalar = np.isscalar(self.time_array)
         if not is_scalar:
@@ -83,16 +83,16 @@ class FourierTrajectory(BaseTrajectory):
 
         for k in range(1, self.num_harmonics + 1):
             omega_k = k * self.omega_b
-            
+
             # Coefficients for k-th harmonic (0-indexed in array)
             idx = k - 1
-            a_k = self.a[:, idx] # Sine coeffs
-            b_k = self.b[:, idx] # Cosine coeffs
-            
+            a_k = self.a[:, idx]  # Sine coeffs
+            b_k = self.b[:, idx]  # Cosine coeffs
+
             wkt = omega_k * self.time_array
             sin_wkt = np.sin(wkt)
             cos_wkt = np.cos(wkt)
-            
+
             if not is_scalar:
                 # Reshape for broadcasting
                 # a_k: (num_joints,) -> (1, num_joints)
@@ -104,25 +104,25 @@ class FourierTrajectory(BaseTrajectory):
             # Position
             # q += a*sin + b*cos
             q += a_k * sin_wkt + b_k * cos_wkt
-            
+
             # Velocity
             # dq/dt = a*w*cos - b*w*sin
             dq += omega_k * (a_k * cos_wkt - b_k * sin_wkt)
-            
+
             # Acceleration
             # d2q/dt2 = -a*w^2*sin - b*w^2*cos = -w^2 * (term)
             ddq += -(omega_k**2) * (a_k * sin_wkt + b_k * cos_wkt)
-            
+
         return q, dq, ddq
 
     def generate(self, show_plot: bool = False, plot_path: str | None = None, json_path: str | None = None):
         """
         Generate trajectory arrays.
-        
+
         Args:
             duration (float): Total duration.
             dt (float): Time step.
-            
+
         Returns:
             t (N,): Time array
             pos (N, num_joints): Position array
@@ -131,13 +131,13 @@ class FourierTrajectory(BaseTrajectory):
         """
         # remove last element if it exceeds duration significantly (standard arange behavior check)
         if self.time_array[-1] > self.duration + 1e-9:
-             self.time_array = self.time_array[:-1]
-             
+            self.time_array = self.time_array[:-1]
+
         pos, vel, acc = self.get_value()
 
         self.plot(pos, vel, acc, show=show_plot, plot_path=plot_path)
 
         if json_path is not None:
             self.write_to_json(pos, vel, acc, json_path)
-        
+
         return pos, vel, acc

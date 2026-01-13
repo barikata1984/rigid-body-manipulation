@@ -1,0 +1,13 @@
+duration: 5.0
+fps: 60.0
+num_harmonics: 3
+base_freq: 0.2
+
+# Main trajectory: a spline trajectory to be enriched with excitation
+main_trajectory:
+  target_class: QuinticSplineTrajectory
+  module_name: trajectories
+  duration: 5.0
+  fps: 60.0
+  start_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  end_pos: [0.5, 0.3, 0.2, 1.0, 0.5, 0.0]

@@ -1,20 +1,20 @@
+from dataclasses import dataclass
+
 import numpy as np
-from dataclasses import dataclass, field
-from typing import Optional
+from omegaconf import MISSING
 
 from .base_trajectory import BaseTrajectory, BaseTrajectoryConfig
 
 
 @dataclass
 class QuinticSplineTrajectoryConfig(BaseTrajectoryConfig):
-    start_pos: list[float] = field(default_factory=list)
-    end_pos: list[float] = field(default_factory=list)
-    start_vel: Optional[list[float]] = None
-    end_vel: Optional[list[float]] = None
-    start_acc: Optional[list[float]] = None
-    end_acc: Optional[list[float]] = None
+    start_pos: list[float] = MISSING
+    end_pos: list[float] = MISSING
+    start_vel: list[float] | None = None
+    end_vel: list[float] | None = None
+    start_acc: list[float] | None = None
+    end_acc: list[float] | None = None
     target_class: str = "QuinticSplineTrajectory"
-
 
 
 class QuinticSplineTrajectory(BaseTrajectory):
@@ -153,12 +153,12 @@ if __name__ == "__main__":
     # Example usage
     start_q = [
         1.0,
-        1.0, 
         1.0,
-        0.0, 
-        0.0, 
-        0.0, 
-        ]
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+    ]
 
     end_q = [
         0.2,
@@ -167,7 +167,7 @@ if __name__ == "__main__":
         3.141592653589793,  # 1π
         0.0,
         25.1327412287,  # 8
-        ]
+    ]
 
     duration = 5.0
     fps = 60.0
