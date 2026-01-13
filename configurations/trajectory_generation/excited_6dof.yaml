@@ -3,6 +3,11 @@ fps: 60.0
 num_harmonics: 3
 base_freq: 0.2
 
+# MuJoCo model paths for kinematics_func (enables optimization)
+manipulator: xml_models/manipulators/sequential
+object: xml_models/targets/hammer
+ee_body_name: link6
+
 # Main trajectory: a spline trajectory to be enriched with excitation
 main_trajectory:
   target_class: QuinticSplineTrajectory

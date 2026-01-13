@@ -18,6 +18,12 @@ class ExcitedTrajectoryConfig(BaseTrajectoryConfig):
     main_trajectory: Any = field(default_factory=lambda: MISSING)
     num_harmonics: int = MISSING
     base_freq: float = MISSING
+
+    # MuJoCo model paths for kinematics_func construction (optional)
+    manipulator: str | None = field(default_factory=lambda: MISSING)
+    object: str | None = field(default_factory=lambda: MISSING)
+    ee_body_name: str = "link6"  # End-effector body name
+
     target_class: str = "ExcitedTrajectory"
 
 
