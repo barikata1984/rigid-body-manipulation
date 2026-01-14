@@ -1,3 +1,4 @@
+config_class: FourierTrajectoryConfig
 num_joints: 6
 num_harmonics: 3
 base_freq: 0.2

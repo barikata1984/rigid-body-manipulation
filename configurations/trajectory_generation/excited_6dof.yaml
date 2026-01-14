@@ -1,3 +1,4 @@
+config_class: ExcitedTrajectoryConfig
 duration: 5.0
 fps: 60.0
 num_harmonics: 3
