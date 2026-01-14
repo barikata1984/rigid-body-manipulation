@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 from omegaconf import MISSING
@@ -8,6 +9,7 @@ from .base_trajectory import BaseTrajectory, BaseTrajectoryConfig
 
 @dataclass
 class QuinticSplineTrajectoryConfig(BaseTrajectoryConfig):
+    config: Path | None = None  # Path to YAML configuration file
     start_pos: list[float] = MISSING
     end_pos: list[float] = MISSING
     start_vel: list[float] | None = None

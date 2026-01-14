@@ -1,6 +1,7 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from pathlib import Path
 
-from omegaconf import MISSING, OmegaConf
+from omegaconf import OmegaConf
 
 from factory import instantiate
 
@@ -11,8 +12,12 @@ from .window import WindowTrajectory, WindowTrajectoryConfig
 
 @dataclass(kw_only=True)
 class WindowedFourierTrajectoryConfig(BaseTrajectoryConfig):
-    # Main component
-    fourier_trajectory: FourierTrajectoryConfig = field(default_factory=lambda: MISSING)
+    # CLI config paths
+    config: Path | None = None  # Path to main YAML configuration file
+    fourier_config: Path | None = None  # Path to Fourier trajectory YAML configuration
+
+    # Main component (can be loaded from fourier_config or specified directly)
+    fourier_trajectory: FourierTrajectoryConfig | None = None
 
     # Window component (optional, defaults to standard window)
     window_trajectory: WindowTrajectoryConfig | None = None
@@ -34,10 +39,16 @@ class WindowedFourierTrajectory(BaseTrajectory):
     def __init__(self, cfg: WindowedFourierTrajectoryConfig, *args, **kwargs):
         super().__init__(cfg, *args, **kwargs)
 
-        # Instantiate Fourier Trajectory
-        fourier_cfg = cfg.fourier_trajectory
-        if isinstance(fourier_cfg, dict):
-            fourier_cfg = OmegaConf.to_object(OmegaConf.merge(FourierTrajectoryConfig(), fourier_cfg))
+        # Load Fourier config from file if fourier_config path is provided
+        if cfg.fourier_config is not None:
+            yaml_cfg = OmegaConf.load(cfg.fourier_config)
+            fourier_cfg = OmegaConf.to_object(OmegaConf.merge(FourierTrajectoryConfig(), yaml_cfg))
+        elif cfg.fourier_trajectory is not None:
+            fourier_cfg = cfg.fourier_trajectory
+            if isinstance(fourier_cfg, dict):
+                fourier_cfg = OmegaConf.to_object(OmegaConf.merge(FourierTrajectoryConfig(), fourier_cfg))
+        else:
+            raise ValueError("Either fourier_config or fourier_trajectory must be specified")
 
         # Ensure sub-configs inherit master settings
         fourier_cfg.duration = self.duration
@@ -79,15 +90,10 @@ class WindowedFourierTrajectory(BaseTrajectory):
 
         return q_out, dq_out, ddq_out
 
-    def generate(self, show_plot: bool = False, plot_path: str | None = None, json_path: str | None = None):
+    def _generate(self, show_plot: bool = False, plot_path: str | None = None, json_path: str | None = None):
         if self.time_array[-1] > self.duration + 1e-9:
             self.time_array = self.time_array[:-1]
 
         pos, vel, acc = self.get_value()
-
-        self.plot(pos, vel, acc, show=show_plot, plot_path=plot_path)
-
-        if json_path is not None:
-            self.write_to_json(pos, vel, acc, json_path)
 
         return pos, vel, acc

@@ -18,7 +18,6 @@ class BaseTrajectoryConfig(InstantiateConfig):
     module_name: str = "trajectories"
 
     # CLI-specific arguments (shared across all trajectories)
-    config: Path | None = None  # Path to YAML configuration file
     show_plot: bool = False  # Show plot window (default: hidden)
     plot_path: Path | None = None  # Path to save plot image
     json_path: Path | None = None  # Path to save trajectory JSON

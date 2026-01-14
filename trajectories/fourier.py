@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 from omegaconf import MISSING
@@ -8,6 +9,7 @@ from .base_trajectory import BaseTrajectory, BaseTrajectoryConfig
 
 @dataclass
 class FourierTrajectoryConfig(BaseTrajectoryConfig):
+    config: Path | None = None  # Path to YAML configuration file
     num_joints: int = MISSING
     num_harmonics: int = MISSING
     base_freq: float = MISSING
