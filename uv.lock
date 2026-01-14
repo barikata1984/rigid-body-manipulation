@@ -930,7 +930,7 @@ wheels = [
 [[package]]
 name = "rigid-body-manipulation"
 version = "0.1"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "dm-control" },
     { name = "liegroups" },

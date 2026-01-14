@@ -114,7 +114,7 @@ class QuinticSplineTrajectory(BaseTrajectory):
 
         return coeffs
 
-    def generate(self, show_plot: bool = False, plot_path: str | None = None, json_path: str | None = None):
+    def _generate(self, show_plot: bool = False, plot_path: str | None = None, json_path: str | None = None):
         """Generates the trajectory.
 
         Returns:
@@ -140,11 +140,6 @@ class QuinticSplineTrajectory(BaseTrajectory):
                 pos[t_idx, j] = a0 + a1 * t + a2 * t2 + a3 * t3 + a4 * t4 + a5 * t5
                 vel[t_idx, j] = a1 + 2 * a2 * t + 3 * a3 * t2 + 4 * a4 * t3 + 5 * a5 * t4
                 acc[t_idx, j] = 2 * a2 + 6 * a3 * t + 12 * a4 * t2 + 20 * a5 * t3
-
-        self.plot(pos, vel, acc, show=show_plot, plot_path=plot_path)
-
-        if json_path is not None:
-            self.write_to_json(pos, vel, acc, json_path)
 
         return pos, vel, acc
 

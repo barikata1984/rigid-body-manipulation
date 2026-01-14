@@ -13,6 +13,7 @@ from trajectories.spline import QuinticSplineTrajectoryConfig
 
 # Import from package
 from trajectories.window import WindowTrajectoryConfig
+from trajectories.windowed_fourier import WindowedFourierTrajectoryConfig
 
 # Top-level union for the CLI
 TrajectoryConfig = (
@@ -20,6 +21,7 @@ TrajectoryConfig = (
     | Annotated[FourierTrajectoryConfig, tyro.conf.subcommand(name="fourier")]
     | Annotated[ExcitedTrajectoryConfig, tyro.conf.subcommand(name="excited")]
     | Annotated[WindowTrajectoryConfig, tyro.conf.subcommand(name="window")]
+    | Annotated[WindowedFourierTrajectoryConfig, tyro.conf.subcommand(name="windowed-fourier")]
 )
 
 
@@ -31,8 +33,6 @@ def build_kinematics_func(config: ExcitedTrajectoryConfig):
     # Check if model paths are specified (not None, not MISSING string "???")
     if not config.manipulator or config.manipulator == "???" or not config.object or config.object == "???":
         return None
-
-    from pathlib import Path
 
     import mujoco
     import numpy as np
@@ -118,22 +118,15 @@ def main():
 
     print(f"Generating {type(traj).__name__}...")
 
-    plot_path = None
-    if not config.no_plot:
-        if config.output:
-            plot_path = config.output.with_suffix(".png")
-        else:
-            plot_path = Path("output.png")
-
-    json_path = None
-    if config.output:
-        json_path = config.output.with_suffix(".json")
+    # Use explicit paths from config
+    plot_path = str(config.plot_path) if config.plot_path else None
+    json_path = str(config.json_path) if config.json_path else None
 
     # generate() accepts kwargs which will be passed to plot etc
     traj.generate(
-        show_plot=False,
-        plot_path=str(plot_path) if plot_path else None,
-        json_path=str(json_path) if json_path else None,
+        show_plot=config.show_plot,
+        plot_path=plot_path,
+        json_path=json_path,
     )
 
     if plot_path:

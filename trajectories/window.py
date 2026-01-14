@@ -78,15 +78,10 @@ class WindowTrajectory(BaseTrajectory):
 
         return q, dq, ddq
 
-    def generate(self, show_plot: bool = False, plot_path: str | None = None, json_path: str | None = None):
+    def _generate(self, *args, **kwargs):
         if self.time_array[-1] > self.duration + 1e-9:
             self.time_array = self.time_array[:-1]
 
         pos, vel, acc = self.get_value()
-
-        self.plot(pos, vel, acc, show=show_plot, plot_path=plot_path)
-
-        if json_path is not None:
-            self.write_to_json(pos, vel, acc, json_path)
 
         return pos, vel, acc

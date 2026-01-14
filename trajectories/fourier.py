@@ -46,7 +46,7 @@ class FourierTrajectory(BaseTrajectory):
         self.base_freq = cfg.base_freq
         self.omega_b = 2 * np.pi * cfg.base_freq
 
-        if cfg.coefficients is None:
+        if cfg.coefficients is None or cfg.coefficients == MISSING or isinstance(cfg.coefficients, str):
             self.a = np.zeros((self.num_joints, self.num_harmonics))
             self.b = np.zeros((self.num_joints, self.num_harmonics))
             self.q0 = np.zeros(self.num_joints)
@@ -115,16 +115,11 @@ class FourierTrajectory(BaseTrajectory):
 
         return q, dq, ddq
 
-    def generate(self, show_plot: bool = False, plot_path: str | None = None, json_path: str | None = None):
+    def _generate(self, *args, **kwargs):
         """
         Generate trajectory arrays.
 
-        Args:
-            duration (float): Total duration.
-            dt (float): Time step.
-
         Returns:
-            t (N,): Time array
             pos (N, num_joints): Position array
             vel (N, num_joints): Velocity array
             acc (N, num_joints): Acceleration array
@@ -134,10 +129,5 @@ class FourierTrajectory(BaseTrajectory):
             self.time_array = self.time_array[:-1]
 
         pos, vel, acc = self.get_value()
-
-        self.plot(pos, vel, acc, show=show_plot, plot_path=plot_path)
-
-        if json_path is not None:
-            self.write_to_json(pos, vel, acc, json_path)
 
         return pos, vel, acc

@@ -19,8 +19,9 @@ class BaseTrajectoryConfig(InstantiateConfig):
 
     # CLI-specific arguments (shared across all trajectories)
     config: Path | None = None  # Path to YAML configuration file
-    output: Path | None = None
-    no_plot: bool = False
+    show_plot: bool = False  # Show plot window (default: hidden)
+    plot_path: Path | None = None  # Path to save plot image
+    json_path: Path | None = None  # Path to save trajectory JSON
 
 
 # 抽象クラスの定義
@@ -31,11 +32,6 @@ class BaseTrajectory(ABC):
 
         self.time_steps = int(self.duration * self.fps)
         self.time_array = np.linspace(0, self.duration, self.time_steps)
-
-    @abstractmethod
-    def generate(self, *args, **kwargs):
-        """To be implemented in each child class"""
-        pass
 
     def write_to_json(self, pos, vel, acc, json_path="spline_trajectory.json"):
         """
@@ -97,3 +93,20 @@ class BaseTrajectory(ABC):
         ax.set_ylabel(ylabel)
         ax.set_title(title)
         ax.grid(True)
+
+    @abstractmethod
+    def _generate(self, *args, **kwargs):
+        """To be implemented in each child class"""
+        pass
+
+    def generate(self, *args, **kwargs):
+        show_plot = kwargs.get("show_plot", False)
+        plot_path = kwargs.get("plot_path", None)
+        json_path = kwargs.get("json_path", None)
+
+        pos, vel, acc = self._generate(args, kwargs)
+
+        if json_path is not None:
+            self.write_to_json(pos, vel, acc, json_path)
+
+        self.plot(pos, vel, acc, show=show_plot, plot_path=plot_path)
