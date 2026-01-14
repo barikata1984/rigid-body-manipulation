@@ -21,6 +21,7 @@ class BaseTrajectoryConfig(InstantiateConfig):
     show_plot: bool = False  # Show plot window (default: hidden)
     plot_path: Path | None = None  # Path to save plot image
     json_path: Path | None = None  # Path to save trajectory JSON
+    config_class: str | None = None  # Config class name (from YAML metadata)
 
 
 # 抽象クラスの定義

@@ -6,22 +6,18 @@ from omegaconf import OmegaConf
 from factory import instantiate
 
 from .base_trajectory import BaseTrajectory, BaseTrajectoryConfig
-from .fourier import FourierTrajectoryConfig
-from .window import WindowTrajectory, WindowTrajectoryConfig
+from .window import WindowTrajectoryConfig
 
 
-@dataclass(kw_only=True)
+@dataclass
 class WindowedFourierTrajectoryConfig(BaseTrajectoryConfig):
-    # CLI config paths
-    config: Path | None = None  # Path to main YAML configuration file
+    """Configuration for WindowedFourierTrajectory.
+
+    Uses a Fourier trajectory config file and automatically creates
+    a matching window trajectory.
+    """
+
     fourier_config: Path | None = None  # Path to Fourier trajectory YAML configuration
-
-    # Main component (can be loaded from fourier_config or specified directly)
-    fourier_trajectory: FourierTrajectoryConfig | None = None
-
-    # Window component (optional, defaults to standard window)
-    window_trajectory: WindowTrajectoryConfig | None = None
-
     target_class: str = "WindowedFourierTrajectory"
 
 
@@ -37,36 +33,34 @@ class WindowedFourierTrajectory(BaseTrajectory):
     """
 
     def __init__(self, cfg: WindowedFourierTrajectoryConfig, *args, **kwargs):
-        super().__init__(cfg, *args, **kwargs)
+        # Load Fourier config from file first
+        if cfg.fourier_config is None:
+            raise ValueError("fourier_config must be specified")
 
-        # Load Fourier config from file if fourier_config path is provided
-        if cfg.fourier_config is not None:
-            yaml_cfg = OmegaConf.load(cfg.fourier_config)
-            fourier_cfg = OmegaConf.to_object(OmegaConf.merge(FourierTrajectoryConfig(), yaml_cfg))
-        elif cfg.fourier_trajectory is not None:
-            fourier_cfg = cfg.fourier_trajectory
-            if isinstance(fourier_cfg, dict):
-                fourier_cfg = OmegaConf.to_object(OmegaConf.merge(FourierTrajectoryConfig(), fourier_cfg))
-        else:
-            raise ValueError("Either fourier_config or fourier_trajectory must be specified")
+        fourier_cfg = OmegaConf.load(cfg.fourier_config)
 
-        # Ensure sub-configs inherit master settings
-        fourier_cfg.duration = self.duration
-        fourier_cfg.fps = self.fps
+        # Merge: fourier_config < windowed_fourier_config (higher priority overrides)
+        # This allows windowed_fourier_config to override duration/fps from fourier_config
+        merged_cfg = OmegaConf.merge(fourier_cfg, OmegaConf.structured(cfg))
 
+        import pdb
+
+        pdb.set_trace()
+
+        # Now call parent init with proper duration/fps
+        super().__init__(merged_cfg, *args, **kwargs)
+
+        # Instantiate Fourier Trajectory using factory
         self.fourier_trajectory = instantiate(fourier_cfg, *args, **kwargs)
-        self.num_joints = self.fourier_trajectory.num_joints
+        self.num_joints = fourier_cfg.num_joints
 
-        # Instantiate Window Trajectory
-        if cfg.window_trajectory is None:
-            win_cfg = WindowTrajectoryConfig(duration=self.duration, fps=self.fps, num_joints=self.num_joints)
-        else:
-            win_cfg = cfg.window_trajectory
-            win_cfg.duration = self.duration
-            win_cfg.fps = self.fps
-            win_cfg.num_joints = self.num_joints
-
-        self.window_trajectory = WindowTrajectory(win_cfg, *args, **kwargs)
+        # Create Window Trajectory using duration, fps, and num_joints from Fourier config
+        win_cfg = WindowTrajectoryConfig(
+            duration=self.duration,
+            fps=self.fps,
+            num_joints=self.num_joints,
+        )
+        self.window_trajectory = instantiate(win_cfg, *args, **kwargs)
 
     def get_value(self):
         """
@@ -90,7 +84,7 @@ class WindowedFourierTrajectory(BaseTrajectory):
 
         return q_out, dq_out, ddq_out
 
-    def _generate(self, show_plot: bool = False, plot_path: str | None = None, json_path: str | None = None):
+    def _generate(self, *args, **kwargs):
         if self.time_array[-1] > self.duration + 1e-9:
             self.time_array = self.time_array[:-1]
 

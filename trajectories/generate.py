@@ -86,8 +86,8 @@ def main():
     # Parse CLI arguments using tyro
     cli_config = tyro.cli(TrajectoryConfig)
 
-    # Check if --config was specified
-    config_path = cli_config.config
+    # Check if --config was specified (some configs may not have this field)
+    config_path = getattr(cli_config, "config", None)
 
     if config_path is not None:
         # Load YAML config
