@@ -9,7 +9,7 @@ from trajectories.excited import ExcitedTrajectoryConfig
 from trajectories.fourier import FourierTrajectoryConfig
 
 # Import from package
-from trajectories.spline import QuinticSplineTrajectoryConfig
+from trajectories.spline import SplineTrajectoryConfig
 
 # Import from package
 from trajectories.window import WindowTrajectoryConfig
@@ -17,7 +17,7 @@ from trajectories.windowed_fourier import WindowedFourierTrajectoryConfig
 
 # Top-level union for the CLI
 TrajectoryConfig = (
-    Annotated[QuinticSplineTrajectoryConfig, tyro.conf.subcommand(name="spline")]
+    Annotated[SplineTrajectoryConfig, tyro.conf.subcommand(name="spline")]
     | Annotated[FourierTrajectoryConfig, tyro.conf.subcommand(name="fourier")]
     | Annotated[ExcitedTrajectoryConfig, tyro.conf.subcommand(name="excited")]
     | Annotated[WindowTrajectoryConfig, tyro.conf.subcommand(name="window")]

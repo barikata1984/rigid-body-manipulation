@@ -8,25 +8,28 @@ from .base_trajectory import BaseTrajectory, BaseTrajectoryConfig
 
 
 @dataclass
-class QuinticSplineTrajectoryConfig(BaseTrajectoryConfig):
+class SplineTrajectoryConfig(BaseTrajectoryConfig):
     config: Path | None = None  # Path to YAML configuration file
+    type: str = MISSING  # "quintic" or "septic"
     start_pos: list[float] = MISSING
     end_pos: list[float] = MISSING
     start_vel: list[float] | None = None
     end_vel: list[float] | None = None
     start_acc: list[float] | None = None
     end_acc: list[float] | None = None
-    target_class: str = "QuinticSplineTrajectory"
+    start_jerk: list[float] | None = None
+    end_jerk: list[float] | None = None
+    target_class: str = "SplineTrajectory"
 
 
-class QuinticSplineTrajectory(BaseTrajectory):
-    """Generates a quintic (5th-order) polynomial trajectory for multiple joints.
+class SplineTrajectory(BaseTrajectory):
+    """Generates a polynomial trajectory (quintic or septic) for multiple joints.
     Ensures continuous position, velocity, and acceleration.
     """
 
     def __init__(
         self,
-        cfg: QuinticSplineTrajectoryConfig,
+        cfg: SplineTrajectoryConfig,
         *args,
         **kwargs,
     ):
@@ -40,6 +43,7 @@ class QuinticSplineTrajectory(BaseTrajectory):
         self.start_pos = np.array(cfg.start_pos)
         self.end_pos = np.array(cfg.end_pos)
         self.num_joints = len(cfg.start_pos)
+        self.type = cfg.type
 
         if len(cfg.end_pos) != self.num_joints:
             raise ValueError("Start and end positions must have the same length.")
@@ -48,14 +52,21 @@ class QuinticSplineTrajectory(BaseTrajectory):
         self.end_vel = np.array(cfg.end_vel) if cfg.end_vel is not None else np.zeros(self.num_joints)
         self.start_acc = np.array(cfg.start_acc) if cfg.start_acc is not None else np.zeros(self.num_joints)
         self.end_acc = np.array(cfg.end_acc) if cfg.end_acc is not None else np.zeros(self.num_joints)
+        self.start_jerk = np.array(cfg.start_jerk) if cfg.start_jerk is not None else np.zeros(self.num_joints)
+        self.end_jerk = np.array(cfg.end_jerk) if cfg.end_jerk is not None else np.zeros(self.num_joints)
 
         self.time_steps = int(self.duration * self.fps)
         self.time_array = np.linspace(0, self.duration, self.time_steps)
 
-        # Pre-calculate coefficients
-        self.coeffs = self._calculate_coefficients()
+        # Pre-calculate coefficients based on type
+        if self.type == "quintic":
+            self.coeffs = self._calculate_quintic_coefficients()
+        elif self.type == "septic":
+            self.coeffs = self._calculate_septic_coefficients()
+        else:
+            raise ValueError(f"Unknown spline type: {self.type}")
 
-    def _calculate_coefficients(self) -> np.ndarray:
+    def _calculate_quintic_coefficients(self) -> np.ndarray:
         """Calculates the coefficients a0, a1, a2, a3, a4, a5 for the polynomial:
         q(t) = a0 + a1*t + a2*t^2 + a3*t^3 + a4*t^4 + a5*t^5
         """
@@ -116,6 +127,85 @@ class QuinticSplineTrajectory(BaseTrajectory):
 
         return coeffs
 
+    def _calculate_septic_coefficients(self) -> np.ndarray:
+        """Calculates the coefficients a0...a7 for a septic (7th-order) polynomial.
+        q(t) = a0 + a1*t + a2*t^2 + a3*t^3 + a4*t^4 + a5*t^5 + a6*t^6 + a7*t^7
+        Ensures continuous jerk at boundaries.
+        """
+        T = self.duration
+        T2 = T * T
+        T3 = T2 * T
+        T4 = T3 * T
+        T5 = T4 * T
+        T6 = T5 * T
+        T7 = T6 * T
+
+        # q(0) = a0
+        # v(0) = a1
+        # a(0) = 2*a2
+        # j(0) = 6*a3
+
+        # q(T) = a0 + a1*T + a2*T2 + a3*T3 + a4*T4 + a5*T5 + a6*T6 + a7*T7
+        # v(T) = a1 + 2a2T + 3a3T2 + 4a4T3 + 5a5T4 + 6a6T5 + 7a7T6
+        # a(T) = 2a2 + 6a3T + 12a4T2 + 20a5T3 + 30a6T4 + 42a7T5
+        # j(T) = 6a3 + 24a4T + 60a5T2 + 120a6T3 + 210a7T4
+
+        coeffs = np.zeros((self.num_joints, 8))
+
+        for i in range(self.num_joints):
+            q0 = self.start_pos[i]
+            v0 = self.start_vel[i]
+            acc0 = self.start_acc[i]
+            j0 = self.start_jerk[i]
+
+            q1 = self.end_pos[i]
+            v1 = self.end_vel[i]
+            acc1 = self.end_acc[i]
+            j1 = self.end_jerk[i]
+
+            a0 = q0
+            a1 = v0
+            a2 = acc0 / 2.0
+            a3 = j0 / 6.0
+
+            # Solve for a4, a5, a6, a7
+            # A * [a4, a5, a6, a7]^T = B
+            A = np.array(
+                [
+                    [T4, T5, T6, T7],
+                    [4 * T3, 5 * T4, 6 * T5, 7 * T6],
+                    [12 * T2, 20 * T3, 30 * T4, 42 * T5],
+                    [24 * T, 60 * T2, 120 * T3, 210 * T4],
+                ],
+            )
+
+            known_q = a0 + a1 * T + a2 * T2 + a3 * T3
+            known_v = a1 + 2 * a2 * T + 3 * a3 * T2
+            known_a = 2 * a2 + 6 * a3 * T
+            known_j = 6 * a3
+
+            B = np.array(
+                [
+                    q1 - known_q,
+                    v1 - known_v,
+                    acc1 - known_a,
+                    j1 - known_j,
+                ],
+            )
+
+            x = np.linalg.solve(A, B)
+
+            coeffs[i, 0] = a0
+            coeffs[i, 1] = a1
+            coeffs[i, 2] = a2
+            coeffs[i, 3] = a3
+            coeffs[i, 4] = x[0]
+            coeffs[i, 5] = x[1]
+            coeffs[i, 6] = x[2]
+            coeffs[i, 7] = x[3]
+
+        return coeffs
+
     def _generate(self, show_plot: bool = False, plot_path: str | None = None, json_path: str | None = None):
         """Generates the trajectory.
 
@@ -137,11 +227,20 @@ class QuinticSplineTrajectory(BaseTrajectory):
             t5 = t4 * t
 
             for j in range(self.num_joints):
-                a0, a1, a2, a3, a4, a5 = self.coeffs[j]
-
-                pos[t_idx, j] = a0 + a1 * t + a2 * t2 + a3 * t3 + a4 * t4 + a5 * t5
-                vel[t_idx, j] = a1 + 2 * a2 * t + 3 * a3 * t2 + 4 * a4 * t3 + 5 * a5 * t4
-                acc[t_idx, j] = 2 * a2 + 6 * a3 * t + 12 * a4 * t2 + 20 * a5 * t3
+                if self.type == "quintic":
+                    a0, a1, a2, a3, a4, a5 = self.coeffs[j]
+                    pos[t_idx, j] = a0 + a1 * t + a2 * t2 + a3 * t3 + a4 * t4 + a5 * t5
+                    vel[t_idx, j] = a1 + 2 * a2 * t + 3 * a3 * t2 + 4 * a4 * t3 + 5 * a5 * t4
+                    acc[t_idx, j] = 2 * a2 + 6 * a3 * t + 12 * a4 * t2 + 20 * a5 * t3
+                elif self.type == "septic":
+                    a0, a1, a2, a3, a4, a5, a6, a7 = self.coeffs[j]
+                    t6 = t5 * t
+                    t7 = t6 * t
+                    pos[t_idx, j] = a0 + a1 * t + a2 * t2 + a3 * t3 + a4 * t4 + a5 * t5 + a6 * t6 + a7 * t7
+                    vel[t_idx, j] = (
+                        a1 + 2 * a2 * t + 3 * a3 * t2 + 4 * a4 * t3 + 5 * a5 * t4 + 6 * a6 * t5 + 7 * a7 * t6
+                    )
+                    acc[t_idx, j] = 2 * a2 + 6 * a3 * t + 12 * a4 * t2 + 20 * a5 * t3 + 30 * a6 * t4 + 42 * a7 * t5
 
         return pos, vel, acc
 
@@ -169,13 +268,14 @@ if __name__ == "__main__":
     duration = 5.0
     fps = 60.0
 
-    cfg = QuinticSplineTrajectoryConfig(
+    cfg = SplineTrajectoryConfig(
         duration=duration,
         fps=fps,
+        type="quintic",
         start_pos=start_q,
         end_pos=end_q,
     )
 
-    traj = QuinticSplineTrajectory(cfg)
+    traj = SplineTrajectory(cfg)
 
     traj.generate(show_plot=True, plot_path="debug/spline.png", json_path="configurations/trajectories/spline.json")

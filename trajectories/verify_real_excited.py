@@ -7,11 +7,11 @@ from omegaconf import OmegaConf
 # Add project root
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from simulators.setup import generate_model_data
 from dynamics import calculate_frame_dynamics, setup_robot_dynamics_parameters
 from simulators import SimulatorConfig
+from simulators.setup import generate_model_data
 from trajectories.excited import ExcitedTrajectory, ExcitedTrajectoryConfig
-from trajectories.spline import QuinticSplineTrajectory, QuinticSplineTrajectoryConfig
+from trajectories.spline import SplineTrajectoryConfig
 
 
 def main():
@@ -28,6 +28,7 @@ def main():
     # 2. Load Model
     print("Loading MuJoCo model...")
     import mujoco
+
     m, d, gt = generate_model_data(cfg)
     print(f"Model loaded. DoF: {m.nu}")
 
@@ -52,21 +53,22 @@ def main():
 
     # 5. Define Base Trajectory (Spline)
     # Move from initial configuration to a slightly offset configuration
-    start_q = np.array(d.qpos[:m.nu])
+    start_q = np.array(d.qpos[: m.nu])
     # Create a target within joint limits (assuming limits are reasonable, e.g. -pi to pi)
     # Just move joint 1 by 0.5 rad, joint 3 by -0.3 rad, etc.
     end_q = start_q.copy()
     end_q[0] += 0.5
     end_q[1] -= 0.3
     end_q[2] += 0.4
-    
+
     print(f"Base Trajectory: {start_q} -> {end_q}")
-    
+
     duration = 2.0
     fps = 60
-    spline_cfg = QuinticSplineTrajectoryConfig(
+    spline_cfg = SplineTrajectoryConfig(
         duration=duration,
         fps=fps,
+        type="quintic",
         start_pos=start_q,
         end_pos=end_q,
     )
@@ -75,11 +77,11 @@ def main():
     # 6. Instantiate ExcitedTrajectory
     print("Initializing ExcitedTrajectory...")
     excited_cfg = ExcitedTrajectoryConfig(
-        main_trajectory=spline_cfg, # Pass config, not instance
+        main_trajectory=spline_cfg,  # Pass config, not instance
         num_harmonics=5,
-        base_freq=0.5, # 1 cycle in 2.0s
+        base_freq=0.5,  # 1 cycle in 2.0s
     )
-    
+
     excited_traj = ExcitedTrajectory(
         excited_cfg,
         kinematics_func=kinematics_func,
@@ -90,9 +92,9 @@ def main():
     # This will trigger _optimize internally
     excited_traj.generate(
         max_iter=10,
-        show_plot=True, 
-        plot_path="real_excited_verification.png", 
-        json_path="real_excited_verification.json"
+        show_plot=True,
+        plot_path="real_excited_verification.png",
+        json_path="real_excited_verification.json",
     )
 
     # 8. Report
