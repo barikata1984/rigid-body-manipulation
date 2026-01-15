@@ -1,23 +1,22 @@
 from dataclasses import dataclass
-from pathlib import Path
 
 from omegaconf import OmegaConf
 
 from factory import instantiate
 
-from .base_trajectory import BaseTrajectory, BaseTrajectoryConfig
+from .base_trajectory import BaseTrajectory
+from .fourier import FourierTrajectoryConfig
 from .window import WindowTrajectoryConfig
 
 
 @dataclass
-class WindowedFourierTrajectoryConfig(BaseTrajectoryConfig):
+class WindowedFourierTrajectoryConfig(FourierTrajectoryConfig):
     """Configuration for WindowedFourierTrajectory.
 
     Uses a Fourier trajectory config file and automatically creates
     a matching window trajectory.
     """
 
-    fourier_config: Path | None = None  # Path to Fourier trajectory YAML configuration
     target_class: str = "WindowedFourierTrajectory"
 
 
@@ -34,33 +33,21 @@ class WindowedFourierTrajectory(BaseTrajectory):
 
     def __init__(self, cfg: WindowedFourierTrajectoryConfig, *args, **kwargs):
         # Load Fourier config from file first
-        if cfg.fourier_config is None:
-            raise ValueError("fourier_config must be specified")
-
-        fourier_cfg = OmegaConf.load(cfg.fourier_config)
+        super().__init__(cfg, *args, **kwargs)
 
         # Merge: fourier_config < windowed_fourier_config (higher priority overrides)
-        # This allows windowed_fourier_config to override duration/fps from fourier_config
-        merged_cfg = OmegaConf.merge(fourier_cfg, OmegaConf.structured(cfg))
-
-        import pdb
-
-        pdb.set_trace()
-
-        # Now call parent init with proper duration/fps
-        super().__init__(merged_cfg, *args, **kwargs)
+        fourier_cfg = OmegaConf.to_object(OmegaConf.merge(FourierTrajectoryConfig, OmegaConf.load(cfg.config)))
 
         # Instantiate Fourier Trajectory using factory
-        self.fourier_trajectory = instantiate(fourier_cfg, *args, **kwargs)
-        self.num_joints = fourier_cfg.num_joints
+        self.fourier = instantiate(fourier_cfg, *args, **kwargs)
 
         # Create Window Trajectory using duration, fps, and num_joints from Fourier config
         win_cfg = WindowTrajectoryConfig(
             duration=self.duration,
             fps=self.fps,
-            num_joints=self.num_joints,
+            num_joints=self.fourier.num_joints,
         )
-        self.window_trajectory = instantiate(win_cfg, *args, **kwargs)
+        self.window = instantiate(win_cfg, *args, **kwargs)
 
     def get_value(self):
         """
@@ -72,10 +59,10 @@ class WindowedFourierTrajectory(BaseTrajectory):
         """
 
         # 1. Fourier Raw
-        q_raw, dq_raw, ddq_raw = self.fourier_trajectory.get_value()
+        q_raw, dq_raw, ddq_raw = self.fourier.get_value()
 
         # 2. Window Values
-        s, ds, dds = self.window_trajectory.get_value()
+        s, ds, dds = self.window.get_value()
 
         # 3. Product Rule
         q_out = s * q_raw

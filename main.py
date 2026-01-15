@@ -10,10 +10,10 @@ from omegaconf import OmegaConf
 from omegaconf.errors import MissingMandatoryValue
 
 from factory import instantiate
-from simulators.setup import generate_model_data, get_element_id
 from omegaconf_custom_resolvers import pi_converter
 from regressions import total_lstsq
 from simulators import SimulatorConfig
+from simulators.setup import generate_model_data, get_element_id
 from utilities import json_to_namespace
 
 OmegaConf.register_new_resolver("pi", pi_converter)
@@ -23,7 +23,7 @@ def main():
     cli_config = tyro.cli(SimulatorConfig)
     cli_specified_yaml = cli_config.exp_setup
     yaml_config = OmegaConf.load(cli_specified_yaml)
-    base_config = SimulatorConfig()
+    base_config = SimulatorConfig
 
     cfg = OmegaConf.merge(base_config, yaml_config, cli_config)  # priority: cli > cli-specified yaml > vanilla
     m, d, gt = generate_model_data(cfg)
@@ -36,17 +36,17 @@ def main():
 
         target_trajectory = json_to_namespace(trajectory_data)
 
-        #with open(cfg.target_trajectory) as f:
+        # with open(cfg.target_trajectory) as f:
         #    target_trajectory = json.load(f)
-        #if "excitation" in trajectory_data and "start_index" in trajectory_data["excitation"]:
+        # if "excitation" in trajectory_data and "start_index" in trajectory_data["excitation"]:
         #    start = trajectory_data["excitation"]["start_index"]
         #    end = trajectory_data["excitation"]["end_index"]
         #    excitation_slice = slice(start, end)
         #    print(f"Excitation trajectory slice found: {start} to {end}")
 
         # Load target trajectory JSON as dot-accessible object
-        #self.target_trajectory = None
-        #if cfg.target_trajectory:
+        # self.target_trajectory = None
+        # if cfg.target_trajectory:
 
     # Fill the recorder's fps with the target_trajectory's ===========================
     try:
