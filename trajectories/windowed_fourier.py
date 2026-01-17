@@ -36,7 +36,10 @@ class WindowedFourierTrajectory(BaseTrajectory):
         super().__init__(cfg, *args, **kwargs)
 
         # Merge: fourier_config < windowed_fourier_config (higher priority overrides)
-        fourier_cfg = OmegaConf.to_object(OmegaConf.merge(FourierTrajectoryConfig, OmegaConf.load(cfg.config)))
+        if cfg.config is not None:
+            fourier_cfg = OmegaConf.to_object(OmegaConf.merge(FourierTrajectoryConfig, OmegaConf.load(cfg.config)))
+        else:
+            fourier_cfg = cfg
 
         # Instantiate Fourier Trajectory using factory
         self.fourier = instantiate(fourier_cfg, *args, **kwargs)

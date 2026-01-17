@@ -2,26 +2,23 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
-from omegaconf import MISSING
+from omegaconf import MISSING, OmegaConf
 from scipy.optimize import minimize
 
 from factory import instantiate
 
 from .base_trajectory import BaseTrajectory, BaseTrajectoryConfig
 from .fourier import FourierTrajectory, FourierTrajectoryConfig
-from .spline import QuinticSplineTrajectoryConfig
-from .window import WindowTrajectory, WindowTrajectoryConfig
+from .spline import SplineTrajectoryConfig
+from .windowed_fourier import WindowedFourierTrajectoryConfig
 
 
 @dataclass
-class ExcitedTrajectoryConfig(BaseTrajectoryConfig):
+class ExcitedTrajectoryConfig(WindowedFourierTrajectoryConfig):
     # Use Any instead of Union to avoid OmegaConf limitation with Union of containers
-    main_trajectory: Any = field(default_factory=lambda: MISSING)
-    num_harmonics: int = MISSING
-    base_freq: float = MISSING
 
     # Optional window trajectory config (will be auto-created if not provided)
-    window_trajectory: WindowTrajectoryConfig | None = None
+    guide_config: SplineTrajectoryConfig | None = None
 
     # MuJoCo model paths for kinematics_func construction (optional)
     manipulator: str | None = field(default_factory=lambda: MISSING)
@@ -45,13 +42,11 @@ class ExcitedTrajectory(BaseTrajectory):
             kinematics_func (callable): f(q, dq, ddq) -> regressor_matrix. (passed via kwargs)
         """
         super().__init__(cfg, *args, **kwargs)
-
         # Instantiate main_trajectory using factory.instantiate
         # Handle the case where main_trajectory is a dict (from YAML) instead of a config object
         main_traj_cfg = cfg.main_trajectory
         if isinstance(main_traj_cfg, dict):
             # Convert dict to appropriate config class based on target_class
-            from omegaconf import OmegaConf
 
             target_class_name = main_traj_cfg.get("target_class", "QuinticSplineTrajectory")
             if "Spline" in target_class_name:
@@ -210,12 +205,14 @@ class ExcitedTrajectory(BaseTrajectory):
         self._is_optimized = True
         print(f"Optimization Finished. Final Condition Number: {res.fun:.4f}")
 
-    def generate(
-        self, show_plot: bool = False, plot_path: str | None = None, json_path: str | None = None, max_iter: int = 50
+    def _generate(
+        self, *args, **kwargs
     ):
         """
         Generate trajectory. Runs optimization if needed.
         """
+        max_iter = kwargs.get("max_iter", 50)
+        
         # Always need main trajectory cache
         if self._main_cache is None:
             self._main_cache = self.main_trajectory.generate()
@@ -246,10 +243,5 @@ class ExcitedTrajectory(BaseTrajectory):
         q_total = q_main + q_exc
         dq_total = dq_main + dq_exc
         ddq_total = ddq_main + ddq_exc
-
-        self.plot(q_total, dq_total, ddq_total, show=show_plot, plot_path=plot_path)
-
-        if json_path:
-            self.write_to_json(q_total, dq_total, ddq_total, json_path)
 
         return q_total, dq_total, ddq_total
