@@ -1,0 +1,23 @@
+trajectory:
+  _target_: trajectories.spline.SplineTrajectory
+  _recursive_: true
+  duration: 5.0
+  fps: 60.0
+  type: quintic
+  start_pos:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  end_pos:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 0.0
+  - 0.0
+  - 0.0
+  show_plot: false
+  plot_path: null
+  json_path: test_hydra.json

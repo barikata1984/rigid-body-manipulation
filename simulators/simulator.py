@@ -9,7 +9,6 @@ from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 from mujoco._functions import mj_differentiatePos, mj_step
 from mujoco._structs import MjData, MjModel, MjOption
-from omegaconf import MISSING
 from tqdm import tqdm
 
 from factory import instantiate
@@ -33,12 +32,12 @@ mpl.rcParams["axes.xmargin"] = 0
 np.set_printoptions(precision=5, suppress=True)
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SimulatorConfig(BaseSimulatorConfig):
     target_class: str = "Simulator"  # type: ignore
     manipulator: str = "xml_models/manipulators/sequential"
-    object: str = MISSING
-    reset_keyframe: str = MISSING  # | None = None
+    object: str  # Required, no default
+    reset_keyframe: str  # Required, no default
     # Some tests pass these explicitly; keep them optional for trajectory-driven runs
     duration: float | None = None
     fps: int | None = None

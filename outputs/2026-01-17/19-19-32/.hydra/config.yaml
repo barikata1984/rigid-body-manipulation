@@ -1,0 +1,13 @@
+trajectory:
+  _target_: trajectories.fourier.FourierTrajectory
+  _recursive_: true
+  num_joints: 6
+  num_harmonics: 5
+  base_freq: 0.2
+  coefficients: null
+  q0: null
+duration: 5.0
+fps: 60.0
+show_plot: false
+plot_path: test_fourier.png
+json_path: test_fourier.json

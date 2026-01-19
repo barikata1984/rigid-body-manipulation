@@ -1,0 +1,14 @@
+trajectory: spline_6dof
+duration: 5.0
+fps: 60.0
+show_plot: true
+plot_path: null
+json_path: null
+type: null
+start_pos: null
+end_pos: null
+num_joints: null
+num_harmonics: null
+base_freq: null
+coefficients: null
+q0: null

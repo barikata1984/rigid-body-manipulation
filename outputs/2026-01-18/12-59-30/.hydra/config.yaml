@@ -1,0 +1,14 @@
+trajectory: fourier
+duration: 6.0
+fps: 60.0
+show_plot: false
+plot_path: test_no_plus.png
+json_path: null
+type: null
+start_pos: null
+end_pos: null
+num_joints: null
+num_harmonics: 7
+base_freq: null
+coefficients: null
+q0: null

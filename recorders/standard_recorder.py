@@ -14,7 +14,6 @@ import numpy as np
 from mujoco._structs import MjData, MjModel
 from mujoco.renderer import Renderer
 from numpy.linalg import lstsq
-from omegaconf import MISSING
 
 from regressions import total_lstsq
 from utilities import get_element_id
@@ -22,7 +21,7 @@ from utilities import get_element_id
 from .base_recorder import BaseRecorderConfig
 
 
-@dataclass
+@dataclass(kw_only=True)
 class StandardRecorderConfig(BaseRecorderConfig):
     target_class: str = "StandardRecorder"  # type: ignore
     track_cam_name: str = "tracking"
@@ -30,9 +29,9 @@ class StandardRecorderConfig(BaseRecorderConfig):
     fig_width: int = 800
     videoname: str = "output.mp4"
     videcodec: str = "mp4v"
-    dataset_dir: str = MISSING
-    aabb_scale: float = MISSING  # | None = None
-    fps: int = MISSING  # | None = None
+    dataset_dir: str  # Required, no default
+    aabb_scale: float  # Required, no default
+    fps: int  # Required, no default
     # gt_mass_distr_file_path: str = MISSING
 
 class StandardRecorder:

@@ -1,15 +1,14 @@
 from dataclasses import dataclass
 
 import numpy as np
-from omegaconf import MISSING
 
 from .base_trajectory import BaseTrajectory, BaseTrajectoryConfig
 
 
-@dataclass
+@dataclass(kw_only=True)
 class WindowTrajectoryConfig(BaseTrajectoryConfig):
     # Number of joints to match the shape of other trajectories (though window is usually same for all)
-    num_joints: int = MISSING
+    num_joints: int  # Required, no default
     target_class: str = "WindowTrajectory"
 
 

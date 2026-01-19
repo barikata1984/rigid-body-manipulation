@@ -9,7 +9,7 @@ from .fourier import FourierTrajectoryConfig
 from .window import WindowTrajectoryConfig
 
 
-@dataclass
+@dataclass(kw_only=True)
 class WindowedFourierTrajectoryConfig(FourierTrajectoryConfig):
     """Configuration for WindowedFourierTrajectory.
 

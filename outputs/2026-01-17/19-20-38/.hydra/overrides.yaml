@@ -1,0 +1,4 @@
+- trajectory=fourier
+- trajectory.num_harmonics=5
+- json_path=test_fourier.json
+- plot_path=test_fourier.png

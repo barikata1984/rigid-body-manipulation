@@ -1,0 +1,24 @@
+# Trajectory Generation Configuration
+# Usage: generate-trajectory trajectory=spline duration=10.0 type=septic
+
+# Trajectory type selector
+trajectory: spline  # Options: spline, fourier, spline_6dof, fourier_6dof
+
+# Common parameters (BaseTrajectoryConfig)
+duration: 5.0
+fps: 60.0
+show_plot: false
+plot_path: null
+json_path: null
+
+# Spline-specific parameters (null = use trajectory YAML default)
+type: null          # "quintic" or "septic"
+start_pos: null
+end_pos: null
+
+# Fourier-specific parameters (null = use trajectory YAML default)
+num_joints: null
+num_harmonics: null
+base_freq: null
+coefficients: null
+q0: null

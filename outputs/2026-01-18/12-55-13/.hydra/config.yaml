@@ -1,0 +1,6 @@
+trajectory: fourier_6dof
+duration: 5.0
+fps: 60.0
+show_plot: false
+plot_path: test_fourier_6dof.png
+json_path: test_fourier_6dof.json

@@ -1,0 +1,58 @@
+# Simulation Configuration
+defaults:
+  - _self_
+
+# Required fields - must be provided
+object: ???  # Path to object XML
+reset_keyframe: ???  # Keyframe name
+
+# Manipulator path
+# manipulator: xml_models/manipulators/sequential (defined in class default)
+manipulator: xml_models/manipulators/sequential
+
+# Optional fields
+duration: null
+fps: null
+target_trajectory: null
+generate_trajectory: null
+config_export_path: null
+diffpos_dt: 1.0
+
+# Recorder configuration
+recorder:
+  target_class: StandardRecorder
+  track_cam_name: tracking
+  fig_height: 800
+  fig_width: 800
+  videoname: output.mp4
+  videcodec: mp4v
+  dataset_dir: ???  # Will be auto-set if missing
+  aabb_scale: ???   # Will be auto-set if missing
+  fps: ???          # Will be auto-set if missing
+
+# Controller configuration
+controller:
+  target_class: LinearQuadraticRegulator
+  state_space:
+    epsilon: 0.002
+    centered: true
+  state_gain:
+    - 1000000
+    - 1000000
+    - 1000000
+    - 1000
+    - 1000
+    - 1000
+    - 10000
+    - 10000
+    - 10000
+    - 10
+    - 10
+    - 10
+  input_gain:
+    - 0.01
+    - 0.01
+    - 0.01
+    - 0.1
+    - 0.1
+    - 0.1

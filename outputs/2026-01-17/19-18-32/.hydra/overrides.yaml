@@ -1,0 +1,4 @@
+- trajectory=spline
+- trajectory.type=septic
+- duration=10.0
+- json_path=test_spline.json

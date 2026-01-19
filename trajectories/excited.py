@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
-from omegaconf import MISSING, OmegaConf
 from scipy.optimize import minimize
 
 from factory import instantiate
@@ -10,10 +9,11 @@ from factory import instantiate
 from .base_trajectory import BaseTrajectory, BaseTrajectoryConfig
 from .fourier import FourierTrajectory, FourierTrajectoryConfig
 from .spline import SplineTrajectoryConfig
+from .window import WindowTrajectory, WindowTrajectoryConfig
 from .windowed_fourier import WindowedFourierTrajectoryConfig
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ExcitedTrajectoryConfig(WindowedFourierTrajectoryConfig):
     # Use Any instead of Union to avoid OmegaConf limitation with Union of containers
 
@@ -21,8 +21,8 @@ class ExcitedTrajectoryConfig(WindowedFourierTrajectoryConfig):
     guide_config: SplineTrajectoryConfig | None = None
 
     # MuJoCo model paths for kinematics_func construction (optional)
-    manipulator: str | None = field(default_factory=lambda: MISSING)
-    object: str | None = field(default_factory=lambda: MISSING)
+    manipulator: str | None = None
+    object: str | None = None
     ee_body_name: str = "link6"  # End-effector body name
 
     target_class: str = "ExcitedTrajectory"
@@ -43,16 +43,16 @@ class ExcitedTrajectory(BaseTrajectory):
         """
         super().__init__(cfg, *args, **kwargs)
         # Instantiate main_trajectory using factory.instantiate
-        # Handle the case where main_trajectory is a dict (from YAML) instead of a config object
+        # Handle the case where main_trajectory is a dict (from YAML/Hydra) instead of a config object
         main_traj_cfg = cfg.main_trajectory
         if isinstance(main_traj_cfg, dict):
             # Convert dict to appropriate config class based on target_class
-
-            target_class_name = main_traj_cfg.get("target_class", "QuinticSplineTrajectory")
+            target_class_name = main_traj_cfg.get("target_class", "SplineTrajectory")
             if "Spline" in target_class_name:
-                main_traj_cfg = OmegaConf.to_object(OmegaConf.merge(QuinticSplineTrajectoryConfig(), main_traj_cfg))
+                from .spline import SplineTrajectoryConfig
+                main_traj_cfg = SplineTrajectoryConfig(**main_traj_cfg)
             else:
-                main_traj_cfg = OmegaConf.to_object(OmegaConf.merge(FourierTrajectoryConfig(), main_traj_cfg))
+                main_traj_cfg = FourierTrajectoryConfig(**main_traj_cfg)
 
         self.main_trajectory = instantiate(main_traj_cfg, *args, **kwargs)
 
@@ -80,7 +80,7 @@ class ExcitedTrajectory(BaseTrajectory):
         self._main_cache = None
 
         # Setup Window Trajectory
-        if cfg.window_trajectory is None or cfg.window_trajectory == MISSING:
+        if cfg.window_trajectory is None:
             # Create default window config matching this trajectory
             win_cfg = WindowTrajectoryConfig(duration=self.duration, fps=self.fps, num_joints=self.num_joints)
         else:

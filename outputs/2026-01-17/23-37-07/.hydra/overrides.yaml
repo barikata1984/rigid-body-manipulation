@@ -1,0 +1,4 @@
+- trajectory=spline_6dof
+- trajectory.duration=8.0
+- trajectory.show_plot=true
+- trajectory.json_path=test_refactored.json

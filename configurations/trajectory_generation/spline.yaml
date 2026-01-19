@@ -1,0 +1,6 @@
+# Spline Trajectory Configuration
+_target_: trajectories.spline.SplineTrajectory
+
+type: quintic
+start_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+end_pos: [1.0, 1.0, 1.0, 0.0, 0.0, 0.0]

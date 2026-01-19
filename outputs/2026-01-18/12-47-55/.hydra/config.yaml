@@ -1,0 +1,6 @@
+trajectory: spline
+duration: 10.0
+fps: 60.0
+show_plot: false
+plot_path: null
+json_path: test_flat_final.json

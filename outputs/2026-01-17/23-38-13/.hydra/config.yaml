@@ -1,0 +1,23 @@
+trajectory:
+  _target_: trajectories.spline.SplineTrajectory
+  _recursive_: true
+  duration: 6.0
+  fps: 60.0
+  show_plot: false
+  plot_path: null
+  json_path: test_clean.json
+  type: quintic
+  start_pos:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 0.0
+  - 0.0
+  - 0.0
+  end_pos:
+  - 0.2
+  - 1.4
+  - 0.6
+  - 3.141592653589793
+  - 0.0
+  - 25.1327412287

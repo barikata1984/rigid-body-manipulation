@@ -2,19 +2,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-from omegaconf import MISSING
 
 from .base_trajectory import BaseTrajectory, BaseTrajectoryConfig
 
 
-@dataclass
+@dataclass(kw_only=True)
 class FourierTrajectoryConfig(BaseTrajectoryConfig):
     config: Path | None = None  # Path to YAML configuration file
-    num_joints: int = MISSING
-    num_harmonics: int = MISSING
-    base_freq: float = MISSING
-    coefficients: dict | None = field(default_factory=lambda: MISSING)
-    q0: list[float] | None = field(default_factory=lambda: MISSING)
+    num_joints: int  # Required, no default
+    num_harmonics: int  # Required, no default
+    base_freq: float  # Required, no default
+    coefficients: dict | None = None
+    q0: list[float] | None = None
     target_class: str = "FourierTrajectory"
 
 
@@ -48,7 +47,7 @@ class FourierTrajectory(BaseTrajectory):
         self.base_freq = cfg.base_freq
         self.omega_b = 2 * np.pi * cfg.base_freq
 
-        if cfg.coefficients is None or cfg.coefficients == MISSING or isinstance(cfg.coefficients, str):
+        if cfg.coefficients is None or isinstance(cfg.coefficients, str):
             self.a = np.zeros((self.num_joints, self.num_harmonics))
             self.b = np.zeros((self.num_joints, self.num_harmonics))
             self.q0 = np.zeros(self.num_joints)

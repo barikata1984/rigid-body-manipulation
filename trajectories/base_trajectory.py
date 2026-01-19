@@ -6,15 +6,14 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
-from omegaconf import MISSING
 
 from factory import InstantiateConfig
 
 
-@dataclass
+@dataclass(kw_only=True)
 class BaseTrajectoryConfig(InstantiateConfig):
-    duration: float = MISSING
-    fps: float = MISSING
+    duration: float  # Required, no default
+    fps: float  # Required, no default
     module_name: str = "trajectories"
 
     # CLI-specific arguments (shared across all trajectories)

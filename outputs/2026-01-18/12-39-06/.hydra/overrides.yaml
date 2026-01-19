@@ -1,0 +1,4 @@
+- trajectory=spline_6dof
+- duration=10.0
+- show_plot=true
+- json_path=test_flat.json

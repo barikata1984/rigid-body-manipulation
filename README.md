@@ -32,26 +32,67 @@ parent's body id of:
 
 ## Trajectory Generation
 
-You can generate trajectories (Spline, Fourier, Excited) using the `generate-trajectory` command.
+Generate trajectories using the `generate-trajectory` command (powered by Hydra).
 
 ### Basic Usage
 
 ```sh
-uv run generate-trajectory spline --start-pos 1.0 1.0 1.0 0.0 0.0 0.0 --end-pos 0.2 1.4 0.6 3.14 0.0 25.13
+# Default spline trajectory
+uv run generate-trajectory
+
+# Select trajectory type
+uv run generate-trajectory trajectory=fourier
+
+# Override parameters
+uv run generate-trajectory trajectory=spline duration=10.0 fps=120
 ```
 
-### Using Configuration File
+### Using Configuration Files
 
-Specify the trajectory type as a subcommand, then use `--config` to load a YAML configuration file:
+Configuration files are located in `configurations/trajectory_generation/`:
 
 ```sh
-uv run generate-trajectory spline --config configurations/trajectory_generation/spline_6dof.yaml
+# Use spline_6dof config
+uv run generate-trajectory trajectory=spline_6dof
+
+# Use fourier_6dof config
+uv run generate-trajectory trajectory=fourier_6dof
 ```
 
-CLI arguments override values from the config file:
+### Available Parameters
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `trajectory` | Trajectory type/config | `spline`, `fourier`, `spline_6dof` |
+| `duration` | Duration in seconds | `10.0` |
+| `fps` | Frames per second | `120` |
+| `show_plot` | Show plot window | `true` |
+| `plot_path` | Save plot to file | `output.png` |
+| `json_path` | Save trajectory JSON | `output.json` |
+| `type` | Spline type | `quintic`, `septic` |
+| `num_harmonics` | Fourier harmonics | `5` |
+
+### Math Expressions in YAML
+
+You can use `${pi:}` and `${eval:...}` in configuration files:
+
+```yaml
+end_pos:
+  - ${pi:}           # π (3.14159...)
+  - ${eval:8*pi}     # 8π
+  - ${eval:pi/2}     # π/2
+```
+
+### Examples
 
 ```sh
-uv run generate-trajectory spline --config configurations/trajectory_generation/spline_6dof.yaml --duration 10.0
+# Spline with septic interpolation
+uv run generate-trajectory trajectory=spline type=septic duration=5.0 plot_path=spline.png
+
+# Fourier with custom harmonics
+uv run generate-trajectory trajectory=fourier num_harmonics=7 duration=8.0 json_path=fourier.json
+
+# Show plot interactively
+uv run generate-trajectory trajectory=spline_6dof show_plot=true
 ```
 
-Supported subcommands: `spline`, `fourier`, `excited`.

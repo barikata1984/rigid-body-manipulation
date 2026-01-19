@@ -1,0 +1,2 @@
+- trajectory=spline
+- trajectory.json_path=test_hydra.json

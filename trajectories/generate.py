@@ -1,134 +1,131 @@
+"""
+Trajectory Generation Script using Hydra.
+
+Usage:
+    # Default spline trajectory
+    generate-trajectory
+
+    # Select trajectory type
+    generate-trajectory trajectory=fourier
+
+    # Override parameters (flat access)
+    generate-trajectory trajectory=spline duration=10.0 fps=120
+
+    # Trajectory-specific parameters
+    generate-trajectory trajectory=fourier num_harmonics=5
+
+    # Save outputs
+    generate-trajectory show_plot=true json_path=output.json plot_path=output.png
+"""
+import os
 from pathlib import Path
-from typing import Annotated
 
-import tyro
-from omegaconf import OmegaConf
+import hydra
+from omegaconf import DictConfig, OmegaConf
 
-from factory import instantiate
-from trajectories.excited import ExcitedTrajectoryConfig
-from trajectories.fourier import FourierTrajectoryConfig
+# Import utilities to register OmegaConf resolvers (pi, eval)
+import utilities  # noqa: F401 - import for side effect
 
-# Import from package
+from factory import instantiate as factory_instantiate
 from trajectories.spline import SplineTrajectoryConfig
-
-# Import from package
+from trajectories.fourier import FourierTrajectoryConfig
 from trajectories.window import WindowTrajectoryConfig
 from trajectories.windowed_fourier import WindowedFourierTrajectoryConfig
-
-# Top-level union for the CLI
-TrajectoryConfig = (
-    Annotated[SplineTrajectoryConfig, tyro.conf.subcommand(name="spline")]
-    | Annotated[FourierTrajectoryConfig, tyro.conf.subcommand(name="fourier")]
-    | Annotated[ExcitedTrajectoryConfig, tyro.conf.subcommand(name="excited")]
-    | Annotated[WindowTrajectoryConfig, tyro.conf.subcommand(name="window")]
-    | Annotated[WindowedFourierTrajectoryConfig, tyro.conf.subcommand(name="windowed-fourier")]
-)
+from trajectories.excited import ExcitedTrajectoryConfig
 
 
-def build_kinematics_func(config: ExcitedTrajectoryConfig):
-    """Build kinematics_func from MuJoCo model paths in config.
+# Map target class names to config classes
+CONFIG_CLASS_MAP = {
+    "trajectories.spline.SplineTrajectory": SplineTrajectoryConfig,
+    "SplineTrajectory": SplineTrajectoryConfig,
+    "trajectories.fourier.FourierTrajectory": FourierTrajectoryConfig,
+    "FourierTrajectory": FourierTrajectoryConfig,
+    "trajectories.window.WindowTrajectory": WindowTrajectoryConfig,
+    "WindowTrajectory": WindowTrajectoryConfig,
+    "trajectories.windowed_fourier.WindowedFourierTrajectory": WindowedFourierTrajectoryConfig,
+    "WindowedFourierTrajectory": WindowedFourierTrajectoryConfig,
+    "trajectories.excited.ExcitedTrajectory": ExcitedTrajectoryConfig,
+    "ExcitedTrajectory": ExcitedTrajectoryConfig,
+}
 
-    Returns None if model paths are not specified.
-    """
-    # Check if model paths are specified (not None, not MISSING string "???")
-    if not config.manipulator or config.manipulator == "???" or not config.object or config.object == "???":
-        return None
-
-    import mujoco
-    import numpy as np
-    from dm_control import mjcf
-    from mujoco._structs import MjData, MjModel
-
-    from dynamics import calculate_frame_dynamics, setup_robot_dynamics_parameters
-    from simulators.setup import spawn_target_object
-
-    # Load manipulator and object directly
-    manipulator_dir = Path(config.manipulator)
-    manipulator_path = manipulator_dir / "manipulator.xml"
-    target_dir = Path(config.object)
-    target_object_path = target_dir / "object.xml"
-    target_object_cad_gt_path = target_dir / "object_cad_gt.csv"
-
-    # Spawn target object
-    target_object, assets, _ = spawn_target_object(
-        target_object_path, target_object_cad_gt_path, compare_cad_mujoco=False
-    )
-
-    # Load manipulator and attach object
-    manipulator = mjcf.from_path(str(manipulator_path))
-    attachment_site = manipulator.find("site", "attachment")
-    attachment_site.attach(target_object)
-
-    # Create model and data
-    m = MjModel.from_xml_string(manipulator.to_xml_string(filename_with_hash=False), assets=assets)
-    d = MjData(m)
-    mujoco.mj_forward(m, d)
-
-    # Setup dynamics parameters
-    poses, id_ll, pose_ll_llj, _, _, _, inverse_dynamics_func = setup_robot_dynamics_parameters(
-        m, d, ee_body_name=config.ee_body_name
-    )
-
-    pose_x_ll = poses.x_b[id_ll]
-    pose_x_sen = poses.get_x_("site", "target/ft_sensor")
-
-    def kinematics_func(q, dq, ddq):
-        act_traj = np.stack([q, dq, ddq])
-        _, _, regressor = calculate_frame_dynamics(
-            act_traj, inverse_dynamics_func, id_ll, pose_x_ll, pose_ll_llj, pose_x_sen
-        )
-        return regressor
-
-    return kinematics_func
+# Get absolute path to config directory
+_CONF_DIR = Path(__file__).parent.parent / "configurations" / "trajectory_generation"
 
 
-def main():
-    # Parse CLI arguments using tyro
-    cli_config = tyro.cli(TrajectoryConfig)
+def load_trajectory_config(trajectory_name: str) -> DictConfig:
+    """Load trajectory-specific YAML file."""
+    traj_file = _CONF_DIR / f"{trajectory_name}.yaml"
+    if not traj_file.exists():
+        available = [f.stem for f in _CONF_DIR.glob("*.yaml") if f.stem != "config"]
+        raise ValueError(f"Unknown trajectory: {trajectory_name}. Available: {available}")
+    return OmegaConf.load(traj_file)
 
-    # Check if --config was specified (some configs may not have this field)
-    config_path = getattr(cli_config, "config", None)
 
-    if config_path is not None:
-        # Load YAML config
-        yaml_config = OmegaConf.load(config_path)
+def create_config_from_dict(cfg_dict: dict):
+    """Convert merged config dict to proper trajectory config dataclass."""
+    target = cfg_dict.get("_target_", "SplineTrajectory")
+    
+    config_class = CONFIG_CLASS_MAP.get(target)
+    if config_class is None:
+        raise ValueError(f"Unknown target class: {target}")
+    
+    # Remove Hydra-specific keys
+    cfg_dict.pop("_target_", None)
+    cfg_dict.pop("_recursive_", None)
+    cfg_dict.pop("_convert_", None)
+    
+    return config_class(**cfg_dict)
 
-        # Create base config of the same type
-        base_config = type(cli_config)()
 
-        # Merge order: base < yaml < cli (CLI has highest priority)
-        # Fields with MISSING in cli_config will be filled from yaml_config
-        merged = OmegaConf.merge(base_config, yaml_config, cli_config)
+@hydra.main(version_base=None, config_path=str(_CONF_DIR), config_name="config")
+def main(cfg: DictConfig) -> None:
+    """Generate trajectory based on Hydra config."""
+    # Load trajectory-specific config based on the 'trajectory' string
+    trajectory_name = cfg.trajectory
+    traj_specific_cfg = load_trajectory_config(trajectory_name)
+    
+    # Merge: trajectory-specific < top-level overrides
+    # This allows `duration=10.0` to override the default
+    merged = OmegaConf.to_container(traj_specific_cfg, resolve=True)
+    
+    # Override with top-level config values (only if not None)
+    # This allows CLI params like `duration=10.0` or `num_harmonics=5` to work
+    for key in cfg:
+        if key == "trajectory":
+            continue
+        value = cfg[key]
+        # Only override if the value is not None (null in YAML)
+        if value is not None:
+            merged[key] = value
+    
+    # Print the actual merged config (what will be used)
+    print(f"trajectory: {trajectory_name}")
+    print(OmegaConf.to_yaml(OmegaConf.create(merged)))
+    
+    # Create config dataclass
+    config = create_config_from_dict(merged)
+    
+    # Instantiate trajectory
+    traj = factory_instantiate(config)
 
-        # Convert back to dataclass
-        config = OmegaConf.to_object(merged)
-    else:
-        config = cli_config
-
-    # Build kinematics_func for ExcitedTrajectory if model paths are provided
-    kwargs = {}
-    if isinstance(config, ExcitedTrajectoryConfig):
-        kinematics_func = build_kinematics_func(config)
-        if kinematics_func is not None:
-            kwargs["kinematics_func"] = kinematics_func
-            print("Loaded MuJoCo model and built kinematics_func for optimization.")
-
-    # Dispatch based on type
-    traj = instantiate(config, **kwargs)
-
+    
     print(f"Generating {type(traj).__name__}...")
-
-    # Use explicit paths from config
-    plot_path = str(config.plot_path) if config.plot_path else None
-    json_path = str(config.json_path) if config.json_path else None
-
-    # generate() accepts kwargs which will be passed to plot etc
+    
+    # Get output parameters
+    show_plot = cfg.get("show_plot", False)
+    plot_path = cfg.get("plot_path", None)
+    json_path = cfg.get("json_path", None)
+    
+    plot_path = str(plot_path) if plot_path else None
+    json_path = str(json_path) if json_path else None
+    
+    # Generate
     traj.generate(
-        show_plot=config.show_plot,
+        show_plot=show_plot,
         plot_path=plot_path,
         json_path=json_path,
     )
-
+    
     if plot_path:
         print(f"Plot saved to: {plot_path}")
     if json_path:

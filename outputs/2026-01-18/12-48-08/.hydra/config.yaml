@@ -1,0 +1,7 @@
+trajectory: fourier
+duration: 8.0
+fps: 60.0
+show_plot: false
+plot_path: null
+json_path: test_fourier_flat.json
+num_harmonics: 5

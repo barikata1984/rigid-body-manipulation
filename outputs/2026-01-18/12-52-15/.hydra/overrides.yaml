@@ -1,0 +1,5 @@
+- trajectory=fourier
+- duration=8.0
+- +num_harmonics=5
+- json_path=test_fourier_flat.json
+- plot_path=test_fourier_flat.png

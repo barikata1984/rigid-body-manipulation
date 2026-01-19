@@ -1,0 +1,4 @@
+- trajectory=fourier_6dof
+- duration=5.0
+- plot_path=test_fourier_6dof.png
+- json_path=test_fourier_6dof.json

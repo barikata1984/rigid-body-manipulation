@@ -2,17 +2,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from omegaconf import MISSING
 
 from .base_trajectory import BaseTrajectory, BaseTrajectoryConfig
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SplineTrajectoryConfig(BaseTrajectoryConfig):
+    type: str = "septic"  # "quintic" or "septic"
     config: Path | None = None  # Path to YAML configuration file
-    type: str = MISSING  # "quintic" or "septic"
-    start_pos: list[float] = MISSING
-    end_pos: list[float] = MISSING
+    start_pos: list[float]  # Required, no default
+    end_pos: list[float]  # Required, no default
     start_vel: list[float] | None = None
     end_vel: list[float] | None = None
     start_acc: list[float] | None = None

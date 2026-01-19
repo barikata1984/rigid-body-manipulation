@@ -3,7 +3,6 @@ from dataclasses import dataclass, field
 import numpy as np
 from mujoco._structs import MjData, MjModel
 from numpy.typing import NDArray
-from omegaconf import MISSING
 from scipy import linalg
 
 from dynamics import StateSpace, StateSpaceConfig
@@ -11,12 +10,12 @@ from dynamics import StateSpace, StateSpaceConfig
 from .base_controller import BaseControllerConfig
 
 
-@dataclass
+@dataclass(kw_only=True)
 class LinearQuadraticRegulatorConfig(BaseControllerConfig):
     target_class: str = "LinearQuadraticRegulator"  # type: ignore
     state_space: StateSpaceConfig = field(default_factory=StateSpaceConfig)
-    state_gain: list[float] = MISSING
-    input_gain: list[float] = MISSING
+    state_gain: list[float]  # Required, no default
+    input_gain: list[float]  # Required, no default
 
 
 class LinearQuadraticRegulator:

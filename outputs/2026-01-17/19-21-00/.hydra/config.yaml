@@ -1,0 +1,51 @@
+trajectory:
+  _target_: trajectories.fourier.FourierTrajectory
+  _recursive_: true
+  num_joints: 6
+  num_harmonics: 3
+  base_freq: 0.2
+  coefficients:
+    a:
+    - - 0.1
+      - 0.05
+      - 0.02
+    - - 0.1
+      - 0.05
+      - 0.02
+    - - 0.1
+      - 0.05
+      - 0.02
+    - - 0.05
+      - 0.02
+      - 0.01
+    - - 0.05
+      - 0.02
+      - 0.01
+    - - 0.05
+      - 0.02
+      - 0.01
+    b:
+    - - 0.0
+      - 0.0
+      - 0.0
+    - - 0.0
+      - 0.0
+      - 0.0
+    - - 0.0
+      - 0.0
+      - 0.0
+    - - 0.0
+      - 0.0
+      - 0.0
+    - - 0.0
+      - 0.0
+      - 0.0
+    - - 0.0
+      - 0.0
+      - 0.0
+  q0: null
+duration: 5.0
+fps: 60.0
+show_plot: false
+plot_path: test_fourier_with_coeff.png
+json_path: null
