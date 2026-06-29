@@ -1,11 +1,7 @@
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "rigid-body-manipulation"
 version = "0.1"
-requires-python = ">=3.10, <= 3.12"
+requires-python = "<= 3.12"
 dependencies = [
     "numpy",
     "scipy",
@@ -23,8 +19,8 @@ dependencies = [
     "pyqt6>=6.9.0",
 ]
 
-[project.scripts]
-generate-trajectory = "trajectories.generate:main"
+[project.optional-dependencies]
+dev = ["pytest"]
 
 [tool.ruff]
 line-length = 119 # 行の最大文字数
@@ -50,24 +46,3 @@ target-version = "py312" # ターゲットの Python バージョン
 #src = ["src", "."] # ソースディレクトリ
 fix = true # 自動修正を有効にする
 unsafe-fixes = false # 安全でない修正も有効にする
-
-[tool.setuptools]
-# エラーに出ていたフォルダ名をすべてリストアップして許可します
-packages = [
-    'configurations',
-    'controllers',
-    'datasets',
-    'dynamics',
-    'factory',
-    'literature',
-    'omegaconf_custom_resolvers',
-    'recorders',
-    'regressions',
-    'sensors',
-    'simulators',
-    'trajectories',
-    'transformations',
-    'utilities',
-    'xml_models',
-    'visualization',
-]
