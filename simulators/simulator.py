@@ -13,7 +13,6 @@ from controllers import LinearQuadraticRegulatorConfig
 from dynamics.dynamics import (
     calculate_frame_dynamics,
     get_linacc,
-    get_regressor_matrix,
     setup_robot_dynamics_parameters,
 )
 from recorders import StandardRecorderConfig
@@ -21,11 +20,6 @@ from sensors import Sensors
 from visualization.visualization import ax_plot_lines, ax_plot_lines_w_tgt
 
 from .base_simulator import BaseSimulatorConfig
-
-# Remove redundant space at the head and tail of the horizontal axis's scale
-mpl.rcParams["axes.xmargin"] = 0
-# Reduce the number of digits of values with numpy
-np.set_printoptions(precision=5, suppress=True)
 
 
 @dataclass
@@ -91,7 +85,6 @@ class Simulator:
     m: MjModel
     d: MjData
 
-    # def __init__(self, m: MjModel, d: MjData, recorder, planner, controller):
     def __init__(
         self,
         cfg: SimulatorConfig,
@@ -113,10 +106,6 @@ class Simulator:
         self.n_steps = int(self.target_trajectory.duration / self.timestep)
         self.fps = self.target_trajectory.fps
         self.diffpos_dt = cfg.diffpos_dt
-
-        # Set a random number generator ===========================================
-        rng = np.random.default_rng()
-        rng.standard_normal(10)
 
         self.m = m
         self.d = d
@@ -171,7 +160,7 @@ class Simulator:
 
     def run(self):
         if not self.recorder.videowriter.isOpened():
-            print("Error: VideoWriter failed to open, inside simulation.")
+            raise RuntimeError("VideoWriter failed to open. Check codec and output path.")
 
         for step in tqdm(range(self.n_steps), desc="Progress"):
             act_traj = np.stack(self.sensors.get("jointvars", perturbed=True))  # type: ignore
@@ -201,7 +190,7 @@ class Simulator:
         ]
 
         frames = []
-        for fpath, tf, pose, t, dt, w, r in zip(*data_containers, strict=False):
+        for fpath, tf, pose, t, dt, w, r in zip(*data_containers, strict=True):
             frame = {
                 "file_path": fpath,
                 "transform_matrix": tf,
@@ -236,7 +225,6 @@ class Simulator:
         wrench = self.sensors.get("wrench")
         self.wrenches.append(wrench)
 
-        regressor = get_regressor_matrix(twist_sen, dtwist_sen)
         self.regressors.append(regressor)
 
         # Writing a single frame of a dataset =============================
@@ -276,6 +264,8 @@ class Simulator:
 
     def _visualize(self):
         """Visualize simulation results."""
+        mpl.rcParams["axes.xmargin"] = 0
+        np.set_printoptions(precision=5, suppress=True)
         # Cast data into ndarrays for visualization
         tgt_trajectory = np.array(self.tgt_trajectory)
         trajectory = np.array(self.act_trajectory)
