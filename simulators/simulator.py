@@ -173,13 +173,13 @@ class Simulator:
                 _tgt_traj = self.target_trajectory.frames[self.frame_count]
                 tgt_traj = np.array(_tgt_traj)
                 self._store_current_data(tgt_traj, act_traj)
-                self._set_ctrl(tgt_traj, act_traj)
-
                 self.frame_count += 1
 
-            # >>> Evolve the simulation >>>
+            frame_idx = min(int(self.d.time * self.fps), len(self.target_trajectory.frames) - 1)
+            tgt_traj = np.array(self.target_trajectory.frames[frame_idx])
+            self._set_ctrl(tgt_traj, act_traj)
+
             mj_step(self.m, self.d)
-            # <<< Evolve the simulation <<<
 
         # Compose frames =========================================================
         data_containers = [
