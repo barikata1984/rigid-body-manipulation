@@ -52,4 +52,4 @@ def test_mujoco_recovers_principal_inertia_frame_from_fullinertia():
 
     # MuJoCo body index 1 is the cuboid (index 0 is worldbody)
     np.testing.assert_allclose(np.sort(m2.body_inertia[1]), np.sort(diaginertia), atol=1e-10)
-    np.testing.assert_allclose(quat2mat(m2.body_iquat[1]), rot_bodyi_new, atol=1e-6)
+    np.testing.assert_allclose(quat2mat(m2.body_iquat[1]).T, rot_bodyi_new, atol=1e-6)

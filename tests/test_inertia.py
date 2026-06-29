@@ -57,4 +57,7 @@ def test_mujoco_recovers_inertial_params_from_fullinertia():
 
     assert np.isclose(mj_mass, body_mass)
     np.testing.assert_allclose(np.sort(mj_diaginertia), np.sort(diaginertia), atol=1e-10)
-    np.testing.assert_allclose(quat2mat(mj_iquat), rot_body_bodyi, atol=1e-6)
+    # Verify the recovered rotation reproduces the original inertia tensor
+    rot_recovered = quat2mat(mj_iquat)
+    inertia_recovered = rot_recovered @ np.diag(mj_diaginertia) @ rot_recovered.T
+    np.testing.assert_allclose(inertia_recovered, inertia_tensor, atol=1e-8)
