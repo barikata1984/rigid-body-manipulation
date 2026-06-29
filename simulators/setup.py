@@ -35,7 +35,6 @@ def generate_model_data(
     attachment_site = manipulator.find("site", "attachment")
     attachment_site.attach(target_object)  # type: ignore
 
-    # import pdb; pdb.set_trace()
 
     # Set camera position
     aabb_scale = manipulator.custom.numeric["target/aabb_scale"].data[0]  # type: ignore
@@ -247,9 +246,10 @@ def spawn_target_object(
             skiprows=2,  # after the header and data
         )
 
-        assert len(component_mass_densities) == len(meshes), RuntimeError(
-            "Number of components does not match with the number of aux data. Review the XML and CSV file"
-        )
+        if not len(component_mass_densities) == len(meshes):
+            raise RuntimeError(
+                "Number of components does not match with the number of aux data. Review the XML and CSV file"
+            )
 
         for idx, mesh in zip(
             reversed(component_mass_densities.index),

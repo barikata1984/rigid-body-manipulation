@@ -91,9 +91,10 @@ def transfer_simat(
         single_simat = True
         simat = np.expand_dims(simat, 0)
 
-    assert len(pose) == len(simat), ValueError(
-        "The numbers of spatial inertia tensors and SE3 instances do not match."
-    )
+    if not len(pose) == len(simat):
+        raise ValueError(
+            "The numbers of spatial inertia tensors and SE3 instances do not match."
+        )
 
     adjoint = [p.inv().adjoint() for p in pose]  #
     # Ad is assumed to be described

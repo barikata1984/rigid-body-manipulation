@@ -55,8 +55,6 @@ class SplineTrajectory(BaseTrajectory):
         self.start_jerk = np.array(cfg.start_jerk) if cfg.start_jerk is not None else np.zeros(self.num_joints)
         self.end_jerk = np.array(cfg.end_jerk) if cfg.end_jerk is not None else np.zeros(self.num_joints)
 
-        self.time_steps = int(self.duration * self.fps)
-        self.time_array = np.linspace(0, self.duration, self.time_steps)
 
         # Pre-calculate coefficients based on type
         if self.type == "quintic":

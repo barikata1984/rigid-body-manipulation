@@ -38,7 +38,7 @@ class StandardRecorder:
     def __init__(
         self,
         cfg: StandardRecorderConfig,
-        *ars,
+        *args,
         **kwargs,
     ) -> None:
         m = kwargs["model"]
