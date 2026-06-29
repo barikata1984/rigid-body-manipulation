@@ -61,12 +61,4 @@ class LinearQuadraticRegulator:
         P = linalg.solve_discrete_are(self.ss.A, self.ss.B, Q, R)
         K = linalg.pinv(R + self.ss.B.T @ P @ self.ss.B) @ self.ss.B.T @ P @ self.ss.A
 
-        # ===== DEBUG PRINT =====
-        print("\n===== LQR GAIN DEBUG =====")
-        print(f"Q matrix (diagonal):\n{np.diag(Q)}")
-        print(f"R matrix (diagonal):\n{np.diag(R)}")
-        print(f"Resulting K matrix:\n{K}")
-        print("==========================\n")
-        # =======================
-
         return K
