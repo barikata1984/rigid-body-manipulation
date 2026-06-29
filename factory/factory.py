@@ -35,20 +35,14 @@ class InstantiateConfig(ABC, PrintableConfig):
     @abstractmethod
     def target_class(self) -> str: ...
 
-    #def setup(self, m, d, *args, **kwargs) -> Any:
     def setup(self, *args, **kwargs) -> Any:
         """Returns the instantiated object using the config."""
         module = importlib.import_module(self.module_name)
         target_class = getattr(module, self.target_class)
 
-        #return target_class(self, m, d, *args, **kwargs)
         return target_class(self, *args, **kwargs)
 
 
-#def instantiate(cfg_class: Any, m: MjModel, d: MjData, *args, **kwargs) -> Any:
-#    # cfg_class = OmegaConf.to_object(cfg)
-#    return cfg_class.setup(m, d, *args, **kwargs)  # type: ignore
 def instantiate(cfg_class: Any, *args, **kwargs) -> Any:
-    # cfg_class = OmegaConf.to_object(cfg)
     return cfg_class.setup(*args, **kwargs)  # type: ignore
 
