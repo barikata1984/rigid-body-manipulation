@@ -25,10 +25,12 @@ class LinearQuadraticRegulator:
         self,
         cfg: LinearQuadraticRegulatorConfig,
         *args,
+        model: MjModel,
+        data: MjData,
         **kwargs,
     ) -> None:
-        m = kwargs["model"]
-        d = kwargs["data"]
+        m = model
+        d = data
 
         self.ss = StateSpace(cfg.state_space, m, d)
 

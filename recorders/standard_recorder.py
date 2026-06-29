@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 from dataclasses import dataclass
 from datetime import datetime
@@ -11,6 +10,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from mujoco._structs import MjData, MjModel
 from mujoco.renderer import Renderer
 from numpy.linalg import lstsq
 from omegaconf import MISSING
@@ -40,10 +40,12 @@ class StandardRecorder:
         self,
         cfg: StandardRecorderConfig,
         *args,
+        model: MjModel,
+        data: MjData,
         **kwargs,
     ) -> None:
-        m = kwargs["model"]
-        d = kwargs["data"]
+        m = model
+        d = data
         self.cam_name = cfg.track_cam_name
         self.cam_id = get_element_id(m, "camera", self.cam_name)
         self.fig_height = cfg.fig_height
@@ -59,7 +61,9 @@ class StandardRecorder:
         self.aabb_scale = cfg.aabb_scale
         self.fps = cfg.fps
 
-        os.makedirs(self.complete_image_dir, exist_ok=True)  # has to be called before the videowriter instantiated
+        self.complete_image_dir.mkdir(
+            parents=True, exist_ok=True
+        )  # has to be called before the videowriter instantiated
 
         self.videowriter = cv2.VideoWriter(
             str(self.dataset_dir / cfg.videoname),
@@ -120,7 +124,7 @@ class StandardRecorder:
 
         train = itemgetter(*all_indices[:num_train])(data)
         valid = itemgetter(*all_indices[num_train : num_train + num_valid])(data)
-        test = itemgetter(*all_indices[num_train : num_train + num_valid])(data)
+        test = itemgetter(*all_indices[num_train + num_valid :])(data)
 
         return train, valid, test
 
@@ -162,17 +166,8 @@ class StandardRecorder:
 
         train_frames, valid_frames, test_frames = self._split(frames)
         train_regressors, valid_regressors, test_regressors = self._split(regressors)
-        train_regressors, valid_regressors, test_regressors = self._split(regressors)
 
         self._process_split(frames, regressors, gt_iparams)
         self._process_split(train_frames, train_regressors, gt_iparams, split="train")
         self._process_split(valid_frames, valid_regressors, gt_iparams, split="valid")
         self._process_split(test_frames, test_regressors, gt_iparams, split="test")
-
-
-#        print("Tracking camera setup =======================================\n"
-#             f"    Tracking camera id:         {self.id}\n"
-#             f"    Image size (w x h [px]):    {self.width} x {self.height}\n"
-#             f"    Focus [px]:                 {self.focus}\in"
-#             f"    FoV (h, v [deg]):           {deg(self.fovx)}, {deg(self.fovy)}\n"
-#             f"    Output file:                {self.output_file}")

@@ -89,12 +89,15 @@ class Simulator:
         self,
         cfg: SimulatorConfig,
         *args,
+        model: MjModel,
+        data: MjData,
+        target_trajectory=None,
         **kwargs,
     ) -> None:
-        self.target_trajectory = kwargs.get("target_trajectory", None)
+        self.target_trajectory = target_trajectory
 
-        m = kwargs["model"]
-        d = kwargs["data"]
+        m = model
+        d = data
 
         self.recorder = instantiate(cfg.recorder, model=m, data=d)
         self.controller = instantiate(cfg.controller, model=m, data=d)
