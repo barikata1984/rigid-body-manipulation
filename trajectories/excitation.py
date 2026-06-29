@@ -92,20 +92,9 @@ class ExcitationTrajectory(BaseTrajectory):
 
             q, dq, ddq = traj.get_value()
 
-            Y = np.zeros((10, 10))
-            for i in range(len(self.time_array)):
-                A_k = self.kinematics_func(q[i], dq[i], ddq[i])
-                Y += A_k.T @ A_k
-
-            eigvals = np.linalg.eigvalsh(Y)
-            min_eig = np.min(eigvals)
-            max_eig = np.max(eigvals)
-
-            if min_eig < 1e-9:
-                cond_num = 1e9
-            else:
-                cond_num = max_eig / min_eig
-
+            cond_num = BaseTrajectory.compute_condition_number(
+                self.time_array, self.kinematics_func, q, dq, ddq
+            )
             current_cond = cond_num
             return cond_num
 

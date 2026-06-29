@@ -126,10 +126,6 @@ class FourierTrajectory(BaseTrajectory):
             vel (N, num_joints): Velocity array
             acc (N, num_joints): Acceleration array
         """
-        # remove last element if it exceeds duration significantly (standard arange behavior check)
-        if self.time_array[-1] > self.duration + 1e-9:
-            self.time_array = self.time_array[:-1]
-
         pos, vel, acc = self.get_value()
 
         return pos, vel, acc

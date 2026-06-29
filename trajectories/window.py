@@ -78,10 +78,28 @@ class WindowTrajectory(BaseTrajectory):
 
         return q, dq, ddq
 
-    def _generate(self, *args, **kwargs):
-        if self.time_array[-1] > self.duration + 1e-9:
-            self.time_array = self.time_array[:-1]
+    def apply(self, q_raw: np.ndarray, dq_raw: np.ndarray, ddq_raw: np.ndarray):
+        """Apply the window to a raw trajectory via the product rule.
 
+        Q = s * q
+        dQ = s'*q + s*q'
+        ddQ = s''*q + 2*s'*q' + s*q''
+
+        Args:
+            q_raw: (N, n_joints) raw position array.
+            dq_raw: (N, n_joints) raw velocity array.
+            ddq_raw: (N, n_joints) raw acceleration array.
+
+        Returns:
+            Tuple (q_out, dq_out, ddq_out) with the window applied.
+        """
+        s, ds, dds = self.get_value()
+        q_out = s * q_raw
+        dq_out = ds * q_raw + s * dq_raw
+        ddq_out = dds * q_raw + 2 * ds * dq_raw + s * ddq_raw
+        return q_out, dq_out, ddq_out
+
+    def _generate(self, *args, **kwargs):
         pos, vel, acc = self.get_value()
 
         return pos, vel, acc
