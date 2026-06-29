@@ -1,4 +1,3 @@
-from collections.abc import Callable
 
 import numpy as np
 from scipy.optimize import minimize

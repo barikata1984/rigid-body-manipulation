@@ -1,12 +1,8 @@
-import json
 from dataclasses import dataclass, field
-from datetime import datetime
-from pathlib import Path
 
 import matplotlib as mpl
 import numpy as np
 from matplotlib import pyplot as plt
-from matplotlib.lines import Line2D
 from mujoco._functions import mj_differentiatePos, mj_step
 from mujoco._structs import MjData, MjModel, MjOption
 from omegaconf import MISSING
@@ -22,8 +18,7 @@ from dynamics.dynamics import (
 )
 from recorders import StandardRecorderConfig
 from sensors import Sensors
-from transformations import Poses
-from visualization.visualization import ax_plot_lines, ax_plot_lines_w_tgt, cb_rgb
+from visualization.visualization import ax_plot_lines, ax_plot_lines_w_tgt
 
 from .base_simulator import BaseSimulatorConfig
 

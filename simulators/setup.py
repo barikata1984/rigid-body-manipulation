@@ -5,8 +5,7 @@ import numpy as np
 import pandas as pd
 from dm_control import mjcf
 from liegroups import SE3, SO3
-from mujoco._enums import mjtObj
-from mujoco._functions import mj_name2id, mj_resetDataKeyframe
+from mujoco._functions import mj_resetDataKeyframe
 from mujoco._structs import MjData, MjModel
 from omegaconf.dictconfig import DictConfig
 from omegaconf.listconfig import ListConfig

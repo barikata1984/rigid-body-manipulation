@@ -1,6 +1,5 @@
 import time
 from dataclasses import dataclass, field
-from typing import Any
 
 import numpy as np
 from omegaconf import MISSING, OmegaConf
@@ -8,7 +7,7 @@ from scipy.optimize import minimize
 
 from factory import instantiate
 
-from .base_trajectory import BaseTrajectory, BaseTrajectoryConfig
+from .base_trajectory import BaseTrajectory
 from .fourier import FourierTrajectory, FourierTrajectoryConfig
 from .spline import SplineTrajectoryConfig
 from .window import WindowTrajectory, WindowTrajectoryConfig

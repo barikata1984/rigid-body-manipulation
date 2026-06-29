@@ -1,6 +1,6 @@
 import dataclasses
 from pathlib import Path
-from typing import Optional, Annotated
+from typing import Optional
 import tyro
 import yaml
 

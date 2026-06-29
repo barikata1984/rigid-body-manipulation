@@ -11,7 +11,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from mujoco._structs import MjData, MjModel
 from mujoco.renderer import Renderer
 from numpy.linalg import lstsq
 from omegaconf import MISSING

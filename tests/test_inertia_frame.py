@@ -4,7 +4,7 @@ import numpy as np
 from dm_control import mjcf
 from mujoco._structs import MjModel
 from transforms3d.euler import euler2mat
-from transforms3d.quaternions import mat2quat, quat2mat
+from transforms3d.quaternions import mat2quat
 
 
 # Principal inertia tensor of a ellipsoid
