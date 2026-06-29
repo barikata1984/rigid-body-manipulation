@@ -23,6 +23,27 @@ from .base_simulator import BaseSimulatorConfig
 
 
 @dataclass
+class SimulationData:
+    time: list = field(default_factory=list)
+    tgt_trajectory: list = field(default_factory=list)
+    act_trajectory: list = field(default_factory=list)
+    qpos_errors: list = field(default_factory=list)
+    qvel_errors: list = field(default_factory=list)
+    qacc_errors: list = field(default_factory=list)
+    poses_sen_obj: list = field(default_factory=list)
+    poses_sen_obji: list = field(default_factory=list)
+    twists_sen: list = field(default_factory=list)
+    dtwists_sen: list = field(default_factory=list)
+    linaccs_sen_obji: list = field(default_factory=list)
+    wrenches: list = field(default_factory=list)
+    regressors: list = field(default_factory=list)
+    file_paths: list = field(default_factory=list)
+    transform_matrices: list = field(default_factory=list)
+    frames: list = field(default_factory=list)
+    frame_count: int = 0
+
+
+@dataclass
 class SimulatorConfig(BaseSimulatorConfig):
     target_class: str = "Simulator"
     manipulator: str = "xml_models/manipulators/sequential"
@@ -65,19 +86,19 @@ class SimulatorConfig(BaseSimulatorConfig):
 #       l/li/lj | link itself or its body/principal/joint frame
 #       k/ki/kj | link's parent itself or its body/principal/joint frame
 #    ll/lli/llj | last link itself or its body/principal/joint frame
-#             x | world frame (x ∈ b)
+#             x | world frame (x \u2208 b)
 #             q | joint space
 #
 #  NOTE: 's' follows the descriptor part of a variable's name to clarify that
 #        the variable contains multiple descriptors.
 #
-#        ┏━━━━━━━━━━━━ Body namespace: "b"ody and its p"a"rent body ━━━━━━━━━━━━┓
+#        \u250f\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501 Body namespace: "b"ody and its p"a"rent body \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2513
 #
 # Bodies: x, link1 (firstlink), ..., link6 or sth (lastlink), attachment, object
 #
-#                                   ┗━ "l"ast"l"ink merged with the later ones ━┛
+#                                   \u2517\u2501 "l"ast"l"ink merged with the later ones \u2501\u251b
 #
-#        ┗━━ Link namespace: "l"ink and its parent body (= "k", prior to 'l') ━━┛
+#        \u2517\u2501\u2501 Link namespace: "l"ink and its parent body (= "k", prior to 'l') \u2501\u2501\u251b
 #
 
 
@@ -136,30 +157,11 @@ class Simulator:
         # self.pose_x_llj = pose_x_ll.dot(pose_ll_llj)  # static, should be dynamic tho
         # self.pose_sen_llj = pose_x_sen.inv().dot(pose_x_llj)  # dynamic, should be static tho
 
-        # Data buffer and storages =============================================================
+        # Calculation buffer (not a data storage)
         self.qpos_err = np.empty(m.nu)
 
-        self.qpos_errors = []
-        self.qvel_errors = []
-        self.qacc_errors = []
-
-        self.act_trajectory = []
-        self.tgt_trajectory = []
-
-        self.poses_sen_obj = []
-        self.poses_sen_obji = []
-        self.twists_sen = []
-        self.dtwists_sen = []
-        self.linaccs_sen_obji = []
-        self.wrenches = []
-        self.regressors = []
-
-        self.time = []
-        self.file_paths = []
-        self.transform_matrices = []
-
-        self.frames = []
-        self.frame_count = 0
+        # Data buffers collected during simulation
+        self.data = SimulationData()
 
     def run(self):
         if not self.recorder.videowriter.isOpened():
@@ -169,11 +171,11 @@ class Simulator:
             act_traj = np.stack(self.sensors.get("jointvars", perturbed=True))  # type: ignore
             _, _, twists_lj_l, dtwists_lj_l = self.inverse(act_traj)
 
-            if self.frame_count <= self.d.time * self.fps:
-                _tgt_traj = self.target_trajectory.frames[self.frame_count]
+            if self.data.frame_count <= self.d.time * self.fps:
+                _tgt_traj = self.target_trajectory.frames[self.data.frame_count]
                 tgt_traj = np.array(_tgt_traj)
                 self._store_current_data(tgt_traj, act_traj)
-                self.frame_count += 1
+                self.data.frame_count += 1
 
             frame_idx = min(int(self.d.time * self.fps), len(self.target_trajectory.frames) - 1)
             tgt_traj = np.array(self.target_trajectory.frames[frame_idx])
@@ -183,13 +185,13 @@ class Simulator:
 
         # Compose frames =========================================================
         data_containers = [
-            self.file_paths,
-            self.transform_matrices,
-            self.poses_sen_obj,
-            self.twists_sen,
-            self.dtwists_sen,
-            self.wrenches,
-            self.regressors,
+            self.data.file_paths,
+            self.data.transform_matrices,
+            self.data.poses_sen_obj,
+            self.data.twists_sen,
+            self.data.dtwists_sen,
+            self.data.wrenches,
+            self.data.regressors,
         ]
 
         frames = []
@@ -207,41 +209,41 @@ class Simulator:
             frames.append(frame)
 
         # Visualize data
-        self._visualize()
+        self._visualize(self.data)
 
-        return {"frames": frames, "regressors": self.regressors, "wrenches": self.wrenches}
+        return {"frames": frames, "regressors": self.data.regressors, "wrenches": self.data.wrenches}
 
     def _store_current_data(self, tgt_traj, act_traj):
-        self.time.append(self.d.time)
-        self.tgt_trajectory.append(tgt_traj)
-        self.act_trajectory.append(act_traj)
+        self.data.time.append(self.d.time)
+        self.data.tgt_trajectory.append(tgt_traj)
+        self.data.act_trajectory.append(act_traj)
 
         twist_sen, dtwist_sen, regressor = calculate_frame_dynamics(
             act_traj, self.inverse, self.id_ll, self.pose_x_ll, self.pose_ll_llj, self.pose_x_sen
         )
-        self.twists_sen.append(twist_sen.tolist())
-        self.dtwists_sen.append(dtwist_sen.tolist())
+        self.data.twists_sen.append(twist_sen.tolist())
+        self.data.dtwists_sen.append(dtwist_sen.tolist())
 
         linacc_sen_obji = get_linacc(twist_sen, dtwist_sen, self.pose_sen_obji)
-        self.linaccs_sen_obji.append(linacc_sen_obji)
+        self.data.linaccs_sen_obji.append(linacc_sen_obji)
 
         wrench = self.sensors.get("wrench")
-        self.wrenches.append(wrench)
+        self.data.wrenches.append(wrench)
 
-        self.regressors.append(regressor)
+        self.data.regressors.append(regressor)
 
         # Writing a single frame of a dataset =============================
-        file_name = f"{self.frame_count:04}.png"
+        file_name = f"{self.data.frame_count:04}.png"
         self.recorder.render(self.d, file_name)  # recorder.cam_id is selected internally
 
         # Log NeMD ingredients ============================================
         # Items which need to be computed at every frame recoding
         pose_obj_cam = self.pose_x_obj.inv().dot(self.poses.x_cam[self.recorder.cam_id])
-        self.transform_matrices.append(pose_obj_cam.as_matrix().tolist())
+        self.data.transform_matrices.append(pose_obj_cam.as_matrix().tolist())
 
-        self.poses_sen_obj.append(self.pose_sen_obj.as_matrix().tolist())
-        self.poses_sen_obji.append(self.pose_sen_obji.as_matrix().tolist())
-        self.file_paths.append(str(self.recorder.complete_image_dir / file_name))
+        self.data.poses_sen_obj.append(self.pose_sen_obj.as_matrix().tolist())
+        self.data.poses_sen_obji.append(self.pose_sen_obji.as_matrix().tolist())
+        self.data.file_paths.append(str(self.recorder.complete_image_dir / file_name))
 
     def _set_ctrl(self, tgt_traj, act_traj):
         # Get residual of state
@@ -261,19 +263,19 @@ class Simulator:
         feedback_ctrl = self.controller.gain_matrix @ state_err
         self.d.ctrl = feedforward_ctrl - feedback_ctrl
 
-        self.qpos_errors.append(self.qpos_err)
-        self.qvel_errors.append(traj_err[1])
-        self.qacc_errors.append(traj_err[2])
+        self.data.qpos_errors.append(self.qpos_err)
+        self.data.qvel_errors.append(traj_err[1])
+        self.data.qacc_errors.append(traj_err[2])
 
-    def _visualize(self):
+    def _visualize(self, data: SimulationData):
         """Visualize simulation results."""
         mpl.rcParams["axes.xmargin"] = 0
         np.set_printoptions(precision=5, suppress=True)
         # Cast data into ndarrays for visualization
-        tgt_trajectory = np.array(self.tgt_trajectory)
-        trajectory = np.array(self.act_trajectory)
-        frame_iter = np.arange(self.frame_count)
-        wrenches = np.array(self.wrenches)
+        tgt_trajectory = np.array(data.tgt_trajectory)
+        trajectory = np.array(data.act_trajectory)
+        frame_iter = np.arange(data.frame_count)
+        wrenches = np.array(data.wrenches)
 
         # Actual and target joint positions
         qpos_fig, qpos_axes = plt.subplots(2, 1, sharex="col", tight_layout=True)
@@ -282,11 +284,11 @@ class Simulator:
         yls = ["q0-2 [m]", "q3-5 [rad]"]
         for i in range(len(qpos_axes)):
             slcr = slice(i * 3, (i + 1) * 3)
-            ax_plot_lines_w_tgt(qpos_axes[i], self.time, trajectory[:, 0, slcr], tgt_trajectory[:, 0, slcr], yls[i])
+            ax_plot_lines_w_tgt(qpos_axes[i], data.time, trajectory[:, 0, slcr], tgt_trajectory[:, 0, slcr], yls[i])
 
         # Object linear acceleration and ft sensor measurements rel. to {sensor}
         acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)
-        ax_plot_lines(acc_ft_axes[0], frame_iter, self.linaccs_sen_obji, "recovered_linacc_sen_obji [m/s/s]")
+        ax_plot_lines(acc_ft_axes[0], frame_iter, data.linaccs_sen_obji, "recovered_linacc_sen_obji [m/s/s]")
         ax_plot_lines(acc_ft_axes[1], frame_iter, wrenches[:, :3], "frc_sen [N]")
         ax_plot_lines(acc_ft_axes[2], frame_iter, wrenches[:, 3:], "trq_sen [N*m]")
         for ax in acc_ft_axes:
