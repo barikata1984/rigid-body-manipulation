@@ -19,6 +19,9 @@ dependencies = [
     "pyqt6>=6.9.0",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest"]
+
 [tool.ruff]
 line-length = 119 # 行の最大文字数
 select = [ # 有効にするルール
