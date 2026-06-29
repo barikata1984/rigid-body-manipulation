@@ -77,9 +77,11 @@ def main():
     object_gt = object_dir / "ground_truth.csv"
     dataset_gt = dataset_dir / "ground_truth.csv"
     if dataset_gt.is_file():
-        print("'ground_truth.csv' is not copied to the dataset dir since the file with the same name already existsd.")
-    else:
+        pass
+    elif object_gt.is_file():
         copy(object_gt, dataset_gt)
+    else:
+        print(f"Warning: {object_gt} not found, skipping ground truth copy.")
 
     # Instantiate and run the simulator ===============================================
     simulator_cfg = OmegaConf.to_object(cfg)
