@@ -60,7 +60,7 @@ print(f"- - - - - - - - - - - - - - - - - - - - - - - -")
 
 mjcf_model_2 = mjcf.RootElement()
 body = mjcf_model_2.worldbody.add("body", name="cuboid")
-mjcf_model_1.worldbody.body[0].add("inertial",
+body.add("inertial",
                                    pos=[0, 0, 0],
                                    mass=mass,
                                    #diaginertia=diaginertia,

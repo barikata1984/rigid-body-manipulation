@@ -46,7 +46,7 @@ class Sensors:
         if perturbed:
             return self.d.qacc + self._get_noise(self.jointpos_stddev * self.jointvar_noise_scaler**2)
         else:
-            return self.d.qvel
+            return self.d.qacc
 
     def _get_jointvars(self, perturbed: bool) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         qpos = self._get_jointpos(perturbed)
