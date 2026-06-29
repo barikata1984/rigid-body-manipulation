@@ -23,7 +23,7 @@ from .base_recorder import BaseRecorderConfig
 
 @dataclass
 class StandardRecorderConfig(BaseRecorderConfig):
-    target_class: str = "StandardRecorder"  # type: ignore
+    target_class: str = "StandardRecorder"
     track_cam_name: str = "tracking"
     fig_height: int = 800
     fig_width: int = 800
@@ -33,6 +33,7 @@ class StandardRecorderConfig(BaseRecorderConfig):
     aabb_scale: float = MISSING  # | None = None
     fps: int = MISSING  # | None = None
     # gt_mass_distr_file_path: str = MISSING
+
 
 class StandardRecorder:
     def __init__(
@@ -167,6 +168,7 @@ class StandardRecorder:
         self._process_split(train_frames, train_regressors, gt_iparams, split="train")
         self._process_split(valid_frames, valid_regressors, gt_iparams, split="valid")
         self._process_split(test_frames, test_regressors, gt_iparams, split="test")
+
 
 #        print("Tracking camera setup =======================================\n"
 #             f"    Tracking camera id:         {self.id}\n"

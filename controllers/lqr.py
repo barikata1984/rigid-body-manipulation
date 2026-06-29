@@ -14,7 +14,7 @@ from .base_controller import BaseControllerConfig
 
 @dataclass
 class LinearQuadraticRegulatorConfig(BaseControllerConfig):
-    target_class: str = "LinearQuadraticRegulator"  # type: ignore
+    target_class: str = "LinearQuadraticRegulator"
     state_space: StateSpaceConfig = field(default_factory=StateSpaceConfig)
     state_gain: list[float] = MISSING
     input_gain: list[float] = MISSING
