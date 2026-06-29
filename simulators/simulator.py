@@ -27,7 +27,7 @@ class SimulatorConfig(BaseSimulatorConfig):
     target_class: str = "Simulator"
     manipulator: str = "xml_models/manipulators/sequential"
     object: str = MISSING
-    reset_keyframe: str | None = None
+    reset_keyframe: str = MISSING
     # Some tests pass these explicitly; keep them optional for trajectory-driven runs
     duration: float | None = None
     fps: int | None = None
