@@ -19,37 +19,17 @@ from utilities import json_to_namespace
 OmegaConf.register_new_resolver("pi", pi_converter)
 
 
-def main():
+def resolve_config():
     cli_config = tyro.cli(SimulatorConfig)
-    cli_specified_yaml = cli_config.exp_setup
-    yaml_config = OmegaConf.load(cli_specified_yaml)
-    base_config = SimulatorConfig
-
-    cfg = OmegaConf.merge(base_config, yaml_config, cli_config)  # priority: cli > cli-specified yaml > vanilla
+    yaml_config = OmegaConf.load(cli_config.exp_setup)
+    cfg = OmegaConf.merge(SimulatorConfig, yaml_config, cli_config)
     m, d, gt = generate_model_data(cfg)
 
-    # Load trajectory and extract excitation indices if available
     target_trajectory = None
-    excitation_slice = slice(None)  # Default to full trajectory
     if cfg.target_trajectory:
         with open(cfg.target_trajectory) as f:
-            trajectory_data = json.load(f)
+            target_trajectory = json_to_namespace(json.load(f))
 
-        target_trajectory = json_to_namespace(trajectory_data)
-
-        # with open(cfg.target_trajectory) as f:
-        #    target_trajectory = json.load(f)
-        # if "excitation" in trajectory_data and "start_index" in trajectory_data["excitation"]:
-        #    start = trajectory_data["excitation"]["start_index"]
-        #    end = trajectory_data["excitation"]["end_index"]
-        #    excitation_slice = slice(start, end)
-        #    print(f"Excitation trajectory slice found: {start} to {end}")
-
-        # Load target trajectory JSON as dot-accessible object
-        # self.target_trajectory = None
-        # if cfg.target_trajectory:
-
-    # Fill the recorder's fps with the target_trajectory's ===========================
     try:
         cfg.recorder.fps = int(cfg.recorder.fps)
     except MissingMandatoryValue:
@@ -57,14 +37,12 @@ def main():
             raise RuntimeError("recorder.fps is not set and no target_trajectory is loaded to infer it from")
         cfg.recorder.fps = int(target_trajectory.fps)
 
-    # Fill (potentially) missing fields of the recorder configulation =================
     try:
         cfg.recorder.aabb_scale = float(cfg.recorder.aabb_scale)
     except MissingMandatoryValue:
         aabb_scale = m.numeric_data[get_element_id(m, "numeric", "target/aabb_scale")]
         cfg.recorder.aabb_scale = float(aabb_scale)
 
-    # Get/set and make the dataset dir ================================================
     object_dir = Path(cfg.object)
     try:
         dataset_dir = Path(cfg.recorder.dataset_dir)
@@ -73,7 +51,6 @@ def main():
         cfg.recorder.dataset_dir = dataset_dir
     dataset_dir.mkdir(parents=True, exist_ok=True)
 
-    # Copy the ground truth mass distribution file to the dataset file ================
     object_gt = object_dir / "ground_truth.csv"
     dataset_gt = dataset_dir / "ground_truth.csv"
     if dataset_gt.is_file():
@@ -83,14 +60,19 @@ def main():
     else:
         print(f"Warning: {object_gt} not found, skipping ground truth copy.")
 
-    # Instantiate and run the simulator ===============================================
+    return cfg, m, d, gt, target_trajectory
+
+
+def run_simulation(cfg, m, d, target_trajectory):
     simulator_cfg = OmegaConf.to_object(cfg)
     simulation = instantiate(simulator_cfg, model=m, data=d, target_trajectory=target_trajectory)
     result = simulation.run()
+    return simulation, result
 
-    # Show inertial params identified with the least squares method
+
+def identify_inertial_params(result, gt):
     gt_total_mass = gt["mass"]
-    gt_f_moms = gt_total_mass * gt["com"]  # type: ignore
+    gt_f_moms = gt_total_mass * gt["com"]
     gt_moms_i = gt["globalinertia"]
     gt_iparams = np.array([gt_total_mass, *gt_f_moms, *gt_moms_i])
 
@@ -98,8 +80,8 @@ def main():
     wrenches = np.array(result["wrenches"])
     ls_iparams = lstsq(regressors.reshape(-1, 10), wrenches.reshape(-1))[0]
     tls_iparams = total_lstsq(regressors.reshape(-1, 10), wrenches.reshape(-1))[0]
-    l2_ls = norm(ls_iparams - np.array(gt_iparams), 2)
-    l2_tls = norm(tls_iparams - np.array(gt_iparams), 2)
+    l2_ls = norm(ls_iparams - gt_iparams, 2)
+    l2_tls = norm(tls_iparams - gt_iparams, 2)
     labels = ["total_mass", "mx", "my", "mz", "ixx", "iyy", "izz", "ixy", "iyz", "izx", "l2"]
 
     df = pd.DataFrame(
@@ -107,12 +89,17 @@ def main():
         columns=labels,
         index=["gt_iparams", "ls_iparams", "tls_iparams"],
     )
-
     print("\nLeast Squares Results DataFrame:")
     print(df)
 
-    # Log the identified inertial params and their ground truth
-    simulation.recorder.finish(result["frames"], result["regressors"], gt_iparams)  # video and dataset json generated
+    return gt_iparams, ls_iparams, tls_iparams
+
+
+def main():
+    cfg, m, d, gt, target_trajectory = resolve_config()
+    simulation, result = run_simulation(cfg, m, d, target_trajectory)
+    gt_iparams, ls_iparams, tls_iparams = identify_inertial_params(result, gt)
+    simulation.recorder.finish(result["frames"], result["regressors"], gt_iparams, ls_iparams, tls_iparams)
 
 
 if __name__ == "__main__":

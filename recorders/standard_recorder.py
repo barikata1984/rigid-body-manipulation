@@ -12,10 +12,7 @@ import cv2
 import numpy as np
 from mujoco._structs import MjData, MjModel
 from mujoco.renderer import Renderer
-from numpy.linalg import lstsq
 from omegaconf import MISSING
-
-from regressions import total_lstsq
 from utilities import get_element_id
 
 from .base_recorder import BaseRecorderConfig
@@ -128,9 +125,8 @@ class StandardRecorder:
 
         return train, valid, test
 
-    def _process_split(self, frames, regressors, gt_iparams, split=None):
+    def _process_split(self, frames, gt_iparams, ls_iparams, tls_iparams, split=None):
         suffix = ""
-        wrenches = []
 
         if split:
             suffix = f"_{split}"
@@ -138,17 +134,9 @@ class StandardRecorder:
             split_image_dir.mkdir(parents=True, exist_ok=True)
 
             for frame in frames:
-                wrenches.append(frame["wrench"])
                 image_path = Path(frame["file_path"])
                 shutil.copy(image_path, split_image_dir / image_path.name)
-        else:
-            for frame in frames:
-                wrenches.append(frame["wrench"])
 
-        regressors = np.reshape(regressors, (-1, 10))
-        wrenches = np.reshape(wrenches, -1)
-        ls_iparams = lstsq(regressors, wrenches)[0]
-        tls_iparams = total_lstsq(regressors, wrenches)[0]
         labels = ["total_mass", "mx", "my", "mz", "ixx", "iyy", "izz", "ixy", "iyz", "izx", "aabb_scale"]
 
         split_transform = self.base_transform.copy()
@@ -161,13 +149,12 @@ class StandardRecorder:
         with open(self.dataset_dir / f"transforms{suffix}.json", "w") as f:
             json.dump(split_transform, f, indent=2)
 
-    def finish(self, frames, regressors, gt_iparams):
+    def finish(self, frames, regressors, gt_iparams, ls_iparams, tls_iparams):
         self.videowriter.release()
 
         train_frames, valid_frames, test_frames = self._split(frames)
-        train_regressors, valid_regressors, test_regressors = self._split(regressors)
 
-        self._process_split(frames, regressors, gt_iparams)
-        self._process_split(train_frames, train_regressors, gt_iparams, split="train")
-        self._process_split(valid_frames, valid_regressors, gt_iparams, split="valid")
-        self._process_split(test_frames, test_regressors, gt_iparams, split="test")
+        self._process_split(frames, gt_iparams, ls_iparams, tls_iparams)
+        self._process_split(train_frames, gt_iparams, ls_iparams, tls_iparams, split="train")
+        self._process_split(valid_frames, gt_iparams, ls_iparams, tls_iparams, split="valid")
+        self._process_split(test_frames, gt_iparams, ls_iparams, tls_iparams, split="test")
