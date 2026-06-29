@@ -84,6 +84,8 @@ class BaseTrajectory(ABC):
         if show:
             plt.show()
 
+        plt.close(fig)
+
     def _plot_single_ax(self, ax: Axes, data: np.ndarray, title: str, xlabel: str, ylabel: str):
         # Plot Accelerations
         for j, d in enumerate(data.T):
@@ -104,9 +106,11 @@ class BaseTrajectory(ABC):
         plot_path = kwargs.get("plot_path", None)
         json_path = kwargs.get("json_path", None)
 
-        pos, vel, acc = self._generate(args, kwargs)
+        pos, vel, acc = self._generate(*args, **kwargs)
 
         if json_path is not None:
             self.write_to_json(pos, vel, acc, json_path)
 
         self.plot(pos, vel, acc, show=show_plot, plot_path=plot_path)
+
+        return pos, vel, acc

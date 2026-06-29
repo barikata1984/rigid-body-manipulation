@@ -13,8 +13,8 @@ class FourierTrajectoryConfig(BaseTrajectoryConfig):
     num_joints: int = MISSING
     num_harmonics: int = MISSING
     base_freq: float = MISSING
-    coefficients: dict | None = field(default_factory=lambda: MISSING)
-    q0: list[float] | None = field(default_factory=lambda: MISSING)
+    coefficients: dict | None = None
+    q0: list[float] | None = None
     target_class: str = "FourierTrajectory"
 
 
@@ -48,7 +48,7 @@ class FourierTrajectory(BaseTrajectory):
         self.base_freq = cfg.base_freq
         self.omega_b = 2 * np.pi * cfg.base_freq
 
-        if cfg.coefficients is None or cfg.coefficients == MISSING or isinstance(cfg.coefficients, str):
+        if cfg.coefficients is None or isinstance(cfg.coefficients, str):
             self.a = np.zeros((self.num_joints, self.num_harmonics))
             self.b = np.zeros((self.num_joints, self.num_harmonics))
             self.q0 = np.zeros(self.num_joints)

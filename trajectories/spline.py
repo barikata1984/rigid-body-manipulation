@@ -206,7 +206,7 @@ class SplineTrajectory(BaseTrajectory):
 
         return coeffs
 
-    def _generate(self, show_plot: bool = False, plot_path: str | None = None, json_path: str | None = None):
+    def _generate(self, *args, **kwargs):
         """Generates the trajectory.
 
         Returns:

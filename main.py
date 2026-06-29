@@ -29,6 +29,7 @@ def main():
     m, d, gt = generate_model_data(cfg)
 
     # Load trajectory and extract excitation indices if available
+    target_trajectory = None
     excitation_slice = slice(None)  # Default to full trajectory
     if cfg.target_trajectory:
         with open(cfg.target_trajectory) as f:
@@ -52,6 +53,8 @@ def main():
     try:
         cfg.recorder.fps = int(cfg.recorder.fps)
     except MissingMandatoryValue:
+        if target_trajectory is None:
+            raise RuntimeError("recorder.fps is not set and no target_trajectory is loaded to infer it from")
         cfg.recorder.fps = int(target_trajectory.fps)
 
     # Fill (potentially) missing fields of the recorder configulation =================

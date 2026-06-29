@@ -17,14 +17,8 @@ class ExcitationTrajectoryConfig(BaseTrajectoryConfig):
     target_class: str = "ExcitationTrajectory"
 
 
-
 class ExcitationTrajectory(BaseTrajectory):
-    def __init__(
-        self,
-        cfg: ExcitationTrajectoryConfig,
-        *args,
-        **kwargs
-    ):
+    def __init__(self, cfg: ExcitationTrajectoryConfig, *args, **kwargs):
         """
         Excitation Trajectory Generator using Finite Fourier Series Optimization.
 
@@ -48,9 +42,9 @@ class ExcitationTrajectory(BaseTrajectory):
         # Using random to avoid stuck at zero gradient if initial guess matters
         # Flat vector size: dof * num_harmonics * 2 (a and b) + dof (q0) -> actually q0 often can be 0 or mid range
         # Let's keep separate storage for convenience, but for optimize we flatten.
-        self.a = np.random.uniform(-0.1, 0.1, (num_joints, num_harmonics))
-        self.b = np.random.uniform(-0.1, 0.1, (num_joints, num_harmonics))
-        self.q0 = np.zeros(num_joints)
+        self.a = np.random.uniform(-0.1, 0.1, (self.num_joints, self.num_harmonics))
+        self.b = np.random.uniform(-0.1, 0.1, (self.num_joints, self.num_harmonics))
+        self.q0 = np.zeros(self.num_joints)
 
     def _optimize(self, max_iter=100):
         """
@@ -59,7 +53,9 @@ class ExcitationTrajectory(BaseTrajectory):
         if self.kinematics_func is None:
             raise ValueError("kinematics_func must be provided for optimization.")
 
-        print(f"Starting optimization (num_joints={self.num_joints}, num_harmonics={self.num_harmonics}, base_freq={self.base_freq})...")
+        print(
+            f"Starting optimization (num_joints={self.num_joints}, num_harmonics={self.num_harmonics}, base_freq={self.base_freq})..."
+        )
 
         # Initial guess (flattened)
         # [a_flat, b_flat, q0]
@@ -67,7 +63,7 @@ class ExcitationTrajectory(BaseTrajectory):
 
         # Track iteration and condition number
         it_count = 0
-        current_cond = float('inf')
+        current_cond = float("inf")
 
         def objective(x):
             nonlocal current_cond
@@ -85,7 +81,14 @@ class ExcitationTrajectory(BaseTrajectory):
 
             # Create Trajectory Model
             coeffs = {"a": a, "b": b, "q0": q0}
-            f_cfg = FourierTrajectoryConfig(duration=self.duration, fps=self.fps, num_joints=self.num_joints, num_harmonics=self.num_harmonics, base_freq=self.base_freq, coefficients=coeffs)
+            f_cfg = FourierTrajectoryConfig(
+                duration=self.duration,
+                fps=self.fps,
+                num_joints=self.num_joints,
+                num_harmonics=self.num_harmonics,
+                base_freq=self.base_freq,
+                coefficients=coeffs,
+            )
             traj = FourierTrajectory(f_cfg)
 
             q, dq, ddq = traj.get_value()
@@ -103,7 +106,7 @@ class ExcitationTrajectory(BaseTrajectory):
                 cond_num = 1e9
             else:
                 cond_num = max_eig / min_eig
-            
+
             current_cond = cond_num
             return cond_num
 
@@ -114,14 +117,14 @@ class ExcitationTrajectory(BaseTrajectory):
 
         # Run Optimization
         bounds = [(-1.0, 1.0)] * len(x0)
-        
+
         res = minimize(
-            objective, 
-            x0, 
-            method="L-BFGS-B", 
-            bounds=bounds, 
+            objective,
+            x0,
+            method="L-BFGS-B",
+            bounds=bounds,
             callback=callback,
-            options={"maxiter": max_iter, "disp": True}
+            options={"maxiter": max_iter, "disp": True},
         )
 
         # Update coefficients
@@ -136,7 +139,7 @@ class ExcitationTrajectory(BaseTrajectory):
         self._is_optimized = True
         print(f"Optimization finished. Final Condition Number: {res.fun:.4f}")
 
-    def generate(self, show_plot: bool = False, plot_path: str | None = None, json_path: str | None = None):
+    def _generate(self, *args, **kwargs):
         """
         Generate trajectory. Lazily optimizes if not done.
         """
@@ -150,15 +153,17 @@ class ExcitationTrajectory(BaseTrajectory):
                 print("Warning: generating without optimization (kinematics_func missing).")
 
         coeffs = {"a": self.a, "b": self.b, "q0": self.q0}
-        f_cfg = FourierTrajectoryConfig(duration=self.duration, fps=self.fps, num_joints=self.num_joints, num_harmonics=self.num_harmonics, base_freq=self.base_freq, coefficients=coeffs)
+        f_cfg = FourierTrajectoryConfig(
+            duration=self.duration,
+            fps=self.fps,
+            num_joints=self.num_joints,
+            num_harmonics=self.num_harmonics,
+            base_freq=self.base_freq,
+            coefficients=coeffs,
+        )
         traj = FourierTrajectory(f_cfg)
 
         pos, vel, acc = traj.generate()
-
-        self.plot(pos, vel, acc, show=show_plot, plot_path=plot_path)
-
-        if json_path is not None:
-            self.write_to_json(pos, vel, acc, json_path)
 
         return pos, vel, acc
 

@@ -100,7 +100,6 @@ def main():
         # Fields with MISSING in cli_config will be filled from yaml_config
         merged = OmegaConf.merge(base_config, yaml_config, cli_config)
 
-        # Convert back to dataclass
         config = OmegaConf.to_object(merged)
     else:
         config = cli_config

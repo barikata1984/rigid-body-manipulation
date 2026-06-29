@@ -1,6 +1,7 @@
 config_class: ExcitedTrajectoryConfig
 duration: 5.0
 fps: 60.0
+num_joints: 6
 num_harmonics: 3
 base_freq: 0.2
 
@@ -11,9 +12,10 @@ ee_body_name: link6
 
 # Main trajectory: a spline trajectory to be enriched with excitation
 main_trajectory:
-  target_class: QuinticSplineTrajectory
+  target_class: SplineTrajectory
   module_name: trajectories
+  type: quintic
   duration: 5.0
   fps: 60.0
-  start_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  start_pos: [1.0, 1.0, 1.0, 0.0, 0.0, 0.0]
   end_pos: [0.5, 0.3, 0.2, 1.0, 0.5, 0.0]

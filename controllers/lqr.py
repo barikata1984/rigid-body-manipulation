@@ -4,6 +4,7 @@ import numpy as np
 from mujoco._structs import MjData, MjModel
 from numpy.typing import NDArray
 from omegaconf import MISSING
+from omegaconf.errors import MissingMandatoryValue
 from scipy import linalg
 
 from dynamics import StateSpace, StateSpaceConfig
@@ -28,18 +29,15 @@ class LinearQuadraticRegulator:
     ) -> None:
         m = kwargs["model"]
         d = kwargs["data"]
-        
+
         self.ss = StateSpace(cfg.state_space, m, d)
 
         # Fill a potentially missing field of a planner configuration
         try:
             self.state_gain = np.array(cfg.state_gain)
             self.input_gain = np.array(cfg.input_gain)
-        except ValueError as e:
-            # 変換に失敗した場合、ValueErrorが発生し、このブロックが実行される
-            print(
-                f"{e}: Value for LinearQuadraticRegulatorConfig's attribute 'duration' is not properly set. Check the setting. It may be set at a string that are not castabble to flaot."
-            )
+        except (ValueError, MissingMandatoryValue) as e:
+            raise ValueError(f"state_gain or input_gain is not properly set: {e}")
 
         if len(self.state_gain) != self.ss.ns:
             raise ValueError(

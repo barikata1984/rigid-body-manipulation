@@ -96,23 +96,23 @@ class Simulator:
     m: MjModel
     d: MjData
 
-    #def __init__(self, m: MjModel, d: MjData, recorder, planner, controller):
-    def __init__(self,
-                 cfg: SimulatorConfig,
-                 *args,
-                 **kwargs,
-                 ) -> None:
-
-        try:
-            self.target_trajectory = kwargs["target_trajectory"]
-        except:
-            pass
+    # def __init__(self, m: MjModel, d: MjData, recorder, planner, controller):
+    def __init__(
+        self,
+        cfg: SimulatorConfig,
+        *args,
+        **kwargs,
+    ) -> None:
+        self.target_trajectory = kwargs.get("target_trajectory", None)
 
         m = kwargs["model"]
         d = kwargs["data"]
 
         self.recorder = instantiate(cfg.recorder, model=m, data=d)
         self.controller = instantiate(cfg.controller, model=m, data=d)
+
+        if self.target_trajectory is None:
+            raise ValueError("target_trajectory is required but was not provided to Simulator")
 
         self.timestep = MjOption().timestep  # if cfg.timestep <= 0 else cfg.timestep
         self.n_steps = int(self.target_trajectory.duration / self.timestep)
@@ -258,26 +258,26 @@ class Simulator:
         self.file_paths.append(str(self.recorder.complete_image_dir / file_name))
 
     def _set_ctrl(self, tgt_traj, act_traj):
-            # Get residual of state
-            mj_differentiatePos(  # Use this func to differenciate quat properly
-                self.m,  # MjModel
-                self.qpos_err,  # data container for the residual of qpos
-                self.diffpos_dt,  # timestep used to numerically differentiate the pos
-                tgt_traj[0],  # target qpos
-                act_traj[0],  # actual qpos
-            )
+        # Get residual of state
+        mj_differentiatePos(  # Use this func to differenciate quat properly
+            self.m,  # MjModel
+            self.qpos_err,  # data container for the residual of qpos
+            self.diffpos_dt,  # timestep used to numerically differentiate the pos
+            tgt_traj[0],  # target qpos
+            act_traj[0],  # actual qpos
+        )
 
-            # Get feedforward signal
-            feedforward_ctrl, _, _, _ = self.inverse(tgt_traj)
-            # Get feedback signal
-            traj_err = act_traj - tgt_traj
-            state_err = np.concatenate((self.qpos_err, traj_err[1]))
-            feedback_ctrl = self.controller.gain_matrix @ state_err
-            self.d.ctrl = feedforward_ctrl - feedback_ctrl
+        # Get feedforward signal
+        feedforward_ctrl, _, _, _ = self.inverse(tgt_traj)
+        # Get feedback signal
+        traj_err = act_traj - tgt_traj
+        state_err = np.concatenate((self.qpos_err, traj_err[1]))
+        feedback_ctrl = self.controller.gain_matrix @ state_err
+        self.d.ctrl = feedforward_ctrl - feedback_ctrl
 
-            self.qpos_errors.append(self.qpos_err)
-            self.qvel_errors.append(traj_err[1])
-            self.qacc_errors.append(traj_err[2])
+        self.qpos_errors.append(self.qpos_err)
+        self.qvel_errors.append(traj_err[1])
+        self.qacc_errors.append(traj_err[2])
 
     def _visualize(self):
         """Visualize simulation results."""
@@ -294,9 +294,7 @@ class Simulator:
         yls = ["q0-2 [m]", "q3-5 [rad]"]
         for i in range(len(qpos_axes)):
             slcr = slice(i * 3, (i + 1) * 3)
-            ax_plot_lines_w_tgt(
-                qpos_axes[i], self.time, trajectory[:, 0, slcr], tgt_trajectory[:, 0, slcr], yls[i]
-            )
+            ax_plot_lines_w_tgt(qpos_axes[i], self.time, trajectory[:, 0, slcr], tgt_trajectory[:, 0, slcr], yls[i])
 
         # Object linear acceleration and ft sensor measurements rel. to {sensor}
         acc_ft_fig, acc_ft_axes = plt.subplots(3, 1, tight_layout=True)
@@ -306,4 +304,8 @@ class Simulator:
         for ax in acc_ft_axes:
             ax.hlines(0.0, frame_iter[0], frame_iter[-1], ls="dashed", alpha=0.5)
 
-        plt.show()
+        qpos_fig.savefig("tracking_qpos.png", dpi=150)
+        acc_ft_fig.savefig("tracking_acc_ft.png", dpi=150)
+        plt.close(qpos_fig)
+        plt.close(acc_ft_fig)
+        print("Tracking plots saved to tracking_qpos.png and tracking_acc_ft.png")
