@@ -80,22 +80,7 @@ class ExcitedTrajectory(BaseTrajectory):
         self.window_trajectory = WindowTrajectory(win_cfg, *args, **kwargs)
 
     def _apply_window_trajectory(self, q_raw: np.ndarray, dq_raw: np.ndarray, ddq_raw: np.ndarray):
-        """
-        Apply window trajectory to raw excitation.
-        """
-        # Get window values
-        s, ds, dds = self.window_trajectory.get_value()
-
-        # Apply product rule
-        # q_exc = s * q
-        # dq_exc = s'q + sq'
-        # ddq_exc = s''q + 2s'q' + sq''
-
-        q_exc = s * q_raw
-        dq_exc = ds * q_raw + s * dq_raw
-        ddq_exc = dds * q_raw + 2 * ds * dq_raw + s * ddq_raw
-
-        return q_exc, dq_exc, ddq_exc
+        return self.window_trajectory.apply(q_raw, dq_raw, ddq_raw)
 
     def _optimize(self):
         max_iter = self.max_iter
@@ -144,23 +129,9 @@ class ExcitedTrajectory(BaseTrajectory):
             dq_total = dq_main + dq_exc
             ddq_total = ddq_main + ddq_exc
 
-            Y = None
-            for i in range(len(self.time_array)):
-                A_k = self.kinematics_func(q_total[i], dq_total[i], ddq_total[i])
-                if Y is None:
-                    n_params = A_k.shape[1]
-                    Y = np.zeros((n_params, n_params))
-                Y += A_k.T @ A_k
-
-            eigvals = np.linalg.eigvalsh(Y)
-            min_eig = np.min(eigvals)
-            max_eig = np.max(eigvals)
-
-            if min_eig < 1e-9:
-                cond = 1e9
-            else:
-                cond = max_eig / min_eig
-
+            cond = BaseTrajectory.compute_condition_number(
+                self.time_array, self.kinematics_func, q_total, dq_total, ddq_total
+            )
             current_cond = cond
             return cond
 

@@ -61,23 +61,10 @@ class WindowedFourierTrajectory(BaseTrajectory):
         ddQ = dds*q + 2*ds*dq + s*ddq
         """
 
-        # 1. Fourier Raw
         q_raw, dq_raw, ddq_raw = self.fourier.get_value()
-
-        # 2. Window Values
-        s, ds, dds = self.window.get_value()
-
-        # 3. Product Rule
-        q_out = s * q_raw
-        dq_out = ds * q_raw + s * dq_raw
-        ddq_out = dds * q_raw + 2 * ds * dq_raw + s * ddq_raw
-
-        return q_out, dq_out, ddq_out
+        return self.window.apply(q_raw, dq_raw, ddq_raw)
 
     def _generate(self, *args, **kwargs):
-        if self.time_array[-1] > self.duration + 1e-9:
-            self.time_array = self.time_array[:-1]
-
         pos, vel, acc = self.get_value()
 
         return pos, vel, acc

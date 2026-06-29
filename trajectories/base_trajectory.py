@@ -2,6 +2,7 @@ import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -96,6 +97,45 @@ class BaseTrajectory(ABC):
         ax.set_title(title)
         ax.grid(True)
 
+    @staticmethod
+    def compute_condition_number(
+        time_array: np.ndarray,
+        kinematics_func: Callable,
+        traj_q: np.ndarray,
+        traj_dq: np.ndarray,
+        traj_ddq: np.ndarray,
+    ) -> float:
+        """Compute the condition number of the observation matrix Y = sum_k A_k.T @ A_k.
+
+        The matrix size is determined dynamically from the first regressor call,
+        so no hardcoded DOF or parameter count is required.
+
+        Args:
+            time_array: 1-D array of time steps (length N).
+            kinematics_func: callable f(q_i, dq_i, ddq_i) -> regressor (n_rows, n_params).
+            traj_q: (N, n_joints) position array.
+            traj_dq: (N, n_joints) velocity array.
+            traj_ddq: (N, n_joints) acceleration array.
+
+        Returns:
+            Condition number (max_eig / min_eig), or 1e9 if the matrix is (near-)singular.
+        """
+        Y: np.ndarray | None = None
+        for i in range(len(time_array)):
+            A_k = kinematics_func(traj_q[i], traj_dq[i], traj_ddq[i])
+            if Y is None:
+                n_params = A_k.shape[1]
+                Y = np.zeros((n_params, n_params))
+            Y += A_k.T @ A_k
+
+        eigvals = np.linalg.eigvalsh(Y)
+        min_eig = float(np.min(eigvals))
+        max_eig = float(np.max(eigvals))
+
+        if min_eig < 1e-9:
+            return 1e9
+        return max_eig / min_eig
+
     @abstractmethod
     def _generate(self, *args, **kwargs):
         """To be implemented in each child class"""
@@ -105,6 +145,9 @@ class BaseTrajectory(ABC):
         show_plot = kwargs.get("show_plot", False)
         plot_path = kwargs.get("plot_path", None)
         json_path = kwargs.get("json_path", None)
+
+        if self.time_array[-1] > self.duration + 1e-9:
+            self.time_array = self.time_array[:-1]
 
         pos, vel, acc = self._generate(*args, **kwargs)
 
