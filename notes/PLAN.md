@@ -52,7 +52,7 @@ coeff_bounds: [0.5, 0.5, 0.5, 0.5, 0.13, 0.5]
 
 効果: 条件数が約 150 倍改善 (1693 → 11.1).
 
-### Stage 2: 関節位置の上下限制約
+### Stage 2 (2026-07-01 完了): 関節位置の上下限制約
 
 desktop-ur5e の `JointLimits` + `make_joint_position_constraint` に相当.
 全関節に対して `q_min <= q_total <= q_max` をペナルティで課す.
@@ -62,17 +62,17 @@ desktop-ur5e の `JointLimits` + `make_joint_position_constraint` に相当.
 - `ExcitedTrajectoryConfig` に `q_min`, `q_max` (リスト) を追加
 - `_optimize()` のペナルティ計算を一般化
 
-### Stage 3: 解析的バウンド導出
+### Stage 3 (2026-07-01 完了): 解析的バウンド導出
 
 desktop-ur5e の `compute_fourier_bounds` を移植.
 速度・加速度限界から三角不等式でフーリエ係数の安全なバウンドを自動計算.
-手動の `coeff_bounds` チューニングが不要になる.
 
 変更箇所:
 - `constraints.py` を新設 (desktop-ur5e から移植)
 - 窓関数の違い (64s³(1-s)³ → 256s⁴(1-s)⁴) に合わせて導出式を修正
 
-注意: rigid-body-manipulation はメイン軌道 + 励起の構造なので, バウンドは励起成分のみに適用する.
+注意: 三角不等式バウンドは保守的. スライド関節で dq_max が小さい場合, 係数上限が ~0.003 と極端に小さくなる.
+手動 coeff_bounds との併用が現実的. rigid-body-manipulation はメイン軌道 + 励起の構造なので, バウンドは励起成分のみに適用する.
 
 ### Stage 4: D-optimal 目的関数
 
