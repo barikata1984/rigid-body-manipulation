@@ -78,6 +78,6 @@
   </sensor>
 
   <keyframe>
-    <key name="initial_state" qpos="1 1 1 0 0 0"/>
+    <key name="initial_state" qpos="0 0 0 0 0 0"/>
   </keyframe>
 </mujoco>

@@ -39,9 +39,17 @@ def main():
         # Create base config of the same type
         base_config = type(cli_config)()
 
-        # Merge order: base < yaml < cli (CLI has highest priority)
-        # Fields with MISSING in cli_config will be filled from yaml_config
-        merged = OmegaConf.merge(base_config, yaml_config, cli_config)
+        # Build CLI overrides: only include fields that differ from the default,
+        # so that YAML values aren't overwritten by unspecified CLI defaults.
+        cli_overrides = {}
+        for key in vars(cli_config):
+            cli_val = getattr(cli_config, key)
+            default_val = getattr(base_config, key, object())
+            if cli_val != default_val:
+                cli_overrides[key] = cli_val
+
+        # Merge order: base < yaml < cli_overrides
+        merged = OmegaConf.merge(base_config, yaml_config, cli_overrides)
 
         config = OmegaConf.to_object(merged)
     else:
