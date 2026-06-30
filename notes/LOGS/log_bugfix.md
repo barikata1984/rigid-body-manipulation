@@ -44,3 +44,18 @@
 - excited 軌道で q4(pitch)が 0 を通過すると特異姿勢に入り, 追従が発散する
 - `ExcitationTrajectory` クラス(`excitation.py`)はどこにもインポートされていないデッドコード
 - `_lqr.py` は旧実装, `lqr.py` が現役
+
+## 2026-07-01: generate.py OmegaConf merge バグ修正
+
+### 背景
+
+`generate.py` の CLI 引数処理で, tyro のデフォルト値が YAML に書かれた設定値を上書きする問題があった.
+OmegaConf の merge 順序が逆になっており, YAML 側の意図した設定が無効化されていた.
+
+### 修正内容
+
+- `generate.py`: OmegaConf merge の順序を修正 (CLI デフォルトを base, YAML を override として適用)
+
+### 結果
+
+- YAML で指定した `coeff_bounds`, `q_min`, `q_max` 等が CLI 実行時に正しく反映されるようになった
