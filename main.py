@@ -7,7 +7,6 @@ import pandas as pd
 import tyro
 from numpy.linalg import lstsq, norm
 from omegaconf import OmegaConf
-from omegaconf.errors import MissingMandatoryValue
 
 from factory import instantiate
 from omegaconf_custom_resolvers import pi_converter
@@ -30,25 +29,25 @@ def resolve_config():
         with open(cfg.target_trajectory) as f:
             target_trajectory = json_to_namespace(json.load(f))
 
-    try:
-        cfg.recorder.fps = int(cfg.recorder.fps)
-    except MissingMandatoryValue:
+    if OmegaConf.is_missing(cfg.recorder, "fps"):
         if target_trajectory is None:
             raise RuntimeError("recorder.fps is not set and no target_trajectory is loaded to infer it from")
         cfg.recorder.fps = int(target_trajectory.fps)
+    else:
+        cfg.recorder.fps = int(cfg.recorder.fps)
 
-    try:
-        cfg.recorder.aabb_scale = float(cfg.recorder.aabb_scale)
-    except MissingMandatoryValue:
+    if OmegaConf.is_missing(cfg.recorder, "aabb_scale"):
         aabb_scale = m.numeric_data[get_element_id(m, "numeric", "target/aabb_scale")]
         cfg.recorder.aabb_scale = float(aabb_scale)
+    else:
+        cfg.recorder.aabb_scale = float(cfg.recorder.aabb_scale)
 
     object_dir = Path(cfg.object)
-    try:
-        dataset_dir = Path(cfg.recorder.dataset_dir)
-    except MissingMandatoryValue:
+    if OmegaConf.is_missing(cfg.recorder, "dataset_dir"):
         dataset_dir = Path.cwd() / "datasets" / object_dir.name
         cfg.recorder.dataset_dir = dataset_dir
+    else:
+        dataset_dir = Path(cfg.recorder.dataset_dir)
     dataset_dir.mkdir(parents=True, exist_ok=True)
 
     object_gt = object_dir / "ground_truth.csv"
