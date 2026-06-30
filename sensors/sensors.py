@@ -10,7 +10,6 @@ class Sensors:
         m: MjModel,
         d: MjData,
         fps: float,
-        jointpos_noise_stddev: list[float] | None = None,
     ) -> None:
         self.m = m
         self.d = d
@@ -32,28 +31,17 @@ class Sensors:
             stddev,
         )
 
-    def _get_jointpos(self, perturbed: bool) -> np.ndarray:
+    def _get_joint_measurement(self, attr: np.ndarray, stddev: np.ndarray, perturbed: bool) -> np.ndarray:
         if perturbed:
-            return self.d.qpos + self._get_noise(self.jointpos_stddev)
-        else:
-            return self.d.qpos
-
-    def _get_jointvel(self, perturbed: bool) -> np.ndarray:
-        if perturbed:
-            return self.d.qvel + self._get_noise(self.jointpos_stddev * self.jointvar_noise_scaler)
-        else:
-            return self.d.qvel
-
-    def _get_jointacc(self, perturbed: bool) -> np.ndarray:
-        if perturbed:
-            return self.d.qacc + self._get_noise(self.jointpos_stddev * self.jointvar_noise_scaler**2)
-        else:
-            return self.d.qacc
+            return attr + self._get_noise(stddev)
+        return attr
 
     def _get_jointvars(self, perturbed: bool) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        qpos = self._get_jointpos(perturbed)
-        qvel = self._get_jointvel(perturbed)
-        qacc = self._get_jointacc(perturbed)
+        qpos = self._get_joint_measurement(self.d.qpos, self.jointpos_stddev, perturbed)
+        qvel = self._get_joint_measurement(self.d.qvel, self.jointpos_stddev * self.jointvar_noise_scaler, perturbed)
+        qacc = self._get_joint_measurement(
+            self.d.qacc, self.jointpos_stddev * self.jointvar_noise_scaler**2, perturbed
+        )
         return qpos, qvel, qacc
 
     def _get_force(self, perturbed: bool) -> np.ndarray:
@@ -88,11 +76,15 @@ class Sensors:
             np.ndarray | tuple[np.ndarray, ...]: _description_
         """
         if key == "jointpos":
-            return self._get_jointpos(perturbed)
+            return self._get_joint_measurement(self.d.qpos, self.jointpos_stddev, perturbed)
         elif key == "jointvel":
-            return self._get_jointvel(perturbed)
+            return self._get_joint_measurement(
+                self.d.qvel, self.jointpos_stddev * self.jointvar_noise_scaler, perturbed
+            )
         elif key == "jointacc":
-            return self._get_jointacc(perturbed)
+            return self._get_joint_measurement(
+                self.d.qacc, self.jointpos_stddev * self.jointvar_noise_scaler**2, perturbed
+            )
         elif key == "jointvars":
             return self._get_jointvars(perturbed)
         elif key == "force":
