@@ -47,3 +47,35 @@ desktop-ur5e の `compute_fourier_bounds` を移植.
 ### 複数パラメータ設定での軌道生成・シミュレーション実行
 
 Stage 1-3 の各設定で軌道生成とシミュレーションを実施し, 条件数と追従精度を確認した.
+
+## 2026-07-01: Stage 4-5 完了
+
+### Stage 4: D-optimal 目的関数
+
+`base_trajectory.py` に `_build_observation_matrix`, `compute_d_optimal`, `compute_objective_with_cond` を追加.
+`ExcitedTrajectoryConfig.objective_type` で `"condition_number"` / `"d_optimal"` を切り替え可能にした.
+
+D-optimal は `-log det(Y) = -Σ log(λ_i(Y))` を最小化する.
+Y = W^T W の固有値から直接計算するため, リグレッサをスタックする必要がない.
+
+### Stage 5: マルチスタート最適化
+
+`_optimize()` をマルチスタートループに拡張.
+単一リスタートを `_run_single_optimization()` に分離し, `_generate_random_x0()` で高調波ほど小さい振幅の初期値を生成.
+`n_restarts`, `seed`, `early_stop_patience` を `ExcitedTrajectoryConfig` に追加.
+
+### 比較検証 (max_iter=5, n_restarts=3)
+
+| 指標 | condition_number | d_optimal |
+|---|---|---|
+| Best Cond | 3199 | 8856 |
+| L2 (LS) | 0.311 | 0.329 |
+| L2 (TLS) | 0.173 | 0.189 |
+| 追従 | 良好 | 良好 |
+| 最適化時間 | 221s | 41s |
+
+所見:
+- 両目的関数とも LQR 追従は良好で発散なし.
+- 条件数最小化の方が同定精度 (TLS L2) が良い.
+- D-optimal は L-BFGS-B との相性で各リスタートの収束が浅い (1-2 反復で停止).
+- D-optimal の収束改善には, リスタート数・反復数の増加, または SLSQP への移行が有効と考えられる.

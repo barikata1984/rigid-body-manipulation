@@ -74,25 +74,35 @@ desktop-ur5e の `compute_fourier_bounds` を移植.
 注意: 三角不等式バウンドは保守的. スライド関節で dq_max が小さい場合, 係数上限が ~0.003 と極端に小さくなる.
 手動 coeff_bounds との併用が現実的. rigid-body-manipulation はメイン軌道 + 励起の構造なので, バウンドは励起成分のみに適用する.
 
-### Stage 4: D-optimal 目的関数
+### Stage 4 (2026-07-01 完了): D-optimal 目的関数
 
 desktop-ur5e の `d_optimal_objective` を移植.
-`-log det(W^T W) = -2 * Σ log(σ_i)` を最小化.
-条件数最小化より数値的に安定で, 局所最適解に陥りにくい.
+`-log det(Y) = -Σ log(λ_i(Y))` を最小化 (Y = W^T W の固有値から計算).
 
 変更箇所:
-- `objective.py` を新設または `base_trajectory.py` に追加
-- `ExcitedTrajectoryConfig.objective_type` で切り替え
+- `base_trajectory.py` に `_build_observation_matrix`, `compute_d_optimal`, `compute_objective_with_cond` を追加
+- `ExcitedTrajectoryConfig.objective_type` で `"condition_number"` / `"d_optimal"` を切り替え
 
-### Stage 5: マルチスタート最適化
+### Stage 5 (2026-07-01 完了): マルチスタート最適化
 
-desktop-ur5e の `ExcitationOptimizer` のマルチスタートループを移植.
-N 個のランダム初期値から最適化し, 最良の結果を選択.
+N 個のランダム初期値から最適化し, 条件数が最良の結果を選択.
 early stopping (改善しなくなったら打ち切り) を含む.
 
 変更箇所:
-- `optimizer.py` を新設
-- `ExcitedTrajectory._optimize()` から最適化ループを分離
+- `ExcitedTrajectoryConfig` に `n_restarts`, `seed`, `early_stop_patience` を追加
+- `_optimize()` をマルチスタートループに拡張, 単一リスタートを `_run_single_optimization` に分離
+- `_generate_random_x0()` で高調波ほど小さい振幅の初期値を生成
+
+比較結果 (max_iter=5, n_restarts=3):
+
+| 指標 | condition_number | d_optimal |
+|---|---|---|
+| Best Cond | 3199 | 8856 |
+| L2 (TLS) | 0.173 | 0.189 |
+| 最適化時間 | 221s | 41s |
+
+D-optimal は L-BFGS-B との相性で各リスタートの収束が浅い (1-2 反復).
+リスタート数・反復数を増やすか, SLSQP への移行で改善する可能性がある.
 
 ### Stage 6: 並列化 + wandb
 

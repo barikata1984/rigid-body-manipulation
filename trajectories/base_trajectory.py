@@ -98,6 +98,24 @@ class BaseTrajectory(ABC):
         ax.grid(True)
 
     @staticmethod
+    def _build_observation_matrix(
+        time_array: np.ndarray,
+        kinematics_func: Callable,
+        traj_q: np.ndarray,
+        traj_dq: np.ndarray,
+        traj_ddq: np.ndarray,
+    ) -> np.ndarray:
+        """Build the observation matrix Y = sum_k A_k.T @ A_k."""
+        Y: np.ndarray | None = None
+        for i in range(len(time_array)):
+            A_k = kinematics_func(traj_q[i], traj_dq[i], traj_ddq[i])
+            if Y is None:
+                n_params = A_k.shape[1]
+                Y = np.zeros((n_params, n_params))
+            Y += A_k.T @ A_k
+        return Y
+
+    @staticmethod
     def compute_condition_number(
         time_array: np.ndarray,
         kinematics_func: Callable,
@@ -120,14 +138,7 @@ class BaseTrajectory(ABC):
         Returns:
             Condition number (max_eig / min_eig), or 1e9 if the matrix is (near-)singular.
         """
-        Y: np.ndarray | None = None
-        for i in range(len(time_array)):
-            A_k = kinematics_func(traj_q[i], traj_dq[i], traj_ddq[i])
-            if Y is None:
-                n_params = A_k.shape[1]
-                Y = np.zeros((n_params, n_params))
-            Y += A_k.T @ A_k
-
+        Y = BaseTrajectory._build_observation_matrix(time_array, kinematics_func, traj_q, traj_dq, traj_ddq)
         eigvals = np.linalg.eigvalsh(Y)
         min_eig = float(np.min(eigvals))
         max_eig = float(np.max(eigvals))
@@ -135,6 +146,65 @@ class BaseTrajectory(ABC):
         if min_eig < 1e-9:
             return 1e9
         return max_eig / min_eig
+
+    @staticmethod
+    def compute_d_optimal(
+        time_array: np.ndarray,
+        kinematics_func: Callable,
+        traj_q: np.ndarray,
+        traj_dq: np.ndarray,
+        traj_ddq: np.ndarray,
+    ) -> float:
+        """D-optimal objective: -log det(Y) = -sum(log(eigvals(Y))).
+
+        Equivalent to -2 * sum(log(sigma_i)) of the stacked regressor W,
+        since eigenvalues of Y = W^T W are the squared singular values of W.
+
+        Returns:
+            D-optimal value, or 1e9 on numerical failure.
+        """
+        try:
+            Y = BaseTrajectory._build_observation_matrix(time_array, kinematics_func, traj_q, traj_dq, traj_ddq)
+            eigvals = np.linalg.eigvalsh(Y)
+            eigvals_floored = np.maximum(eigvals, 1e-30)
+            return float(-np.sum(np.log(eigvals_floored)))
+        except (np.linalg.LinAlgError, ValueError):
+            return 1e9
+
+    @staticmethod
+    def compute_objective_with_cond(
+        time_array: np.ndarray,
+        kinematics_func: Callable,
+        traj_q: np.ndarray,
+        traj_dq: np.ndarray,
+        traj_ddq: np.ndarray,
+        objective_type: str = "condition_number",
+    ) -> tuple[float, float]:
+        """Compute objective value and condition number from a single Y matrix.
+
+        Returns:
+            (objective_value, condition_number).
+        """
+        try:
+            Y = BaseTrajectory._build_observation_matrix(time_array, kinematics_func, traj_q, traj_dq, traj_ddq)
+            eigvals = np.linalg.eigvalsh(Y)
+            min_eig = float(np.min(eigvals))
+            max_eig = float(np.max(eigvals))
+
+            if min_eig < 1e-9:
+                cond = 1e9
+            else:
+                cond = max_eig / min_eig
+
+            if objective_type == "d_optimal":
+                eigvals_floored = np.maximum(eigvals, 1e-30)
+                obj = float(-np.sum(np.log(eigvals_floored)))
+            else:
+                obj = cond
+
+            return obj, cond
+        except (np.linalg.LinAlgError, ValueError):
+            return 1e9, 1e9
 
     @abstractmethod
     def _generate(self, *args, **kwargs):

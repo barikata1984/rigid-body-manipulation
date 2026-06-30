@@ -38,6 +38,14 @@ class ExcitedTrajectoryConfig(WindowedFourierTrajectoryConfig):
     dq_max: list[float] | None = None
     ddq_max: list[float] | None = None
 
+    # Objective function: "condition_number" or "d_optimal"
+    objective_type: str = "condition_number"
+
+    # Multi-start optimization (Stage 5)
+    n_restarts: int = 1
+    seed: int = 42
+    early_stop_patience: int = 5
+
     target_class: str = "ExcitedTrajectory"
 
 
@@ -105,6 +113,10 @@ class ExcitedTrajectory(BaseTrajectory):
         else:
             self.coeff_bounds = manual_bounds.tolist()
         self.kinematics_func = kwargs.get("kinematics_func", None)
+        self.objective_type = cfg.objective_type
+        self.n_restarts = cfg.n_restarts
+        self.seed = cfg.seed
+        self.early_stop_patience = cfg.early_stop_patience
 
         self._is_optimized = False
 
@@ -176,19 +188,24 @@ class ExcitedTrajectory(BaseTrajectory):
 
         return q_main + q_exc, dq_main + dq_exc, ddq_main + ddq_exc
 
-    def _optimize(self):
+    def _generate_random_x0(self, rng: np.random.Generator) -> np.ndarray:
+        nj = self.num_joints
+        nh = self.num_harmonics
+        x = np.zeros(2 * nj * nh, dtype=np.float64)
+        for k in range(nh):
+            scale = 0.3 / (k + 1)
+            for j in range(nj):
+                bound = self.coeff_bounds[j]
+                s = min(scale, bound)
+                x[k * nj + j] = rng.uniform(-s, s)
+                x[nj * nh + k * nj + j] = rng.uniform(-s, s)
+        return x
+
+    def _run_single_optimization(self, x0, q_main, dq_main, ddq_main, bounds, restart_label=""):
         max_iter = self.max_iter
-        print("Starting ExcitedTrajectory Optimization...")
-
-        if self._main_cache is None:
-            self._main_cache = self.main_trajectory.generate()
-
-        q_main, dq_main, ddq_main = self._main_cache
-
-        x0 = np.concatenate([self.a.flatten(), self.b.flatten()])
-
-        it_count = 0
-        current_cond = float("inf")
+        use_q_limits = self.q_min is not None or self.q_max is not None
+        use_d_optimal = self.objective_type == "d_optimal"
+        penalty_weight = 1e5
 
         _f_cfg = FourierTrajectoryConfig(
             duration=self.duration,
@@ -215,33 +232,33 @@ class ExcitedTrajectory(BaseTrajectory):
                 _cache_val = self._build_trajectory(x, q_main, dq_main, ddq_main, _f_traj)
             return _cache_val
 
-        penalty_weight = 1e5
-        use_q_limits = self.q_min is not None or self.q_max is not None
+        current_cond = float("inf")
+        current_obj = float("inf")
+        it_count = 0
 
         def objective(x):
-            nonlocal current_cond
+            nonlocal current_cond, current_obj
             q_total, dq_total, ddq_total = _get_trajectory(x)
-            cond = BaseTrajectory.compute_condition_number(
-                self.time_array, self.kinematics_func, q_total, dq_total, ddq_total
+            obj_val, cond = BaseTrajectory.compute_objective_with_cond(
+                self.time_array,
+                self.kinematics_func,
+                q_total,
+                dq_total,
+                ddq_total,
+                objective_type=self.objective_type,
             )
             current_cond = cond
+            current_obj = obj_val
 
             if use_q_limits:
                 if self.q_min is not None:
                     lo_viol = np.maximum(0.0, self.q_min - q_total)
-                    cond += penalty_weight * np.sum(lo_viol**2)
+                    obj_val += penalty_weight * np.sum(lo_viol**2)
                 if self.q_max is not None:
                     hi_viol = np.maximum(0.0, q_total - self.q_max)
-                    cond += penalty_weight * np.sum(hi_viol**2)
+                    obj_val += penalty_weight * np.sum(hi_viol**2)
 
-            return cond
-
-        if use_q_limits:
-            print(f"Joint position limits (penalty, weight={penalty_weight}):")
-            if self.q_min is not None:
-                print(f"  q_min = {self.q_min}")
-            if self.q_max is not None:
-                print(f"  q_max = {self.q_max}")
+            return obj_val
 
         start_time = time.time()
 
@@ -250,16 +267,16 @@ class ExcitedTrajectory(BaseTrajectory):
             it_count += 1
             elapsed = time.time() - start_time
             eta = elapsed / it_count * (max_iter - it_count) if it_count < max_iter else 0
-            print(
-                f"Iteration {it_count}/{max_iter}: Cond = {current_cond:.4f} | "
-                f"{elapsed:.1f}s elapsed, ~{eta:.0f}s remaining"
-            )
-
-        bounds = []
-        for j in range(self.num_joints):
-            B = self.coeff_bounds[j]
-            bounds.extend([(-B, B)] * self.num_harmonics)
-        bounds = bounds * 2  # a coefficients + b coefficients
+            if use_d_optimal:
+                print(
+                    f"  {restart_label}iter {it_count}/{max_iter}: D-opt = {current_obj:.4f}, "
+                    f"Cond = {current_cond:.4f} | {elapsed:.1f}s, ~{eta:.0f}s left"
+                )
+            else:
+                print(
+                    f"  {restart_label}iter {it_count}/{max_iter}: "
+                    f"Cond = {current_cond:.4f} | {elapsed:.1f}s, ~{eta:.0f}s left"
+                )
 
         res = minimize(
             objective,
@@ -267,16 +284,87 @@ class ExcitedTrajectory(BaseTrajectory):
             method="L-BFGS-B",
             bounds=bounds,
             callback=callback,
-            options={"maxiter": max_iter, "disp": True},
+            options={"maxiter": max_iter},
         )
 
-        x_opt = res.x
+        wall_time = time.time() - start_time
+        return res.x, current_cond, current_obj, wall_time
+
+    def _optimize(self):
+        print("Starting ExcitedTrajectory Optimization...")
+        print(f"Objective: {self.objective_type}, restarts: {self.n_restarts}")
+
+        if self._main_cache is None:
+            self._main_cache = self.main_trajectory.generate()
+
+        q_main, dq_main, ddq_main = self._main_cache
+
+        use_q_limits = self.q_min is not None or self.q_max is not None
+        use_d_optimal = self.objective_type == "d_optimal"
+
+        if use_q_limits:
+            print(f"Joint position limits (penalty):")
+            if self.q_min is not None:
+                print(f"  q_min = {self.q_min}")
+            if self.q_max is not None:
+                print(f"  q_max = {self.q_max}")
+
+        bounds = []
+        for j in range(self.num_joints):
+            B = self.coeff_bounds[j]
+            bounds.extend([(-B, B)] * self.num_harmonics)
+        bounds = bounds * 2
+
+        rng = np.random.default_rng(self.seed)
+
+        best_x = None
+        best_cond = float("inf")
+        best_idx = 0
+        no_improve_count = 0
+        t0 = time.time()
+
+        for i in range(self.n_restarts):
+            if i == 0:
+                x0 = np.concatenate([self.a.flatten(), self.b.flatten()])
+            else:
+                x0 = self._generate_random_x0(rng)
+
+            label = f"[{i + 1}/{self.n_restarts}] " if self.n_restarts > 1 else ""
+            x_opt, cond, fun, wall = self._run_single_optimization(
+                x0, q_main, dq_main, ddq_main, bounds, restart_label=label
+            )
+
+            improved = cond < best_cond
+            marker = " *" if improved else ""
+            if use_d_optimal:
+                print(
+                    f"  restart {i + 1}/{self.n_restarts}: Cond = {cond:.4f}, D-opt = {fun:.4f} ({wall:.1f}s){marker}"
+                )
+            else:
+                print(f"  restart {i + 1}/{self.n_restarts}: Cond = {cond:.4f} ({wall:.1f}s){marker}")
+
+            if improved:
+                best_cond = cond
+                best_x = x_opt.copy()
+                best_idx = i
+                no_improve_count = 0
+            else:
+                no_improve_count += 1
+
+            if self.n_restarts > 1 and no_improve_count >= self.early_stop_patience:
+                print(
+                    f"  Early stop: no improvement for {self.early_stop_patience} restarts "
+                    f"(best Cond = {best_cond:.4f})"
+                )
+                break
+
         split = self.num_joints * self.num_harmonics
-        self.a = x_opt[:split].reshape(self.num_joints, self.num_harmonics)
-        self.b = x_opt[split:].reshape(self.num_joints, self.num_harmonics)
+        self.a = best_x[:split].reshape(self.num_joints, self.num_harmonics)
+        self.b = best_x[split:].reshape(self.num_joints, self.num_harmonics)
 
         self._is_optimized = True
-        print(f"Optimization Finished. Final Condition Number: {current_cond:.4f}")
+        total_time = time.time() - t0
+        print(f"Optimization Finished. Best Cond = {best_cond:.4f} (restart {best_idx + 1}, {total_time:.1f}s total)")
 
     def _generate(self, *args, **kwargs):
         """
