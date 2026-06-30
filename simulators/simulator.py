@@ -136,15 +136,14 @@ class Simulator:
 
         self.sensors = Sensors(self.m, self.d, self.fps)
 
-        (
-            self.poses,
-            self.id_ll,
-            self.pose_ll_llj,
-            self.uscrews_lj,
-            self.simats_lj_l,
-            self.hposes_lj_kj,
-            self.inverse,
-        ) = setup_robot_dynamics_parameters(self.m, self.d)
+        _params = setup_robot_dynamics_parameters(self.m, self.d)
+        self.poses = _params.poses
+        self.id_ll = _params.id_ll
+        self.pose_ll_llj = _params.pose_ll_llj
+        self.uscrews_lj = _params.uscrews_lj
+        self.simats_lj_l = _params.simats_lj_l
+        self.hposes_lj_kj = _params.hposes_lj_kj
+        self.inverse = _params.inverse_dynamics
 
         self.pose_obj_obji = self.poses.get_b_biof("target/object")
         self.pose_x_obj = self.poses.get_x_("body", "target/object")

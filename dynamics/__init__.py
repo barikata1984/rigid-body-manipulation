@@ -9,8 +9,10 @@ from .dynamics import (
     coordinate_transfer_simat,
     get_linvel,
     get_linacc,
+    RobotDynamicsParams,
     setup_robot_dynamics_parameters,
     calculate_frame_dynamics,
+    make_kinematics_func,
 )
 
 __all__ = [
@@ -24,6 +26,8 @@ __all__ = [
     "coordinate_transfer_simat",
     "get_linvel",
     "get_linacc",
+    "RobotDynamicsParams",
     "setup_robot_dynamics_parameters",
     "calculate_frame_dynamics",
+    "make_kinematics_func",
 ]

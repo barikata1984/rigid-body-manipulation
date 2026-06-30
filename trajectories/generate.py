@@ -59,7 +59,7 @@ def main():
             from dm_control import mjcf
             from mujoco._structs import MjData, MjModel
 
-            from dynamics import calculate_frame_dynamics, setup_robot_dynamics_parameters
+            from dynamics import make_kinematics_func, setup_robot_dynamics_parameters
             from simulators.setup import spawn_target_object
 
             # Load manipulator and object directly
@@ -85,19 +85,9 @@ def main():
             mujoco.mj_forward(m, d)
 
             # Setup dynamics parameters
-            poses, id_ll, pose_ll_llj, _, _, _, inverse_dynamics_func = setup_robot_dynamics_parameters(
-                m, d, ee_body_name=config.ee_body_name
-            )
-
-            pose_x_ll = poses.x_b[id_ll]
-            pose_x_sen = poses.get_x_("site", "target/ft_sensor")
-
-            def kinematics_func(q, dq, ddq):
-                act_traj = np.stack([q, dq, ddq])
-                _, _, regressor = calculate_frame_dynamics(
-                    act_traj, inverse_dynamics_func, id_ll, pose_x_ll, pose_ll_llj, pose_x_sen
-                )
-                return regressor
+            params = setup_robot_dynamics_parameters(m, d, ee_body_name=config.ee_body_name)
+            pose_x_sen = params.poses.get_x_("site", "target/ft_sensor")
+            kinematics_func = make_kinematics_func(params, pose_x_sen)
 
         if kinematics_func is not None:
             kwargs["kinematics_func"] = kinematics_func

@@ -1,14 +1,13 @@
 import os
 import sys
 
-import numpy as np
 from omegaconf import OmegaConf
 
 # Add project root
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from simulators.setup import generate_model_data
-from dynamics import calculate_frame_dynamics, setup_robot_dynamics_parameters
+from dynamics import make_kinematics_func, setup_robot_dynamics_parameters
 from simulators import SimulatorConfig
 from trajectories.excitation import ExcitationTrajectory, ExcitationTrajectoryConfig
 
@@ -42,27 +41,11 @@ def main():
 
     # 3. Setup Dynamics Parameters
     print("Setting up dynamics parameters...")
-    (poses, id_ll, pose_ll_llj, uscrews_lj, simats_lj_l, hposes_lj_kj, inverse_dynamics_func) = (
-        setup_robot_dynamics_parameters(m, d)
-    )
+    params = setup_robot_dynamics_parameters(m, d)
 
     # 4. Prepare Kinematics Closure
-    pose_x_ll = poses.x_b[id_ll]
-    pose_x_sen = poses.get_x_("site", "target/ft_sensor")  # main.py uses "target/ft_sensor" or just "ft_sensor"?
-    # simulate.py line 51: self.poses.get_x_("site", "target/ft_sensor")
-    # Let's hope the name matches.
-
-    def kinematics_func(q, dq, ddq):
-        # Stack inputs to match calculate_frame_dynamics expectation
-        # It expects shape (3, dof)
-        act_traj = np.stack([q, dq, ddq])
-
-        # Call dynamics helper
-        # Note: calculate_frame_dynamics returns (twist_sen, dtwist_sen, regressor)
-        _, _, regressor = calculate_frame_dynamics(
-            act_traj, inverse_dynamics_func, id_ll, pose_x_ll, pose_ll_llj, pose_x_sen
-        )
-        return regressor
+    pose_x_sen = params.poses.get_x_("site", "target/ft_sensor")
+    kinematics_func = make_kinematics_func(params, pose_x_sen)
 
     # 5. Instantiate Excitation Trajectory
     dof = m.nu

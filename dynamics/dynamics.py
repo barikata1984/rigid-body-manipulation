@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import partial
+from typing import Any, NamedTuple
 
 import numpy as np
 from liegroups.numpy import SE3, SO3
@@ -11,6 +12,16 @@ from numpy.typing import NDArray
 from transformations import Poses, homogenize
 from utilities import get_element_id
 
+
+
+class RobotDynamicsParams(NamedTuple):
+    poses: Any  # Poses object
+    id_ll: int
+    pose_ll_llj: Any  # SE3
+    uscrews_lj: np.ndarray
+    simats_lj_l: np.ndarray
+    hposes_lj_kj: list
+    inverse_dynamics: Any  # partial function
 
 @dataclass
 class StateSpaceConfig:
@@ -316,7 +327,7 @@ def setup_robot_dynamics_parameters(
         twist_0=np.zeros(6),
         dtwist_0=gacc_x,
     )
-    return poses, id_ll, pose_ll_llj, uscrews_lj, simats_lj_l, hposes_lj_kj, inverse_dynamics
+    return RobotDynamicsParams(poses, id_ll, pose_ll_llj, uscrews_lj, simats_lj_l, hposes_lj_kj, inverse_dynamics)
 
 
 def calculate_frame_dynamics(
@@ -337,3 +348,19 @@ def calculate_frame_dynamics(
 
     regressor = get_regressor_matrix(twist_sen, dtwist_sen)
     return twist_sen, dtwist_sen, regressor
+
+
+def make_kinematics_func(params: RobotDynamicsParams, pose_x_sen: Any):
+    def kinematics_func(q, dq, ddq):
+        act_traj = np.stack([q, dq, ddq])
+        _, _, regressor = calculate_frame_dynamics(
+            act_traj,
+            params.inverse_dynamics,
+            params.id_ll,
+            params.poses.x_b[params.id_ll],
+            params.pose_ll_llj,
+            pose_x_sen,
+        )
+        return regressor
+
+    return kinematics_func
