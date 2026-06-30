@@ -2,17 +2,13 @@
 
 Test project to get familiar with mujoco
 
-## Requirements installation
+## Setup
 
 ```sh
-pip install -r requirements.txt
+pixi install
 ```
 
-In addition to the above, you may need to run the following to avoid [this error which would occur when creating cv2 videowriter](https://stackoverflow.com/questions/72540359/glibcxx-3-4-30-not-found-for-librosa-in-conda-virtual-environment-after-tryin)
-
-```sh
-conda install -c conda-forge gcc=12.1.0
-```
+[direnv](https://direnv.net/) を使っている場合, ディレクトリに入ると自動で環境が有効化される. 初回のみ `direnv allow` が必要.
 
 Just memo:
 
@@ -37,7 +33,7 @@ You can generate trajectories (Spline, Fourier, Excited) using the `generate-tra
 ### Basic Usage
 
 ```sh
-uv run generate-trajectory spline --start-pos 1.0 1.0 1.0 0.0 0.0 0.0 --end-pos 0.2 1.4 0.6 3.14 0.0 25.13
+pixi run generate-trajectory spline --start-pos 1.0 1.0 1.0 0.0 0.0 0.0 --end-pos 0.2 1.4 0.6 3.14 0.0 25.13
 ```
 
 ### Using Configuration File
@@ -45,13 +41,13 @@ uv run generate-trajectory spline --start-pos 1.0 1.0 1.0 0.0 0.0 0.0 --end-pos 
 Specify the trajectory type as a subcommand, then use `--config` to load a YAML configuration file:
 
 ```sh
-uv run generate-trajectory spline --config configurations/trajectory_generation/spline_6dof.yaml
+pixi run generate-trajectory spline --config configurations/trajectory_generation/spline_6dof.yaml
 ```
 
 CLI arguments override values from the config file:
 
 ```sh
-uv run generate-trajectory spline --config configurations/trajectory_generation/spline_6dof.yaml --duration 10.0
+pixi run generate-trajectory spline --config configurations/trajectory_generation/spline_6dof.yaml --duration 10.0
 ```
 
 Supported subcommands: `spline`, `fourier`, `excited`.
