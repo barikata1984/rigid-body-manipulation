@@ -51,10 +51,14 @@ class ExcitedTrajectory(BaseTrajectory):
             raise ValueError("ExcitedTrajectoryConfig.main_trajectory must not be None")
         if isinstance(main_traj_cfg, dict):
             target_class_name = main_traj_cfg.get("target_class", "SplineTrajectory")
-            if "Spline" in target_class_name:
-                main_traj_cfg = OmegaConf.to_object(OmegaConf.merge(SplineTrajectoryConfig(), main_traj_cfg))
-            else:
-                main_traj_cfg = OmegaConf.to_object(OmegaConf.merge(FourierTrajectoryConfig(), main_traj_cfg))
+            config_registry = {
+                "SplineTrajectory": SplineTrajectoryConfig,
+                "FourierTrajectory": FourierTrajectoryConfig,
+            }
+            config_cls = config_registry.get(target_class_name)
+            if config_cls is None:
+                raise ValueError(f"Unknown main_trajectory target_class: {target_class_name}")
+            main_traj_cfg = OmegaConf.to_object(OmegaConf.merge(config_cls(), main_traj_cfg))
 
         self.main_trajectory = instantiate(main_traj_cfg, *args, **kwargs)
 
