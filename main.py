@@ -99,7 +99,7 @@ def main():
     cfg, m, d, gt, target_trajectory = resolve_config()
     simulation, result = run_simulation(cfg, m, d, target_trajectory)
     gt_iparams, ls_iparams, tls_iparams = identify_inertial_params(result, gt)
-    simulation.recorder.finish(result["frames"], result["regressors"], gt_iparams, ls_iparams, tls_iparams)
+    simulation.recorder.finish(result["frames"], gt_iparams, ls_iparams, tls_iparams)
 
 
 if __name__ == "__main__":

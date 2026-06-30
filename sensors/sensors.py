@@ -23,6 +23,8 @@ class Sensors:
         self.torque_stddev = 0.1 * np.ones(3)  # [Nm]
         self.jointvar_noise_scaler = np.sqrt(2) * fps
         self.rng = np.random.default_rng()
+        self._force_idx = get_sensor_measurement_idx(m, name="force")
+        self._torque_idx = get_sensor_measurement_idx(m, name="torque")
 
     def _get_noise(self, stddev) -> np.ndarray:
         return self.rng.normal(
@@ -55,18 +57,16 @@ class Sensors:
         return qpos, qvel, qacc
 
     def _get_force(self, perturbed: bool) -> np.ndarray:
-        idx = get_sensor_measurement_idx(self.m, name="force")
         if perturbed:
-            return self._sensordata[idx] + self._get_noise(self.force_stddev)
+            return self._sensordata[self._force_idx] + self._get_noise(self.force_stddev)
         else:
-            return self._sensordata[idx]
+            return self._sensordata[self._force_idx]
 
     def _get_torque(self, perturbed: bool) -> np.ndarray:
-        idx = get_sensor_measurement_idx(self.m, name="torque")
         if perturbed:
-            return self._sensordata[idx] + self._get_noise(self.torque_stddev)
+            return self._sensordata[self._torque_idx] + self._get_noise(self.torque_stddev)
         else:
-            return self._sensordata[idx]
+            return self._sensordata[self._torque_idx]
 
     def _get_wrench(self, perturbed) -> np.ndarray:
         force = self._get_force(perturbed=perturbed)

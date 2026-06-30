@@ -5,7 +5,7 @@ from functools import partial
 import numpy as np
 from liegroups.numpy import SE3, SO3
 from mujoco._functions import mjd_transitionFD
-from mujoco._structs import MjData, MjModel, MjOption
+from mujoco._structs import MjData, MjModel
 from numpy.typing import NDArray
 
 from transformations import Poses, homogenize
@@ -92,9 +92,7 @@ def transfer_simat(
         simat = np.expand_dims(simat, 0)
 
     if not len(pose) == len(simat):
-        raise ValueError(
-            "The numbers of spatial inertia tensors and SE3 instances do not match."
-        )
+        raise ValueError("The numbers of spatial inertia tensors and SE3 instances do not match.")
 
     adjoint = [p.inv().adjoint() for p in pose]  #
     # Ad is assumed to be described
@@ -309,7 +307,7 @@ def setup_robot_dynamics_parameters(
         hpose_kj_lj = hpose_kj_k.dot(hpose_k_l.dot(hpose_l_lj))
         hposes_lj_kj.append(hpose_kj_lj.inv())
 
-    gacc_x = -1 * np.array([*MjOption().gravity, 0, 0, 0])
+    gacc_x = -1 * np.array([*m.opt.gravity, 0, 0, 0])
     inverse_dynamics = partial(
         inverse,
         hposes_body_parent=hposes_lj_kj,

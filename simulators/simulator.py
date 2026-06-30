@@ -4,7 +4,7 @@ import matplotlib as mpl
 import numpy as np
 from matplotlib import pyplot as plt
 from mujoco._functions import mj_differentiatePos, mj_step
-from mujoco._structs import MjData, MjModel, MjOption
+from mujoco._structs import MjData, MjModel
 from omegaconf import MISSING
 from tqdm import tqdm
 
@@ -126,7 +126,7 @@ class Simulator:
         if self.target_trajectory is None:
             raise ValueError("target_trajectory is required but was not provided to Simulator")
 
-        self.timestep = MjOption().timestep  # if cfg.timestep <= 0 else cfg.timestep
+        self.timestep = m.opt.timestep
         self.n_steps = int(self.target_trajectory.duration / self.timestep)
         self.fps = self.target_trajectory.fps
         self.diffpos_dt = cfg.diffpos_dt
@@ -169,7 +169,6 @@ class Simulator:
 
         for step in tqdm(range(self.n_steps), desc="Progress"):
             act_traj = np.stack(self.sensors.get("jointvars", perturbed=True))  # type: ignore
-            _, _, twists_lj_l, dtwists_lj_l = self.inverse(act_traj)
 
             if self.data.frame_count <= self.d.time * self.fps:
                 _tgt_traj = self.target_trajectory.frames[self.data.frame_count]

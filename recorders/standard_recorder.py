@@ -149,7 +149,7 @@ class StandardRecorder:
         with open(self.dataset_dir / f"transforms{suffix}.json", "w") as f:
             json.dump(split_transform, f, indent=2)
 
-    def finish(self, frames, regressors, gt_iparams, ls_iparams, tls_iparams):
+    def finish(self, frames, gt_iparams, ls_iparams, tls_iparams):
         self.videowriter.release()
 
         train_frames, valid_frames, test_frames = self._split(frames)
