@@ -40,6 +40,8 @@ class ExcitedTrajectoryConfig(WindowedFourierTrajectoryConfig):
 
     # Objective function: "condition_number" or "d_optimal"
     objective_type: str = "condition_number"
+    # Optimizer method: "L-BFGS-B" or "SLSQP"
+    optimizer_method: str = "L-BFGS-B"
 
     # Multi-start optimization (Stage 5)
     n_restarts: int = 1
@@ -114,6 +116,7 @@ class ExcitedTrajectory(BaseTrajectory):
             self.coeff_bounds = manual_bounds.tolist()
         self.kinematics_func = kwargs.get("kinematics_func", None)
         self.objective_type = cfg.objective_type
+        self.optimizer_method = cfg.optimizer_method
         self.n_restarts = cfg.n_restarts
         self.seed = cfg.seed
         self.early_stop_patience = cfg.early_stop_patience
@@ -201,10 +204,50 @@ class ExcitedTrajectory(BaseTrajectory):
                 x[nj * nh + k * nj + j] = rng.uniform(-s, s)
         return x
 
+    def _build_q_constraints(self, q_main, dq_main, ddq_main):
+        """Build SLSQP inequality constraints for joint position limits."""
+        constraints = []
+
+        _f_cfg = FourierTrajectoryConfig(
+            duration=self.duration,
+            fps=self.fps,
+            num_joints=self.num_joints,
+            num_harmonics=self.num_harmonics,
+            base_freq=self.base_freq,
+            coefficients={
+                "a": np.zeros((self.num_joints, self.num_harmonics)),
+                "b": np.zeros((self.num_joints, self.num_harmonics)),
+                "q0": np.zeros(self.num_joints),
+            },
+        )
+        _f_traj = FourierTrajectory(_f_cfg)
+
+        def _get_q_total(x):
+            q_total, _, _ = self._build_trajectory(x, q_main, dq_main, ddq_main, _f_traj)
+            return q_total
+
+        if self.q_min is not None:
+            constraints.append(
+                {
+                    "type": "ineq",
+                    "fun": lambda x: np.min(_get_q_total(x) - self.q_min),
+                }
+            )
+        if self.q_max is not None:
+            constraints.append(
+                {
+                    "type": "ineq",
+                    "fun": lambda x: np.min(self.q_max - _get_q_total(x)),
+                }
+            )
+
+        return constraints
+
     def _run_single_optimization(self, x0, q_main, dq_main, ddq_main, bounds, restart_label=""):
         max_iter = self.max_iter
         use_q_limits = self.q_min is not None or self.q_max is not None
         use_d_optimal = self.objective_type == "d_optimal"
+        use_slsqp = self.optimizer_method == "SLSQP"
         penalty_weight = 1e5
 
         _f_cfg = FourierTrajectoryConfig(
@@ -250,7 +293,8 @@ class ExcitedTrajectory(BaseTrajectory):
             current_cond = cond
             current_obj = obj_val
 
-            if use_q_limits:
+            # L-BFGS-B: use penalty for q_limits (no constraint support)
+            if not use_slsqp and use_q_limits:
                 if self.q_min is not None:
                     lo_viol = np.maximum(0.0, self.q_min - q_total)
                     obj_val += penalty_weight * np.sum(lo_viol**2)
@@ -278,21 +322,27 @@ class ExcitedTrajectory(BaseTrajectory):
                     f"Cond = {current_cond:.4f} | {elapsed:.1f}s, ~{eta:.0f}s left"
                 )
 
-        res = minimize(
-            objective,
-            x0,
-            method="L-BFGS-B",
-            bounds=bounds,
-            callback=callback,
-            options={"maxiter": max_iter},
-        )
+        minimize_kwargs = {
+            "fun": objective,
+            "x0": x0,
+            "method": self.optimizer_method,
+            "bounds": bounds,
+            "callback": callback,
+            "options": {"maxiter": max_iter},
+        }
+
+        # SLSQP: use proper inequality constraints instead of penalty
+        if use_slsqp and use_q_limits:
+            minimize_kwargs["constraints"] = self._build_q_constraints(q_main, dq_main, ddq_main)
+
+        res = minimize(**minimize_kwargs)
 
         wall_time = time.time() - start_time
         return res.x, current_cond, current_obj, wall_time
 
     def _optimize(self):
         print("Starting ExcitedTrajectory Optimization...")
-        print(f"Objective: {self.objective_type}, restarts: {self.n_restarts}")
+        print(f"Objective: {self.objective_type}, method: {self.optimizer_method}, restarts: {self.n_restarts}")
 
         if self._main_cache is None:
             self._main_cache = self.main_trajectory.generate()

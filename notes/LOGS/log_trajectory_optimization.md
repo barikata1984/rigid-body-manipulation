@@ -79,3 +79,21 @@ Y = W^T W の固有値から直接計算するため, リグレッサをスタ�
 - 条件数最小化の方が同定精度 (TLS L2) が良い.
 - D-optimal は L-BFGS-B との相性で各リスタートの収束が浅い (1-2 反復で停止).
 - D-optimal の収束改善には, リスタート数・反復数の増加, または SLSQP への移行が有効と考えられる.
+
+### ソルバー選択の追加と SLSQP + D-optimal 検証
+
+`optimizer_method` を config に追加. SLSQP 使用時は q_min/q_max をペナルティではなく不等式制約として渡す.
+
+比較結果 (max_iter=5, n_restarts=3):
+
+| ソルバー | 目的関数 | Best Cond | L2 (TLS) | 時間 |
+|---|---|---|---|---|
+| L-BFGS-B | condition_number | 3199 | 0.173 | 221s |
+| L-BFGS-B | d_optimal | 8856 | 0.189 | 41s |
+| SLSQP | d_optimal | 3410 | 0.174 | 98s |
+
+所見:
+- SLSQP + D-optimal は 5 反復/リスタート完走し, Cond = 3410, L2 = 0.174 と条件数最小化とほぼ同等の性能.
+- L-BFGS-B + D-optimal (Cond = 8856) との差は 2.6 倍. D-optimal の収束不足はソルバーの問題であり, 目的関数自体の劣等ではない.
+- SLSQP は L-BFGS-B より 1 反復あたりが速い (6s vs 12s). 制約を不等式制約として直接扱える利点もある.
+- 追従性能は 3 パターンとも良好で差異なし.
