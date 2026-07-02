@@ -97,3 +97,25 @@ Y = W^T W の固有値から直接計算するため, リグレッサをスタ�
 - L-BFGS-B + D-optimal (Cond = 8856) との差は 2.6 倍. D-optimal の収束不足はソルバーの問題であり, 目的関数自体の劣等ではない.
 - SLSQP は L-BFGS-B より 1 反復あたりが速い (6s vs 12s). 制約を不等式制約として直接扱える利点もある.
 - 追従性能は 3 パターンとも良好で差異なし.
+
+## 2026-07-02: バグ修正後の検証実行
+
+### 背景
+
+コードレビュー (`log_bugfix.md` 2026-07-02 エントリ参照) で発見されたバグをすべて修正した後, 軌道生成とシミュレーションを実行して動作確認した.
+
+### 実行内容
+
+`pixi run generate-trajectory excited --config configurations/trajectory_generation/excited_6dof.yaml` で軌道 JSON を生成し (条件数 = 3217.9, 3 反復で収束), `pixi run python main.py --object xml_models/targets/hammer --target-trajectory <json>` でシミュレーションを実行した.
+
+### 結果
+
+- クラッシュなし. LQR 追従は発散せず (`tracking_qpos.png` で確認).
+- 同定精度 L2 (TLS) = 0.109. 修正前の実験値 0.173〜0.189 から改善.
+
+### 発見した新たな問題
+
+生成された軌道の q4(pitch) を数値チェックしたところ, 300 フレーム中 263 フレーム (88%) が除外ゾーン `|q4| < singularity_margin (0.15)` 内に留まっていた.
+原因は `dq_max`/`ddq_max` から解析的に導出される `coeff_bounds` が全関節で約 0.063 rad しかなく, 除外マージン 0.15 rad より小さいこと.
+除外制約の実装自体は正しいが, 現状の速度・加速度上限設定下では実効性が乏しい.
+今回は発散しなかった (境界通過は dq4=0 の通過点を一瞬跨いだのみ) が, 振幅不足は未解決. 詳細は `ISSUES.md` 2026-07-02 エントリを参照.
