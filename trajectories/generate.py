@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -25,6 +26,24 @@ TrajectoryConfig = (
 )
 
 
+def _explicitly_set_cli_keys(cli_config) -> set[str]:
+    """Return field names whose CLI flag appears in sys.argv.
+
+    Uses tyro's default kebab-case flag naming (``max_iter`` -> ``--max-iter``),
+    treating both the positive flag and the ``--no-`` boolean negation as
+    explicit. Does not handle nested subcommand prefixes or custom aliases;
+    sufficient for the flat TrajectoryConfig dataclasses here.
+    """
+    argv_tokens = set(sys.argv[1:])
+    explicit = set()
+    for key in vars(cli_config):
+        flag = f"--{key.replace('_', '-')}"
+        neg_flag = f"--no-{key.replace('_', '-')}"
+        if flag in argv_tokens or neg_flag in argv_tokens:
+            explicit.add(key)
+    return explicit
+
+
 def main():
     # Parse CLI arguments using tyro
     cli_config = tyro.cli(TrajectoryConfig)
@@ -39,14 +58,10 @@ def main():
         # Create base config of the same type
         base_config = type(cli_config)()
 
-        # Build CLI overrides: only include fields that differ from the default,
-        # so that YAML values aren't overwritten by unspecified CLI defaults.
-        cli_overrides = {}
-        for key in vars(cli_config):
-            cli_val = getattr(cli_config, key)
-            default_val = getattr(base_config, key, object())
-            if cli_val != default_val:
-                cli_overrides[key] = cli_val
+        # Build CLI overrides from fields explicitly passed on the command line,
+        # so that an explicit CLI value always wins even if it equals the default.
+        explicit_keys = _explicitly_set_cli_keys(cli_config)
+        cli_overrides = {key: getattr(cli_config, key) for key in explicit_keys}
 
         # Merge order: base < yaml < cli_overrides
         merged = OmegaConf.merge(base_config, yaml_config, cli_overrides)
