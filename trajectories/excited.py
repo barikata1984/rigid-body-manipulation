@@ -31,6 +31,12 @@ class ExcitedTrajectoryConfig(WindowedFourierTrajectoryConfig):
     q_min: list[float] | None = None
     q_max: list[float] | None = None
 
+    # Per-joint singularity exclusion: require |q_j(t) - center_j| >= margin_j.
+    # None (or margin == 0) disables the constraint for that joint. Unlike q_min/q_max
+    # (an inclusion range), this excludes a neighborhood around center_j.
+    singularity_center: list[float] | None = None
+    singularity_margin: list[float] | None = None
+
     # Fourier coefficient bounds: per-joint list, or omit for default 0.5 all joints
     coeff_bounds: list[float] | None = None
 
@@ -65,6 +71,14 @@ class ExcitedTrajectory(BaseTrajectory):
             kinematics_func (callable): f(q, dq, ddq) -> regressor_matrix. (passed via kwargs)
         """
         super().__init__(cfg, *args, **kwargs)
+
+        if cfg.objective_type not in ("condition_number", "d_optimal"):
+            raise ValueError(
+                f"Invalid objective_type: {cfg.objective_type!r}. Expected 'condition_number' or 'd_optimal'."
+            )
+        if cfg.optimizer_method not in ("L-BFGS-B", "SLSQP"):
+            raise ValueError(f"Invalid optimizer_method: {cfg.optimizer_method!r}. Expected 'L-BFGS-B' or 'SLSQP'.")
+
         # Instantiate main_trajectory using factory.instantiate
         # Handle the case where main_trajectory is a dict (from YAML) instead of a config object
         main_traj_cfg = cfg.main_trajectory
@@ -90,6 +104,19 @@ class ExcitedTrajectory(BaseTrajectory):
             self._main_cache = self.main_trajectory.generate()
             self.num_joints = self._main_cache[0].shape[1]
 
+        for _name in (
+            "coeff_bounds",
+            "q_min",
+            "q_max",
+            "dq_max",
+            "ddq_max",
+            "singularity_center",
+            "singularity_margin",
+        ):
+            _val = getattr(cfg, _name)
+            if _val is not None and len(_val) != self.num_joints:
+                raise ValueError(f"{_name} has {len(_val)} elements but expected {self.num_joints} (num_joints).")
+
         self.num_harmonics = cfg.num_harmonics
         self.base_freq = cfg.base_freq
         self.max_iter = cfg.max_iter
@@ -111,6 +138,13 @@ class ExcitedTrajectory(BaseTrajectory):
             )
             self.coeff_bounds = np.minimum(manual_bounds, analytical_bounds).tolist()
             print(f"Analytical bounds: {analytical_bounds}")
+            for j in range(self.num_joints):
+                if analytical_bounds[j] < 0.5 * manual_bounds[j]:
+                    print(
+                        f"Warning: analytical bound for joint {j} ({analytical_bounds[j]:.4f}) "
+                        f"is much tighter than manual coeff_bounds ({manual_bounds[j]:.4f}); "
+                        "analytical bound will be used."
+                    )
             print(f"Final coeff_bounds (min of manual & analytical): {self.coeff_bounds}")
         else:
             self.coeff_bounds = manual_bounds.tolist()
@@ -121,10 +155,24 @@ class ExcitedTrajectory(BaseTrajectory):
         self.seed = cfg.seed
         self.early_stop_patience = cfg.early_stop_patience
 
+        # Singularity exclusion: |q_j - center_j| >= margin_j for active joints (margin > 0).
+        if cfg.singularity_margin is not None:
+            center_src = cfg.singularity_center if cfg.singularity_center is not None else [0.0] * self.num_joints
+            self.singularity_center = np.array([0.0 if c is None else float(c) for c in center_src], dtype=np.float64)
+            self.singularity_margin = np.array(
+                [0.0 if m is None else float(m) for m in cfg.singularity_margin], dtype=np.float64
+            )
+            self.singularity_active = bool(np.any(self.singularity_margin > 0.0))
+        else:
+            self.singularity_center = None
+            self.singularity_margin = None
+            self.singularity_active = False
+
         self._is_optimized = False
 
-        self.a = np.random.uniform(-0.01, 0.01, (self.num_joints, self.num_harmonics))
-        self.b = np.random.uniform(-0.01, 0.01, (self.num_joints, self.num_harmonics))
+        init_rng = np.random.default_rng(cfg.seed)
+        self.a = init_rng.uniform(-0.01, 0.01, (self.num_joints, self.num_harmonics))
+        self.b = init_rng.uniform(-0.01, 0.01, (self.num_joints, self.num_harmonics))
 
         # Setup Window Trajectory
         win_cfg = WindowTrajectoryConfig(duration=self.duration, fps=self.fps, num_joints=self.num_joints)
@@ -200,31 +248,20 @@ class ExcitedTrajectory(BaseTrajectory):
             for j in range(nj):
                 bound = self.coeff_bounds[j]
                 s = min(scale, bound)
-                x[k * nj + j] = rng.uniform(-s, s)
-                x[nj * nh + k * nj + j] = rng.uniform(-s, s)
+                x[j * nh + k] = rng.uniform(-s, s)
+                x[nj * nh + j * nh + k] = rng.uniform(-s, s)
         return x
 
-    def _build_q_constraints(self, q_main, dq_main, ddq_main):
-        """Build SLSQP inequality constraints for joint position limits."""
+    def _build_q_constraints(self, get_trajectory_fn):
+        """Build SLSQP inequality constraints for joint position limits.
+
+        Reuses the caller's cached trajectory function (get_trajectory_fn(x) -> (q, dq, ddq))
+        to avoid rebuilding a separate FourierTrajectory and recomputing _build_trajectory.
+        """
         constraints = []
 
-        _f_cfg = FourierTrajectoryConfig(
-            duration=self.duration,
-            fps=self.fps,
-            num_joints=self.num_joints,
-            num_harmonics=self.num_harmonics,
-            base_freq=self.base_freq,
-            coefficients={
-                "a": np.zeros((self.num_joints, self.num_harmonics)),
-                "b": np.zeros((self.num_joints, self.num_harmonics)),
-                "q0": np.zeros(self.num_joints),
-            },
-        )
-        _f_traj = FourierTrajectory(_f_cfg)
-
         def _get_q_total(x):
-            q_total, _, _ = self._build_trajectory(x, q_main, dq_main, ddq_main, _f_traj)
-            return q_total
+            return get_trajectory_fn(x)[0]
 
         if self.q_min is not None:
             constraints.append(
@@ -302,6 +339,14 @@ class ExcitedTrajectory(BaseTrajectory):
                     hi_viol = np.maximum(0.0, q_total - self.q_max)
                     obj_val += penalty_weight * np.sum(hi_viol**2)
 
+            # Singularity exclusion is non-convex (|q - center| >= margin is a disjunction),
+            # so it cannot be a single smooth SLSQP inequality; enforce it as a penalty for
+            # both optimizers.
+            if self.singularity_active:
+                dev = np.abs(q_total - self.singularity_center)
+                sing_viol = np.maximum(0.0, self.singularity_margin - dev)
+                obj_val += penalty_weight * np.sum(sing_viol**2)
+
             return obj_val
 
         start_time = time.time()
@@ -333,7 +378,7 @@ class ExcitedTrajectory(BaseTrajectory):
 
         # SLSQP: use proper inequality constraints instead of penalty
         if use_slsqp and use_q_limits:
-            minimize_kwargs["constraints"] = self._build_q_constraints(q_main, dq_main, ddq_main)
+            minimize_kwargs["constraints"] = self._build_q_constraints(_get_trajectory)
 
         res = minimize(**minimize_kwargs)
 
@@ -353,7 +398,7 @@ class ExcitedTrajectory(BaseTrajectory):
         use_d_optimal = self.objective_type == "d_optimal"
 
         if use_q_limits:
-            print(f"Joint position limits (penalty):")
+            print("Joint position limits (penalty):")
             if self.q_min is not None:
                 print(f"  q_min = {self.q_min}")
             if self.q_max is not None:
@@ -384,7 +429,9 @@ class ExcitedTrajectory(BaseTrajectory):
                 x0, q_main, dq_main, ddq_main, bounds, restart_label=label
             )
 
-            improved = cond < best_cond
+            # Always accept the first restart (even if cond is NaN) so best_x is never None;
+            # afterwards, only update on a non-NaN improvement (or to replace a NaN best_cond).
+            improved = best_x is None or (not np.isnan(cond) and (np.isnan(best_cond) or cond < best_cond))
             marker = " *" if improved else ""
             if use_d_optimal:
                 print(

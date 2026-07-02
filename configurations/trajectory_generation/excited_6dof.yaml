@@ -14,12 +14,17 @@ max_iter: 5
 # Per-joint position limits (q4: [-0.25pi, 0.25pi])
 q_min: [-10.0, -10.0, -10.0, -10.0, -0.7853982, -10.0]
 q_max: [10.0, 10.0, 10.0, 10.0, 0.7853982, 10.0]
+# Singularity exclusion: require |q_j - center_j| >= margin_j. q4 (pitch) crossing 0
+# diverges LQR tracking, so exclude a neighborhood of 0 for q4 only (margin 0 = inactive).
+# margin 0.15 rad (~8.6 deg) is a conservative placeholder; 要実測調整 (tune via simulation).
+singularity_center: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+singularity_margin: [0.0, 0.0, 0.0, 0.0, 0.15, 0.0]
 # Per-joint Fourier coefficient bounds (manual): q4 tight (0.13), others wide (0.5)
 coeff_bounds: [0.5, 0.5, 0.5, 0.5, 0.13, 0.5]
 # Velocity/acceleration limits for analytical bound derivation
 # slides: 2.0 m/s, 8.0 m/s^2; hinges: pi rad/s, 8.0 rad/s^2
-dq_max: [0.2, 0.2, 0.2, 3.14159, 3.14159, 3.14159]
-ddq_max: [0.4, 0.4, 0.4, 8.0, 8.0, 8.0]
+dq_max: [2.0, 2.0, 2.0, 3.14159, 3.14159, 3.14159]
+ddq_max: [8.0, 8.0, 8.0, 8.0, 8.0, 8.0]
 
 # Main trajectory: a spline trajectory to be enriched with excitation
 main_trajectory:
