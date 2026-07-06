@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from pathlib import Path
 from shutil import copy
 
@@ -16,6 +17,25 @@ from simulators.setup import generate_model_data, get_element_id
 from utilities import json_to_namespace
 
 OmegaConf.register_new_resolver("pi", pi_converter)
+
+
+def _build_dataset_subdir(target_trajectory) -> str | None:
+    """Build a per-run dataset subdirectory name from trajectory metadata.
+
+    Returns a name like ``excited_cond3428_20260706_183000`` (or ``spline_<ts>``
+    when no condition number is present), or ``None`` when the trajectory JSON
+    carries no ``metadata`` field so the caller can fall back to the legacy layout.
+    """
+    metadata = getattr(target_trajectory, "metadata", None) if target_trajectory else None
+    subcommand = getattr(metadata, "subcommand", None) if metadata is not None else None
+    if subcommand is None:
+        return None
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    cond = getattr(metadata, "condition_number", None)
+    if cond is not None:
+        return f"{subcommand}_cond{int(round(cond))}_{timestamp}"
+    return f"{subcommand}_{timestamp}"
 
 
 def resolve_config():
@@ -44,7 +64,9 @@ def resolve_config():
 
     object_dir = Path(cfg.object)
     if OmegaConf.is_missing(cfg.recorder, "dataset_dir"):
-        dataset_dir = Path.cwd() / "datasets" / object_dir.name
+        base_dir = Path.cwd() / "datasets" / object_dir.name
+        subdir = _build_dataset_subdir(target_trajectory)
+        dataset_dir = base_dir / subdir if subdir is not None else base_dir
         cfg.recorder.dataset_dir = dataset_dir
     else:
         dataset_dir = Path(cfg.recorder.dataset_dir)

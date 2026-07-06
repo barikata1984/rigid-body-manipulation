@@ -34,7 +34,7 @@ class BaseTrajectory(ABC):
         self.time_steps = int(self.duration * self.fps)
         self.time_array = np.linspace(0, self.duration, self.time_steps)
 
-    def write_to_json(self, pos, vel, acc, json_path="spline_trajectory.json"):
+    def write_to_json(self, pos, vel, acc, json_path="spline_trajectory.json", metadata=None):
         """
         Save the trajectory to a JSON file.
         Structure:
@@ -48,7 +48,8 @@ class BaseTrajectory(ABC):
                     "qacc": [float, ...]
                 },
                 ...
-            ]
+            ],
+            "metadata": {...}  # optional, omitted when None
         }
         """
         frames = []
@@ -58,6 +59,8 @@ class BaseTrajectory(ABC):
             frames.append(frame)
 
         data = {"duration": self.duration, "fps": self.fps, "frames": frames}
+        if metadata:
+            data["metadata"] = metadata
 
         if json_path:
             Path(json_path).parent.mkdir(parents=True, exist_ok=True)
@@ -211,18 +214,31 @@ class BaseTrajectory(ABC):
         """To be implemented in each child class"""
         pass
 
+    def _trajectory_metadata(self) -> dict:
+        """Trajectory-type-specific metadata merged into the JSON output.
+
+        Base trajectories contribute nothing; subclasses (e.g. ExcitedTrajectory)
+        override this to record optimization results such as the condition number.
+        """
+        return {}
+
     def generate(self, *args, **kwargs):
         show_plot = kwargs.get("show_plot", False)
         plot_path = kwargs.get("plot_path", None)
         json_path = kwargs.get("json_path", None)
+        metadata = kwargs.get("metadata", None)
 
         if self.time_array[-1] > self.duration + 1e-9:
             self.time_array = self.time_array[:-1]
 
         pos, vel, acc = self._generate(*args, **kwargs)
 
+        traj_metadata = self._trajectory_metadata()
+        if metadata or traj_metadata:
+            metadata = {**(metadata or {}), **traj_metadata}
+
         if json_path is not None:
-            self.write_to_json(pos, vel, acc, json_path)
+            self.write_to_json(pos, vel, acc, json_path, metadata=metadata)
 
         self.plot(pos, vel, acc, show=show_plot, plot_path=plot_path)
 

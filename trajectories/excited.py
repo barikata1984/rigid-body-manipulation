@@ -54,7 +54,25 @@ class ExcitedTrajectoryConfig(WindowedFourierTrajectoryConfig):
     seed: int = 42
     early_stop_patience: int = 5
 
+    # Stop the optimizer as soon as the condition number reaches this target.
+    # None (default) keeps the legacy behavior (run until max_iter / convergence).
+    target_condition_number: float | None = None
+
     target_class: str = "ExcitedTrajectory"
+
+
+class _TargetReached(Exception):
+    """Signals that the target condition number was reached inside a scipy callback.
+
+    scipy's ``minimize`` callback cannot request a stop via its return value, so we
+    raise this from the callback and catch it around the ``minimize`` call, carrying
+    the accepted iterate ``x`` and its condition number.
+    """
+
+    def __init__(self, x: np.ndarray, cond: float):
+        self.x = x
+        self.cond = cond
+        super().__init__(f"Target condition number reached: {cond:.4f}")
 
 
 class ExcitedTrajectory(BaseTrajectory):
@@ -154,6 +172,7 @@ class ExcitedTrajectory(BaseTrajectory):
         self.n_restarts = cfg.n_restarts
         self.seed = cfg.seed
         self.early_stop_patience = cfg.early_stop_patience
+        self.target_condition_number = cfg.target_condition_number
 
         # Singularity exclusion: |q_j - center_j| >= margin_j for active joints (margin > 0).
         if cfg.singularity_margin is not None:
@@ -169,6 +188,8 @@ class ExcitedTrajectory(BaseTrajectory):
             self.singularity_active = False
 
         self._is_optimized = False
+        # Final condition number from the last optimization; None until optimized.
+        self.final_condition_number: float | None = None
 
         init_rng = np.random.default_rng(cfg.seed)
         self.a = init_rng.uniform(-0.01, 0.01, (self.num_joints, self.num_harmonics))
@@ -350,6 +371,7 @@ class ExcitedTrajectory(BaseTrajectory):
             return obj_val
 
         start_time = time.time()
+        target_cond = self.target_condition_number
 
         def callback(xk):
             nonlocal it_count
@@ -367,6 +389,21 @@ class ExcitedTrajectory(BaseTrajectory):
                     f"Cond = {current_cond:.4f} | {elapsed:.1f}s, ~{eta:.0f}s left"
                 )
 
+            if target_cond is not None:
+                # current_cond may reflect a line-search trial point, so evaluate the
+                # true condition number at the accepted iterate xk before stopping.
+                q_t, dq_t, ddq_t = _get_trajectory(xk)
+                _, cond_xk = BaseTrajectory.compute_objective_with_cond(
+                    self.time_array,
+                    self.kinematics_func,
+                    q_t,
+                    dq_t,
+                    ddq_t,
+                    objective_type=self.objective_type,
+                )
+                if not np.isnan(cond_xk) and cond_xk <= target_cond:
+                    raise _TargetReached(np.array(xk, dtype=np.float64), cond_xk)
+
         minimize_kwargs = {
             "fun": objective,
             "x0": x0,
@@ -380,10 +417,16 @@ class ExcitedTrajectory(BaseTrajectory):
         if use_slsqp and use_q_limits:
             minimize_kwargs["constraints"] = self._build_q_constraints(_get_trajectory)
 
-        res = minimize(**minimize_kwargs)
+        try:
+            res = minimize(**minimize_kwargs)
+            x_result = res.x
+        except _TargetReached as e:
+            x_result = e.x
+            current_cond = e.cond
+            print(f"  {restart_label}target condition number reached (Cond = {e.cond:.4f}); stopping optimizer early.")
 
         wall_time = time.time() - start_time
-        return res.x, current_cond, current_obj, wall_time
+        return x_result, current_cond, current_obj, wall_time
 
     def _optimize(self):
         print("Starting ExcitedTrajectory Optimization...")
@@ -448,6 +491,18 @@ class ExcitedTrajectory(BaseTrajectory):
             else:
                 no_improve_count += 1
 
+            if (
+                self.target_condition_number is not None
+                and best_x is not None
+                and not np.isnan(best_cond)
+                and best_cond <= self.target_condition_number
+            ):
+                print(
+                    f"  Target condition number {self.target_condition_number} reached "
+                    f"(best Cond = {best_cond:.4f}); stopping restarts."
+                )
+                break
+
             if self.n_restarts > 1 and no_improve_count >= self.early_stop_patience:
                 print(
                     f"  Early stop: no improvement for {self.early_stop_patience} restarts "
@@ -460,6 +515,7 @@ class ExcitedTrajectory(BaseTrajectory):
         self.b = best_x[split:].reshape(self.num_joints, self.num_harmonics)
 
         self._is_optimized = True
+        self.final_condition_number = float(best_cond) if not np.isnan(best_cond) else None
         total_time = time.time() - t0
         print(f"Optimization Finished. Best Cond = {best_cond:.4f} (restart {best_idx + 1}, {total_time:.1f}s total)")
 
@@ -499,3 +555,9 @@ class ExcitedTrajectory(BaseTrajectory):
         ddq_total = ddq_main + ddq_exc
 
         return q_total, dq_total, ddq_total
+
+    def _trajectory_metadata(self) -> dict:
+        meta: dict = {"objective_type": self.objective_type}
+        if self.final_condition_number is not None:
+            meta["condition_number"] = self.final_condition_number
+        return meta

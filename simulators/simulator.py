@@ -292,8 +292,10 @@ class Simulator:
         for ax in acc_ft_axes:
             ax.hlines(0.0, frame_iter[0], frame_iter[-1], ls="dashed", alpha=0.5)
 
-        qpos_fig.savefig("tracking_qpos.png", dpi=150)
-        acc_ft_fig.savefig("tracking_acc_ft.png", dpi=150)
+        qpos_path = self.recorder.dataset_dir / "tracking_qpos.png"
+        acc_ft_path = self.recorder.dataset_dir / "tracking_acc_ft.png"
+        qpos_fig.savefig(str(qpos_path), dpi=150)
+        acc_ft_fig.savefig(str(acc_ft_path), dpi=150)
         plt.close(qpos_fig)
         plt.close(acc_ft_fig)
-        print("Tracking plots saved to tracking_qpos.png and tracking_acc_ft.png")
+        print(f"Tracking plots saved to {qpos_path} and {acc_ft_path}")

@@ -156,6 +156,7 @@ def main():
         show_plot=config.show_plot,
         plot_path=plot_path,
         json_path=json_path,
+        metadata={"subcommand": subcommand},
     )
 
     if plot_path:
@@ -168,6 +169,7 @@ def main():
         subcommand=subcommand,
         output_dir=str(output_dir),
         config=config,
+        condition_number=getattr(traj, "final_condition_number", None),
     )
 
 
