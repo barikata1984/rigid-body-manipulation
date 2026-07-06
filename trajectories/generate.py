@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -6,6 +7,7 @@ import tyro
 from omegaconf import OmegaConf
 
 from factory import instantiate
+from trajectories.catalog import append_catalog_entry
 from trajectories.excited import ExcitedTrajectoryConfig
 from trajectories.fourier import FourierTrajectoryConfig
 
@@ -24,6 +26,18 @@ TrajectoryConfig = (
     | Annotated[WindowTrajectoryConfig, tyro.conf.subcommand(name="window")]
     | Annotated[WindowedFourierTrajectoryConfig, tyro.conf.subcommand(name="windowed-fourier")]
 )
+
+# Reverse lookup: config type -> CLI subcommand name
+SUBCOMMAND_BY_TYPE = {
+    SplineTrajectoryConfig: "spline",
+    FourierTrajectoryConfig: "fourier",
+    ExcitedTrajectoryConfig: "excited",
+    WindowTrajectoryConfig: "window",
+    WindowedFourierTrajectoryConfig: "windowed-fourier",
+}
+
+# Default root for auto-generated trajectory outputs (git-tracked, shared across machines)
+DEFAULT_OUTPUT_ROOT = Path("configurations/trajectories")
 
 
 def _explicitly_set_cli_keys(cli_config) -> set[str]:
@@ -78,7 +92,6 @@ def main():
         # Check if model paths are specified (not None, not MISSING string "???")
         if config.manipulator and config.manipulator != "???" and config.object and config.object != "???":
             import mujoco
-            import numpy as np
             from dm_control import mjcf
             from mujoco._structs import MjData, MjModel
 
@@ -125,6 +138,19 @@ def main():
     plot_path = str(config.plot_path) if config.plot_path else None
     json_path = str(config.json_path) if config.json_path else None
 
+    subcommand = SUBCOMMAND_BY_TYPE[type(config)]
+    now = datetime.now()
+
+    # If neither output path is set, auto-generate a timestamped output directory.
+    # An explicit CLI/YAML path always wins and is left untouched.
+    if plot_path is None and json_path is None:
+        output_dir = DEFAULT_OUTPUT_ROOT / f"{subcommand}_{now.strftime('%Y%m%d_%H%M%S')}"
+        json_path = str(output_dir / "trajectory.json")
+        plot_path = str(output_dir / "trajectory.png")
+    else:
+        # Record the directory containing whichever path was explicitly set.
+        output_dir = Path(json_path or plot_path).parent
+
     # generate() accepts kwargs which will be passed to plot etc
     traj.generate(
         show_plot=config.show_plot,
@@ -136,6 +162,13 @@ def main():
         print(f"Plot saved to: {plot_path}")
     if json_path:
         print(f"Data saved to: {json_path}")
+
+    append_catalog_entry(
+        timestamp=now.isoformat(timespec="seconds"),
+        subcommand=subcommand,
+        output_dir=str(output_dir),
+        config=config,
+    )
 
 
 if __name__ == "__main__":
