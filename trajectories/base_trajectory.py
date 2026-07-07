@@ -39,6 +39,7 @@ class BaseTrajectory(ABC):
         Save the trajectory to a JSON file.
         Structure:
         {
+            "metadata": {...},  # optional, omitted when None
             "duration": float,
             "fps": float,
             "frames": [
@@ -48,8 +49,7 @@ class BaseTrajectory(ABC):
                     "qacc": [float, ...]
                 },
                 ...
-            ],
-            "metadata": {...}  # optional, omitted when None
+            ]
         }
         """
         frames = []
@@ -58,9 +58,12 @@ class BaseTrajectory(ABC):
             frame = [pos[i].tolist(), vel[i].tolist(), acc[i].tolist()]
             frames.append(frame)
 
-        data = {"duration": self.duration, "fps": self.fps, "frames": frames}
+        data = {}
         if metadata:
             data["metadata"] = metadata
+        data["duration"] = self.duration
+        data["fps"] = self.fps
+        data["frames"] = frames
 
         if json_path:
             Path(json_path).parent.mkdir(parents=True, exist_ok=True)
@@ -70,13 +73,44 @@ class BaseTrajectory(ABC):
         print(f"Trajectory JSON saved to {json_path}")
 
     def plot(self, pos, vel, acc, show: bool = False, plot_path: str | None = None):
-        """Plot the trajectory."""
+        """Plot the trajectory.
 
-        fig, axes = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
+        For the 6-DOF manipulator (joints 0-2 translational, 3-5 rotational),
+        splits into a 3x2 grid: left column = translational (m units), right
+        column = rotational (rad units), rows = position/velocity/acceleration.
+        Otherwise falls back to a single 3x1 column mixing all joints.
+        """
+        num_joints = pos.shape[1]
 
-        self._plot_single_ax(axes[0], pos, "Joint Positions", "Time [s]", "Position [rad]")
-        self._plot_single_ax(axes[1], vel, "Joint Velocities", "Time [s]", "Velocity [rad/s]")
-        self._plot_single_ax(axes[2], acc, "Joint Accelerations", "Time [s]", "Acceleration [rad/s^2]")
+        if num_joints == 6:
+            fig, axes = plt.subplots(3, 2, figsize=(16, 12), sharex=True)
+
+            self._plot_single_ax(axes[0, 0], pos[:, :3], "Translational Positions", "Time [s]", "Position [m]")
+            self._plot_single_ax(axes[1, 0], vel[:, :3], "Translational Velocities", "Time [s]", "Velocity [m/s]")
+            self._plot_single_ax(
+                axes[2, 0], acc[:, :3], "Translational Accelerations", "Time [s]", "Acceleration [m/s^2]"
+            )
+
+            self._plot_single_ax(
+                axes[0, 1], pos[:, 3:], "Rotational Positions", "Time [s]", "Position [rad]", joint_offset=3
+            )
+            self._plot_single_ax(
+                axes[1, 1], vel[:, 3:], "Rotational Velocities", "Time [s]", "Velocity [rad/s]", joint_offset=3
+            )
+            self._plot_single_ax(
+                axes[2, 1],
+                acc[:, 3:],
+                "Rotational Accelerations",
+                "Time [s]",
+                "Acceleration [rad/s^2]",
+                joint_offset=3,
+            )
+        else:
+            fig, axes = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
+
+            self._plot_single_ax(axes[0], pos, "Joint Positions", "Time [s]", "Position [rad]")
+            self._plot_single_ax(axes[1], vel, "Joint Velocities", "Time [s]", "Velocity [rad/s]")
+            self._plot_single_ax(axes[2], acc, "Joint Accelerations", "Time [s]", "Acceleration [rad/s^2]")
 
         plt.tight_layout()
 
@@ -90,15 +124,15 @@ class BaseTrajectory(ABC):
 
         plt.close(fig)
 
-    def _plot_single_ax(self, ax: Axes, data: np.ndarray, title: str, xlabel: str, ylabel: str):
-        # Plot Accelerations
+    def _plot_single_ax(self, ax: Axes, data: np.ndarray, title: str, xlabel: str, ylabel: str, joint_offset: int = 0):
         for j, d in enumerate(data.T):
-            ax.plot(self.time_array, d, label=f"Joint {j + 1}")
+            ax.plot(self.time_array, d, label=f"Joint {j + 1 + joint_offset}")
 
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         ax.set_title(title)
         ax.grid(True)
+        ax.legend()
 
     @staticmethod
     def _build_observation_matrix(

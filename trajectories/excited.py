@@ -44,6 +44,14 @@ class ExcitedTrajectoryConfig(WindowedFourierTrajectoryConfig):
     dq_max: list[float] | None = None
     ddq_max: list[float] | None = None
 
+    # If True (default), tighten the Fourier coefficient box bounds with the
+    # analytical triangle-inequality bounds from dq_max/ddq_max. If False, keep
+    # the manual coeff_bounds as box bounds and instead enforce dq_max/ddq_max as
+    # direct SLSQP inequality constraints on the sampled trajectory (requires
+    # optimizer_method="SLSQP"); this avoids the worst-case conservatism of the
+    # analytical bounds.
+    use_analytical_bounds: bool = True
+
     # Objective function: "condition_number" or "d_optimal"
     objective_type: str = "condition_number"
     # Optimizer method: "L-BFGS-B" or "SLSQP"
@@ -147,12 +155,13 @@ class ExcitedTrajectory(BaseTrajectory):
         else:
             manual_bounds = np.array([float(b) for b in cfg.coeff_bounds])
 
-        dq_max = np.array(cfg.dq_max) if cfg.dq_max is not None else None
-        ddq_max = np.array(cfg.ddq_max) if cfg.ddq_max is not None else None
+        self.dq_max = np.array(cfg.dq_max, dtype=np.float64) if cfg.dq_max is not None else None
+        self.ddq_max = np.array(cfg.ddq_max, dtype=np.float64) if cfg.ddq_max is not None else None
+        self.use_analytical_bounds = cfg.use_analytical_bounds
 
-        if dq_max is not None or ddq_max is not None:
+        if (self.dq_max is not None or self.ddq_max is not None) and self.use_analytical_bounds:
             analytical_bounds = self.compute_fourier_bounds(
-                self.num_joints, cfg.num_harmonics, cfg.base_freq, cfg.duration, dq_max, ddq_max
+                self.num_joints, cfg.num_harmonics, cfg.base_freq, cfg.duration, self.dq_max, self.ddq_max
             )
             self.coeff_bounds = np.minimum(manual_bounds, analytical_bounds).tolist()
             print(f"Analytical bounds: {analytical_bounds}")
@@ -274,36 +283,60 @@ class ExcitedTrajectory(BaseTrajectory):
         return x
 
     def _build_q_constraints(self, get_trajectory_fn):
-        """Build SLSQP inequality constraints for joint position limits.
+        """Build SLSQP inequality constraints for joint kinematic limits.
+
+        Always adds position limits (q_min/q_max). When use_analytical_bounds is
+        False, also adds symmetric velocity/acceleration limits (|dq| <= dq_max,
+        |ddq| <= ddq_max) as direct constraints on the sampled trajectory.
+
+        Position limits use a scalar ``min`` aggregation (non-binding here). The
+        binding velocity/acceleration limits instead return the full per-sample,
+        per-joint margin vector so SLSQP sees a complete Jacobian rather than the
+        subgradient of a single worst element; the scalar-min form leaves SLSQP
+        unable to enforce these caps for the condition-number objective.
 
         Reuses the caller's cached trajectory function (get_trajectory_fn(x) -> (q, dq, ddq))
         to avoid rebuilding a separate FourierTrajectory and recomputing _build_trajectory.
         """
         constraints = []
 
-        def _get_q_total(x):
-            return get_trajectory_fn(x)[0]
-
         if self.q_min is not None:
             constraints.append(
                 {
                     "type": "ineq",
-                    "fun": lambda x: np.min(_get_q_total(x) - self.q_min),
+                    "fun": lambda x: np.min(get_trajectory_fn(x)[0] - self.q_min),
                 }
             )
         if self.q_max is not None:
             constraints.append(
                 {
                     "type": "ineq",
-                    "fun": lambda x: np.min(self.q_max - _get_q_total(x)),
+                    "fun": lambda x: np.min(self.q_max - get_trajectory_fn(x)[0]),
                 }
             )
+
+        if not self.use_analytical_bounds:
+            if self.dq_max is not None:
+                constraints.append(
+                    {
+                        "type": "ineq",
+                        "fun": lambda x: (self.dq_max - np.abs(get_trajectory_fn(x)[1])).ravel(),
+                    }
+                )
+            if self.ddq_max is not None:
+                constraints.append(
+                    {
+                        "type": "ineq",
+                        "fun": lambda x: (self.ddq_max - np.abs(get_trajectory_fn(x)[2])).ravel(),
+                    }
+                )
 
         return constraints
 
     def _run_single_optimization(self, x0, q_main, dq_main, ddq_main, bounds, restart_label=""):
         max_iter = self.max_iter
         use_q_limits = self.q_min is not None or self.q_max is not None
+        use_direct_kin = (not self.use_analytical_bounds) and (self.dq_max is not None or self.ddq_max is not None)
         use_d_optimal = self.objective_type == "d_optimal"
         use_slsqp = self.optimizer_method == "SLSQP"
         penalty_weight = 1e5
@@ -414,7 +447,7 @@ class ExcitedTrajectory(BaseTrajectory):
         }
 
         # SLSQP: use proper inequality constraints instead of penalty
-        if use_slsqp and use_q_limits:
+        if use_slsqp and (use_q_limits or use_direct_kin):
             minimize_kwargs["constraints"] = self._build_q_constraints(_get_trajectory)
 
         try:
@@ -425,8 +458,43 @@ class ExcitedTrajectory(BaseTrajectory):
             current_cond = e.cond
             print(f"  {restart_label}target condition number reached (Cond = {e.cond:.4f}); stopping optimizer early.")
 
+        # For direct dq/ddq constraints, SLSQP may return an infeasible iterate
+        # (line-search / subproblem failure) whose low condition number is an
+        # artifact of over-large amplitudes. Report the peak limit violation so the
+        # restart loop can prefer feasible solutions.
+        kin_violation = self._kin_violation(_get_trajectory(x_result)) if use_direct_kin else 0.0
+
         wall_time = time.time() - start_time
-        return x_result, current_cond, current_obj, wall_time
+        return x_result, current_cond, current_obj, wall_time, kin_violation
+
+    def _kin_violation(self, trajectory) -> float:
+        """Peak dq/ddq limit overshoot for a trajectory (<=0 means feasible)."""
+        _, dq_r, ddq_r = trajectory
+        violation = 0.0
+        if self.dq_max is not None:
+            violation = max(violation, float(np.max(np.abs(dq_r) / self.dq_max)) - 1.0)
+        if self.ddq_max is not None:
+            violation = max(violation, float(np.max(np.abs(ddq_r) / self.ddq_max)) - 1.0)
+        return violation
+
+    @staticmethod
+    def _is_better_candidate(cond, viol, best_cond, best_violation, feas_tol):
+        """Prefer feasible over infeasible; then lower cond (infeasible: smaller viol first).
+
+        With no direct dq/ddq constraints viol is always 0, so this reduces to the
+        plain "lowest non-NaN cond wins" rule.
+        """
+        if np.isnan(cond):
+            return False
+        feasible = viol <= feas_tol
+        best_feasible = best_violation <= feas_tol
+        if feasible != best_feasible:
+            return feasible
+        if feasible:
+            return np.isnan(best_cond) or cond < best_cond
+        return viol < best_violation - 1e-12 or (
+            abs(viol - best_violation) <= 1e-12 and (np.isnan(best_cond) or cond < best_cond)
+        )
 
     def _optimize(self):
         print("Starting ExcitedTrajectory Optimization...")
@@ -455,8 +523,10 @@ class ExcitedTrajectory(BaseTrajectory):
 
         rng = np.random.default_rng(self.seed)
 
+        feas_tol = 1e-3
         best_x = None
         best_cond = float("inf")
+        best_violation = float("inf")
         best_idx = 0
         no_improve_count = 0
         t0 = time.time()
@@ -468,23 +538,25 @@ class ExcitedTrajectory(BaseTrajectory):
                 x0 = self._generate_random_x0(rng)
 
             label = f"[{i + 1}/{self.n_restarts}] " if self.n_restarts > 1 else ""
-            x_opt, cond, fun, wall = self._run_single_optimization(
+            x_opt, cond, fun, wall, viol = self._run_single_optimization(
                 x0, q_main, dq_main, ddq_main, bounds, restart_label=label
             )
 
-            # Always accept the first restart (even if cond is NaN) so best_x is never None;
-            # afterwards, only update on a non-NaN improvement (or to replace a NaN best_cond).
-            improved = best_x is None or (not np.isnan(cond) and (np.isnan(best_cond) or cond < best_cond))
+            improved = best_x is None or self._is_better_candidate(cond, viol, best_cond, best_violation, feas_tol)
+
             marker = " *" if improved else ""
+            viol_str = f", viol = {viol:.3f}" if viol > feas_tol else ""
             if use_d_optimal:
                 print(
-                    f"  restart {i + 1}/{self.n_restarts}: Cond = {cond:.4f}, D-opt = {fun:.4f} ({wall:.1f}s){marker}"
+                    f"  restart {i + 1}/{self.n_restarts}: Cond = {cond:.4f}, D-opt = {fun:.4f}"
+                    f"{viol_str} ({wall:.1f}s){marker}"
                 )
             else:
-                print(f"  restart {i + 1}/{self.n_restarts}: Cond = {cond:.4f} ({wall:.1f}s){marker}")
+                print(f"  restart {i + 1}/{self.n_restarts}: Cond = {cond:.4f}{viol_str} ({wall:.1f}s){marker}")
 
             if improved:
                 best_cond = cond
+                best_violation = viol
                 best_x = x_opt.copy()
                 best_idx = i
                 no_improve_count = 0
@@ -518,6 +590,12 @@ class ExcitedTrajectory(BaseTrajectory):
         self.final_condition_number = float(best_cond) if not np.isnan(best_cond) else None
         total_time = time.time() - t0
         print(f"Optimization Finished. Best Cond = {best_cond:.4f} (restart {best_idx + 1}, {total_time:.1f}s total)")
+        if best_violation > feas_tol:
+            print(
+                f"Warning: best solution violates dq/ddq limits by {best_violation:.3f} "
+                "(no feasible restart found); the reported condition number is not achievable "
+                "within the velocity/acceleration envelope."
+            )
 
     def _generate(self, *args, **kwargs):
         """
