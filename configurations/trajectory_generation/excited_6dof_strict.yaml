@@ -1,0 +1,46 @@
+config_class: ExcitedTrajectoryConfig
+duration: 5.0
+fps: 60.0
+num_joints: 6
+# Strict velocity/acceleration envelope best config (Stage B grid search):
+# num_harmonics=1 with base_freq=0.3 minimizes the condition number (~2465).
+# Raising base_freq decorrelates the single-harmonic regressor columns; lowering
+# num_harmonics preserves amplitude budget under the tight dq/ddq caps.
+num_harmonics: 1
+base_freq: 0.3
+
+# MuJoCo model paths for kinematics_func (enables optimization)
+manipulator: xml_models/manipulators/sequential
+object: xml_models/targets/hammer
+ee_body_name: link6
+
+optimizer_method: SLSQP
+n_restarts: 8
+max_iter: 30
+
+# Per-joint position limits (q4: [-0.25pi, 0.25pi])
+q_min: [-10.0, -10.0, -10.0, -10.0, -0.7853982, -10.0]
+q_max: [10.0, 10.0, 10.0, 10.0, 0.7853982, 10.0]
+# Singularity exclusion: require |q_j - center_j| >= margin_j. q4 (pitch) crossing 0
+# diverges LQR tracking, so exclude a neighborhood of 0 for q4 only (margin 0 = inactive).
+singularity_center: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+singularity_margin: [0.0, 0.0, 0.0, 0.0, 0.15, 0.0]
+# Per-joint Fourier coefficient bounds (manual): q4 tight (0.13), others wide (0.5)
+coeff_bounds: [0.5, 0.5, 0.5, 0.5, 0.13, 0.5]
+# Strict envelope: slides 0.5 m/s & 1.0 m/s^2; hinges pi rad/s & 2pi rad/s^2.
+# dq_max here is non-binding (acceleration dominates); enforced via analytical bounds.
+dq_max: [0.5, 0.5, 0.5, 3.14159, 3.14159, 3.14159]
+ddq_max: [1.0, 1.0, 1.0, 6.28318, 6.28318, 6.28318]
+# Default (True): tighten coeff box with analytical triangle-inequality bounds,
+# which guarantees the sampled dq/ddq stay within the envelope.
+use_analytical_bounds: true
+
+# Main trajectory: a spline trajectory to be enriched with excitation
+main_trajectory:
+  target_class: SplineTrajectory
+  module_name: trajectories
+  type: quintic
+  duration: 5.0
+  fps: 60.0
+  start_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  end_pos: [0.0, 0.0, 0.0, 3.141592653589793, 0.0, 25.1327412287]

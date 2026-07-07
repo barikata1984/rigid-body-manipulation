@@ -1,0 +1,40 @@
+config_class: ExcitedTrajectoryConfig
+duration: 5.0
+fps: 60.0
+num_joints: 6
+# No velocity/acceleration envelope: dq_max/ddq_max are omitted so the Fourier
+# coefficient box stays at the manual bounds below. Both num_harmonics and
+# base_freq drive the condition number down (richer, more decorrelated regressor
+# columns). Override them on the CLI to target a specific condition number.
+num_harmonics: 5
+base_freq: 0.5
+
+# MuJoCo model paths for kinematics_func (enables optimization)
+manipulator: xml_models/manipulators/sequential
+object: xml_models/targets/hammer
+ee_body_name: link6
+
+optimizer_method: SLSQP
+n_restarts: 8
+max_iter: 30
+
+# Per-joint position limits (q4: [-0.25pi, 0.25pi])
+q_min: [-10.0, -10.0, -10.0, -10.0, -0.7853982, -10.0]
+q_max: [10.0, 10.0, 10.0, 10.0, 0.7853982, 10.0]
+# Singularity exclusion: require |q_j - center_j| >= margin_j. q4 (pitch) crossing 0
+# diverges LQR tracking, so exclude a neighborhood of 0 for q4 only (margin 0 = inactive).
+singularity_center: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+singularity_margin: [0.0, 0.0, 0.0, 0.0, 0.15, 0.0]
+# Per-joint Fourier coefficient bounds (manual): q4 tight (0.13, singularity), others wide.
+coeff_bounds: [0.5, 0.5, 0.5, 0.5, 0.13, 0.5]
+# dq_max / ddq_max intentionally omitted (no kinematic envelope).
+
+# Main trajectory: a spline trajectory to be enriched with excitation
+main_trajectory:
+  target_class: SplineTrajectory
+  module_name: trajectories
+  type: quintic
+  duration: 5.0
+  fps: 60.0
+  start_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  end_pos: [0.0, 0.0, 0.0, 3.141592653589793, 0.0, 25.1327412287]
