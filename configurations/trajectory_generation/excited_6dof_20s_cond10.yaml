@@ -1,0 +1,43 @@
+config_class: ExcitedTrajectoryConfig
+duration: 20.0
+fps: 60.0
+num_joints: 6
+# Grid-searched (nh in 1-6, base_freq in 0.1-0.5): nh=3, base_freq=0.3 gives the
+# lowest column-normalized condition number (2.64) while staying feasible.
+num_harmonics: 3
+base_freq: 0.3
+
+# MuJoCo model paths for kinematics_func (enables optimization)
+manipulator: xml_models/manipulators/sequential
+object: xml_models/targets/hammer
+ee_body_name: link6
+
+optimizer_method: SLSQP
+objective_type: condition_number
+column_scale: true
+n_restarts: 8
+max_iter: 30
+
+# Real-machine kinematic envelope: translation (j0-2) 1.5 m/s, 7.5 m/s^2;
+# rotation (j3-5) pi rad/s, 2pi rad/s^2.
+dq_max: [1.5, 1.5, 1.5, 3.14159, 3.14159, 3.14159]
+ddq_max: [7.5, 7.5, 7.5, 6.28318, 6.28318, 6.28318]
+
+# Per-joint position limits (q4: [-0.25pi, 0.25pi])
+q_min: [-10.0, -10.0, -10.0, -10.0, -0.7853982, -10.0]
+q_max: [10.0, 10.0, 10.0, 10.0, 0.7853982, 10.0]
+# Singularity exclusion: q4 (pitch) crossing 0 diverges LQR tracking.
+singularity_center: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+singularity_margin: [0.0, 0.0, 0.0, 0.0, 0.1, 0.0]
+# Per-joint Fourier coefficient bounds (manual): q4 tight (0.13, singularity), others wide.
+coeff_bounds: [0.5, 0.5, 0.5, 0.5, 0.13, 0.5]
+
+# Main trajectory: a spline trajectory to be enriched with excitation
+main_trajectory:
+  target_class: SplineTrajectory
+  module_name: trajectories
+  type: quintic
+  duration: 20.0
+  fps: 60.0
+  start_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  end_pos: [0.0, 0.0, 0.0, 3.141592653589793, 0.0, 25.1327412287]

@@ -1,0 +1,51 @@
+config_class: ExcitedTrajectoryConfig
+duration: 20.0
+fps: 60.0
+num_joints: 6
+# Grid-searched: num_harmonics / base_freq drive the (column-normalized) condition
+# number. Overridden on the CLI during the grid search; these are the chosen values.
+num_harmonics: 1
+base_freq: 0.094
+
+# MuJoCo model paths for kinematics_func (enables optimization)
+manipulator: xml_models/manipulators/sequential
+object: xml_models/targets/hammer
+ee_body_name: link6
+
+optimizer_method: SLSQP
+objective_type: condition_number
+n_restarts: 4
+max_iter: 20
+
+# Column-equilibrate the observation matrix (required for a unit-invariant cond).
+column_scale: true
+# Enforce dq_max/ddq_max as direct SLSQP inequality constraints on the total
+# (main + excitation) trajectory, so feasibility is guaranteed rather than
+# approximated by the conservative analytical box bounds.
+use_analytical_bounds: false
+
+# Per-joint position limits (q4: [-0.25pi, 0.25pi])
+q_min: [-10.0, -10.0, -10.0, -10.0, -0.7853982, -10.0]
+q_max: [10.0, 10.0, 10.0, 10.0, 0.7853982, 10.0]
+# Singularity exclusion: require |q_j - center_j| >= margin_j. q4 (pitch) crossing 0
+# diverges LQR tracking, so exclude a neighborhood of 0 for q4 only.
+singularity_center: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+singularity_margin: [0.0, 0.0, 0.0, 0.0, 0.1, 0.0]
+# Per-joint Fourier coefficient box bounds: q4 tight (0.13, singularity), others wide.
+coeff_bounds: [0.5, 0.5, 0.5, 0.5, 0.13, 0.5]
+
+# Real-hardware kinematic envelope: translational 1.5 m/s & 7.5 m/s^2,
+# rotational pi rad/s & 2pi rad/s^2.
+dq_max: [1.5, 1.5, 1.5, 3.14159, 3.14159, 3.14159]
+ddq_max: [7.5, 7.5, 7.5, 6.28318, 6.28318, 6.28318]
+
+# Main trajectory: quintic spline enriched with excitation. duration matches 20s;
+# j5 end_pos = 8pi (4 turns), j3 end_pos = pi.
+main_trajectory:
+  target_class: SplineTrajectory
+  module_name: trajectories
+  type: quintic
+  duration: 20.0
+  fps: 60.0
+  start_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  end_pos: [0.0, 0.0, 0.0, 3.141592653589793, 0.0, 25.1327412287]
