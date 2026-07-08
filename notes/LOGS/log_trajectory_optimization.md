@@ -618,3 +618,51 @@ margin を 0.15→0.1 に下げる対症療法も試したが (`excited_20260707
 ### catalog.jsonl の移動
 
 `trajectories/catalog.jsonl` を `configurations/trajectories/catalog.jsonl` に移動した (`trajectories/catalog.py` の `CATALOG_PATH` を変更). 軌道データ (configurations/trajectories/) と同じ場所に集約する.
+
+## 2026-07-09: q4(pitch) 特異点回避の設計ミスの発見と修正
+
+### 発端
+
+ユーザーからの指摘: ロール・ピッチ・ヨー順の intrinsic Euler 角では, ジンバルロック (特異姿勢) はピッチ = ±π/2 で起きるはずで, 0 ではないのではないか.
+
+### 運動学的検証
+
+`xml_models/manipulators/sequential/manipulator.xml` の手首は link4/5/6 の長さが 0 で 3 軸が 1 点で交差する球面手首 (RPY 構成) である. この構成の角速度ヤコビアンを実際に計算すると `det = cos(pitch)` となる.
+真の運動学的特異姿勢は **pitch=±π/2 (±90°)** で発生する. pitch=0 はむしろ `det=1` で最良条件であり, 特異点ではない.
+RPY intrinsic Euler 角のジンバルロックがピッチ=±90° で起きることは標準的な定義であり, 外部ソース (CH Robotics, Robot Academy 等) でも確認した.
+
+### 誤った設計の特定
+
+`trajectories/excited.py` の `singularity_center`/`singularity_margin` 機構 (`|q_j - center_j| >= margin_j` を要求する除外制約) は, `singularity_center[4]=0` として「pitch=0 近傍」を除外しようとしていた. これは上記の通り運動学的に誤り (pitch=0 は特異点ではない).
+git blame により, この誤った設計は 2026-07-02 の commit `d8852cb` ("fix: correct excitation trajectory singularity avoidance and optimization bugs", barikata1984 + Claude Sonnet 5) で `q_min`/`q_max` 方式から `singularity_center`/`singularity_margin` 方式への置き換えとして導入されたことを確認した.
+
+### 正しい理解と対応
+
+`q_min`/`q_max` (pitch を ±45° に制限) は, 真の特異点 ±90° から十分な安全マージンを確保する設計として, これ自体は当初から正しく機能していた.
+問題は `singularity_center`/`singularity_margin` という別の・冗長な除外制約が, `q_min`/`q_max` とは独立に pitch=0 近傍まで追加で除外しようとしていた点にあった. これが「main_trajectory の start/end で必ず q4=0 を通るのに, margin が 0 近傍を除外しようとする」という構造的矛盾 (2026-07-08 エントリで発見済み) の直接の原因だった.
+
+対応として, `singularity_center` の center 位置を ±π/2 に付け替えるのではなく, この除外制約自体を q4 について無効化した. `excited.py` の `self.singularity_active = bool(np.any(self.singularity_margin > 0.0))` により, margin が全て 0 ならペナルティ自体が無効化される仕組みを利用し, 以下 6 つの YAML で `singularity_margin` の q4 成分 (5 番目の要素) を 0.0 に変更した:
+
+- `configurations/trajectory_generation/excited_6dof.yaml` (margin: 0.15→0.0)
+- `configurations/trajectory_generation/excited_6dof_strict.yaml` (margin: 0.15→0.0)
+- `configurations/trajectory_generation/excited_6dof_unconstrained.yaml` (margin: 0.15→0.0)
+- `configurations/trajectory_generation/excited_6dof_20s_cond100.yaml` (margin: 0.15→0.0)
+- `configurations/trajectory_generation/excited_6dof_20s_cond10.yaml` (margin: 0.1→0.0)
+- `configurations/trajectory_generation/excited_6dof_20s_cond50.yaml` (margin: 0.1→0.0)
+
+`excited.py` 本体のコードは変更していない. `singularity_center`/`singularity_margin` フィールド自体は, 将来の他マニピュレータ構成 (球面手首でない場合など) のためのインフラとして保持する.
+
+### 未解決: coeff_bounds[4]=0.13 にも同様の根拠なき設計が残存
+
+上記の `singularity_margin` 無効化だけでは, 「pitch 方向に大きな励起動作を出せない」という懸念は解決しない. 全 6 YAML で `coeff_bounds` の q4 成分が一律 `0.13` に設定されているが, これも「pitch=0 が特異点」という同じ誤った前提に基づく手動の決め打ち値である.
+`compute_fourier_bounds` を `excited_6dof_strict.yaml` のパラメータ (duration=5.0, num_harmonics=1, base_freq=0.3, dq_max[4]=π, ddq_max[4]=2π) で計算すると, 解析的に安全な上限は約 0.408 rad であり, 手動値 0.13 の 3 倍以上ゆるい. `excited.py` では手動値と解析値の小さい方 (`np.minimum`) が採用されるため, 常に手動の 0.13 が支配的になり解析的バウンドは実質的に無効化されている.
+詳細は `notes/ISSUES.md` 2026-07-09 エントリ参照. 本セッションでは未対応.
+
+### 三角不等式バウンド導出の数学的構造 (技術メモ)
+
+`compute_fourier_bounds` (`trajectories/excited.py:222-267`) が使う「三角不等式」による解析的バウンド導出の構造を整理する:
+
+- 窓付きフーリエ軌道 `q(t) = w(s(t)) * F(t)` を微分すると積の法則で `dq/dt = dw/dt * F(t) + w(t) * dF/dt` となり, `|A+B| <= |A|+|B|` で各項を分離する.
+- 各調波の三角関数合成 `|a_k sin + b_k cos| <= |a_k| + |b_k|` (`|sin|, |cos| <= 1` を利用).
+- 全調波の和を `|sum_k x_k| <= sum_k |x_k|` で抑え, 速度/加速度の予算を調波数で均等配分する.
+- この手法は「全調波が同時に最悪の位相で重なる」worst-case を常に仮定するため数学的には安全 (feasibility を係数ボックスに埋め込める) だが, 実際に達成可能な振幅よりかなり保守的な上界になる. これが既知の「解析的バウンドが保守的すぎる」問題 (`notes/TODO.md` 記載, 2026-07-07 エントリの直接制約方式の検証結果とも整合) の数学的な理由である.

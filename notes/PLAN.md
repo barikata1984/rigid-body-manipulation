@@ -143,6 +143,10 @@ FK でエンドエフェクタ位置を評価し, 変位上限・干渉を制約
 注記 (2026-07-02): `q_min`/`q_max` は範囲内に収める包含制約であり, q4≈0 のような一点近傍を除外する用途には意味論が逆で使えないことが判明した.
 そのため `singularity_center` / `singularity_margin` を関節ごとのパラメータとして再導入し, `q_min`/`q_max` とは別建てのペナルティ機構として実装した (除外領域が非凸のため SLSQP でも不等式制約ではなくペナルティ法を使用).
 
+訂正 (2026-07-09): 上記の前提 (「q4≈0 が特異点」) 自体が誤りだったと判明した. 球面手首の角速度ヤコビアン行列式は `cos(pitch)` であり, 真の特異姿勢は pitch=±π/2 (q4=0 は最良条件).
+`q_min`/`q_max` (pitch を ±45° に制限) は ±π/2 の真の特異点から十分な安全マージンを確保する設計として当初から正しく機能しており, `singularity_center`/`singularity_margin` による q4=0 近傍の追加除外は冗長かつ有害だった (main_trajectory が start/end で必ず q4=0 を通るため, marginの値によらず境界で必ず制約違反する構造的矛盾を生んでいた).
+対応として `singularity_center`/`singularity_margin` の仕組み自体は削除せず, 全 YAML で q4 の `singularity_margin` を 0 にして無効化した (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-09 エントリ, `notes/ISSUES.md`).
+
 ### YAML 設定例
 
 ```yaml

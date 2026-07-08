@@ -18,7 +18,7 @@ q_max: [10.0, 10.0, 10.0, 10.0, 0.7853982, 10.0]
 # diverges LQR tracking, so exclude a neighborhood of 0 for q4 only (margin 0 = inactive).
 # margin 0.15 rad (~8.6 deg) is a conservative placeholder; 要実測調整 (tune via simulation).
 singularity_center: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-singularity_margin: [0.0, 0.0, 0.0, 0.0, 0.15, 0.0]
+singularity_margin: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 # Per-joint Fourier coefficient bounds (manual): q4 tight (0.13), others wide (0.5)
 coeff_bounds: [0.5, 0.5, 0.5, 0.5, 0.13, 0.5]
 # Velocity/acceleration limits for analytical bound derivation

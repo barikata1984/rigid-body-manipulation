@@ -28,7 +28,7 @@ q_max: [10.0, 10.0, 10.0, 10.0, 0.7853982, 10.0]
 # Singularity exclusion: require |q_j - center_j| >= margin_j. q4 (pitch) crossing 0
 # diverges LQR tracking, so exclude a neighborhood of 0 for q4 only (margin 0 = inactive).
 singularity_center: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-singularity_margin: [0.0, 0.0, 0.0, 0.0, 0.15, 0.0]
+singularity_margin: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 # Fourier coefficient bounds: non-q4 joints = strict 0.5 scaled by 0.45 (= 0.225) to
 # raise the column-normalized condition number to ~100; q4 kept at its strict 0.13.
 coeff_bounds: [0.225, 0.225, 0.225, 0.225, 0.13, 0.225]
