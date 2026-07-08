@@ -2,7 +2,7 @@ import dataclasses
 import json
 from pathlib import Path
 
-CATALOG_PATH = Path(__file__).parent / "catalog.jsonl"
+CATALOG_PATH = Path(__file__).parent.parent / "configurations" / "trajectories" / "catalog.jsonl"
 
 
 def append_catalog_entry(

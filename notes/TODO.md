@@ -12,7 +12,9 @@
 - [x] マルチスタート最適化 (Stage 5 完了: n_restarts, seed, early_stop_patience)
 - [ ] Excited 軌道最適化の高速化(現状 ~30 秒/反復, 6DOF)
 - [ ] `ExcitationTrajectory` クラス (`excitation.py`) がどこにもインポートされていないか確認し, 削除または復活させる
-- [ ] singularity_margin と dq_max/ddq_max 由来の coeff_bounds の不整合を解消する (現状 88%(263/300 フレーム)が除外ゾーン内に留まる: coeff_bounds ~0.063 rad vs 必要マージン 0.15 rad)
+- [x] 条件数の列正規化(equilibration)を実装 (2026-07-07: `column_scale` 引数を追加, 既定 True. Van der Sluis/Swevers に基づく標準手法. 単位変換不変性を検証済み)
+- [ ] q4(pitch) の特異点回避が構造的に機能しない問題を解消する (2026-07-08 発見: `start_pos[4]=end_pos[4]=0` により始点・終点で必ず q4=0 になり, margin をいくつに設定しても解消しない. 対応候補: main_trajectory の q4 の start/end を特異点から離す)
+- [ ] 三角不等式の解析的バウンド(`compute_fourier_bounds`)が保守的すぎる問題への対処: dq/ddq を SLSQP の直接非線形制約にする方式を, 正しい初期値戦略(解析的バウンドを満たす解を初期値にする)で再挑戦する (2026-07-08: 過去の失敗はj5の実行不可能な設定が原因だった可能性が高いと判明. 実装方針は notes/LOGS/log_trajectory_optimization.md 参照)
 
 ## Simulation / Identification
 

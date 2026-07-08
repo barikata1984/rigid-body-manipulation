@@ -1,8 +1,8 @@
 import json
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -153,12 +153,30 @@ class BaseTrajectory(ABC):
         return Y
 
     @staticmethod
+    def _equilibrate(Y: np.ndarray, column_scale: bool) -> np.ndarray:
+        """Column-equilibrate the observation matrix Y = F.T @ F.
+
+        Scales Y to D @ Y @ D with D = diag(1/sqrt(Y_ii)), which normalizes each
+        column of the implicit stacked regressor F to unit L2 norm (since
+        Y_ii = ||F[:, i]||^2) without ever forming F explicitly. The condition
+        number of the raw Y is not invariant to per-column unit changes (kg vs g,
+        m vs mm), so the equilibrated matrix is the appropriate design criterion
+        (Van der Sluis 1969; Swevers et al. 1997). Diagonal entries are floored to
+        avoid division by zero for all-zero columns.
+        """
+        if not column_scale:
+            return Y
+        d = 1.0 / np.sqrt(np.clip(np.diag(Y), 1e-30, None))
+        return Y * np.outer(d, d)
+
+    @staticmethod
     def compute_condition_number(
         time_array: np.ndarray,
         kinematics_func: Callable,
         traj_q: np.ndarray,
         traj_dq: np.ndarray,
         traj_ddq: np.ndarray,
+        column_scale: bool = True,
     ) -> float:
         """Compute the condition number of the observation matrix Y = sum_k A_k.T @ A_k.
 
@@ -171,11 +189,14 @@ class BaseTrajectory(ABC):
             traj_q: (N, n_joints) position array.
             traj_dq: (N, n_joints) velocity array.
             traj_ddq: (N, n_joints) acceleration array.
+            column_scale: if True (default), column-equilibrate Y before computing
+                the condition number (see ``_equilibrate``).
 
         Returns:
             Condition number (max_eig / min_eig), or 1e9 if the matrix is (near-)singular.
         """
         Y = BaseTrajectory._build_observation_matrix(time_array, kinematics_func, traj_q, traj_dq, traj_ddq)
+        Y = BaseTrajectory._equilibrate(Y, column_scale)
         eigvals = np.linalg.eigvalsh(Y)
         min_eig = float(np.min(eigvals))
         max_eig = float(np.max(eigvals))
@@ -191,17 +212,23 @@ class BaseTrajectory(ABC):
         traj_q: np.ndarray,
         traj_dq: np.ndarray,
         traj_ddq: np.ndarray,
+        column_scale: bool = True,
     ) -> float:
         """D-optimal objective: -log det(Y) = -sum(log(eigvals(Y))).
 
         Equivalent to -2 * sum(log(sigma_i)) of the stacked regressor W,
         since eigenvalues of Y = W^T W are the squared singular values of W.
 
+        Args:
+            column_scale: if True (default), column-equilibrate Y first (see
+                ``_equilibrate``).
+
         Returns:
             D-optimal value, or 1e9 on numerical failure.
         """
         try:
             Y = BaseTrajectory._build_observation_matrix(time_array, kinematics_func, traj_q, traj_dq, traj_ddq)
+            Y = BaseTrajectory._equilibrate(Y, column_scale)
             eigvals = np.linalg.eigvalsh(Y)
             eigvals_floored = np.maximum(eigvals, 1e-30)
             return float(-np.sum(np.log(eigvals_floored)))
@@ -216,14 +243,20 @@ class BaseTrajectory(ABC):
         traj_dq: np.ndarray,
         traj_ddq: np.ndarray,
         objective_type: str = "condition_number",
+        column_scale: bool = True,
     ) -> tuple[float, float]:
         """Compute objective value and condition number from a single Y matrix.
+
+        Args:
+            column_scale: if True (default), column-equilibrate Y first (see
+                ``_equilibrate``).
 
         Returns:
             (objective_value, condition_number).
         """
         try:
             Y = BaseTrajectory._build_observation_matrix(time_array, kinematics_func, traj_q, traj_dq, traj_ddq)
+            Y = BaseTrajectory._equilibrate(Y, column_scale)
             eigvals = np.linalg.eigvalsh(Y)
             min_eig = float(np.min(eigvals))
             max_eig = float(np.max(eigvals))

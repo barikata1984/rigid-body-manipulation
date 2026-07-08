@@ -52,6 +52,12 @@ class ExcitedTrajectoryConfig(WindowedFourierTrajectoryConfig):
     # analytical bounds.
     use_analytical_bounds: bool = True
 
+    # Column-equilibrate the observation matrix before computing the condition
+    # number / D-optimal objective. Normalizes each regressor column to unit L2
+    # norm so the objective is invariant to per-column unit choices; without it
+    # the condition number is not a well-posed design criterion.
+    column_scale: bool = True
+
     # Objective function: "condition_number" or "d_optimal"
     objective_type: str = "condition_number"
     # Optimizer method: "L-BFGS-B" or "SLSQP"
@@ -176,6 +182,7 @@ class ExcitedTrajectory(BaseTrajectory):
         else:
             self.coeff_bounds = manual_bounds.tolist()
         self.kinematics_func = kwargs.get("kinematics_func", None)
+        self.column_scale = cfg.column_scale
         self.objective_type = cfg.objective_type
         self.optimizer_method = cfg.optimizer_method
         self.n_restarts = cfg.n_restarts
@@ -380,6 +387,7 @@ class ExcitedTrajectory(BaseTrajectory):
                 dq_total,
                 ddq_total,
                 objective_type=self.objective_type,
+                column_scale=self.column_scale,
             )
             current_cond = cond
             current_obj = obj_val
@@ -433,6 +441,7 @@ class ExcitedTrajectory(BaseTrajectory):
                     dq_t,
                     ddq_t,
                     objective_type=self.objective_type,
+                    column_scale=self.column_scale,
                 )
                 if not np.isnan(cond_xk) and cond_xk <= target_cond:
                     raise _TargetReached(np.array(xk, dtype=np.float64), cond_xk)
@@ -635,7 +644,7 @@ class ExcitedTrajectory(BaseTrajectory):
         return q_total, dq_total, ddq_total
 
     def _trajectory_metadata(self) -> dict:
-        meta: dict = {"objective_type": self.objective_type}
+        meta: dict = {"objective_type": self.objective_type, "column_scale": self.column_scale}
         if self.final_condition_number is not None:
             meta["condition_number"] = self.final_condition_number
         return meta

@@ -1,5 +1,4 @@
 import json
-from datetime import datetime
 from pathlib import Path
 from shutil import copy
 
@@ -19,23 +18,23 @@ from utilities import json_to_namespace
 OmegaConf.register_new_resolver("pi", pi_converter)
 
 
-def _build_dataset_subdir(target_trajectory) -> str | None:
-    """Build a per-run dataset subdirectory name from trajectory metadata.
+def _build_dataset_subdir(target_trajectory, target_trajectory_path) -> str | None:
+    """Build a dataset subdirectory name from the trajectory directory and metadata.
 
-    Returns a name like ``excited_cond3428_20260706_183000`` (or ``spline_<ts>``
-    when no condition number is present), or ``None`` when the trajectory JSON
-    carries no ``metadata`` field so the caller can fall back to the legacy layout.
+    Returns a name like ``excited_20260707_104306_cond8`` derived from the parent
+    directory of the trajectory JSON plus its condition number, or ``None`` when the
+    trajectory JSON carries no ``metadata`` field so the caller can fall back to the
+    legacy layout.
     """
     metadata = getattr(target_trajectory, "metadata", None) if target_trajectory else None
-    subcommand = getattr(metadata, "subcommand", None) if metadata is not None else None
-    if subcommand is None:
+    if metadata is None:
         return None
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base = Path(target_trajectory_path).parent.name
     cond = getattr(metadata, "condition_number", None)
     if cond is not None:
-        return f"{subcommand}_cond{int(round(cond))}_{timestamp}"
-    return f"{subcommand}_{timestamp}"
+        return f"{base}_cond{int(round(cond))}"
+    return base
 
 
 def resolve_config():
@@ -65,7 +64,7 @@ def resolve_config():
     object_dir = Path(cfg.object)
     if OmegaConf.is_missing(cfg.recorder, "dataset_dir"):
         base_dir = Path.cwd() / "datasets" / object_dir.name
-        subdir = _build_dataset_subdir(target_trajectory)
+        subdir = _build_dataset_subdir(target_trajectory, cfg.target_trajectory)
         dataset_dir = base_dir / subdir if subdir is not None else base_dir
         cfg.recorder.dataset_dir = dataset_dir
     else:
