@@ -147,6 +147,8 @@ FK でエンドエフェクタ位置を評価し, 変位上限・干渉を制約
 `q_min`/`q_max` (pitch を ±45° に制限) は ±π/2 の真の特異点から十分な安全マージンを確保する設計として当初から正しく機能しており, `singularity_center`/`singularity_margin` による q4=0 近傍の追加除外は冗長かつ有害だった (main_trajectory が start/end で必ず q4=0 を通るため, marginの値によらず境界で必ず制約違反する構造的矛盾を生んでいた).
 対応として `singularity_center`/`singularity_margin` の仕組み自体は削除せず, 全 YAML で q4 の `singularity_margin` を 0 にして無効化した (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-09 エントリ, `notes/ISSUES.md`).
 
+追記 (2026-07-09): 同日中の別作業で, 下記「バウンドの優先順位」節が説明する `coeff_bounds`(手動)と `dq_max`/`ddq_max`(解析的)の併用(小さい方を採用)自体が, 同じ誤った前提の副作用だったと判明した. 全 6 YAML で一律だった `coeff_bounds[4]=0.13` は解析的バウンド(~0.4 rad)より 3 倍以上タイトで, 併用ロジックにより常にこの手動値が支配していた. 対応として併用ロジックを撤去し, 「バウンドの優先順位」節の内容は本セッションの修正により無効化された(詳細後述).
+
 ### YAML 設定例
 
 ```yaml
@@ -164,8 +166,10 @@ ddq_max: [0.4, 0.4, 0.4, 8.0, 8.0, 8.0]
 
 ### バウンドの優先順位
 
-`coeff_bounds` (手動) と `dq_max`/`ddq_max` (解析的) の両方が指定された場合, 各関節で小さい方が採用される.
-解析的バウンドのみの場合は三角不等式による安全なバウンドが自動計算される.
+旧仕様: `coeff_bounds` (手動) と `dq_max`/`ddq_max` (解析的) の両方が指定された場合, 各関節で小さい方が採用されていた.
+
+訂正 (2026-07-09): 上記の併用仕様自体が, `coeff_bounds[4]=0.13` という根拠のない手動値を常に支配させる副作用を生んでいたと判明した (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-09 エントリ, `notes/ISSUES.md`).
+現行仕様: `dq_max`/`ddq_max` が設定され `use_analytical_bounds=True` (既定) の場合, 解析的バウンド (三角不等式) が `coeff_bounds` の唯一の情報源となる. この場合に `coeff_bounds` も指定すると `ValueError`. `dq_max`/`ddq_max` が未設定, または `use_analytical_bounds=False` の場合のみ, 手動 `coeff_bounds` がボックスバウンドとして機能する.
 
 ### generate.py の修正
 
