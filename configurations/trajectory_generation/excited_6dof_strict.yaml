@@ -25,8 +25,8 @@ q_max: [10.0, 10.0, 10.0, 10.0, 0.7853982, 10.0]
 # diverges LQR tracking, so exclude a neighborhood of 0 for q4 only (margin 0 = inactive).
 singularity_center: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 singularity_margin: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-# Per-joint Fourier coefficient bounds (manual): q4 tight (0.13), others wide (0.5)
-coeff_bounds: [0.5, 0.5, 0.5, 0.5, 0.13, 0.5]
+# Fourier coefficient bounds are derived analytically from dq_max/ddq_max below
+# (coeff_bounds must not be set here; see excited.py's coeff_bounds validation).
 # Strict envelope: slides 0.5 m/s & 1.0 m/s^2; hinges pi rad/s & 2pi rad/s^2.
 # dq_max here is non-binding (acceleration dominates); enforced via analytical bounds.
 dq_max: [0.5, 0.5, 0.5, 3.14159, 3.14159, 3.14159]

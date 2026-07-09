@@ -11,7 +11,7 @@ def _make_cfg(use_analytical_bounds: bool, **overrides) -> ExcitedTrajectoryConf
         num_joints=2,
         num_harmonics=2,
         base_freq=0.3,
-        coeff_bounds=[0.5, 0.5],
+        coeff_bounds=[0.5, 0.5] if not use_analytical_bounds else None,
         dq_max=[1.0, 1.0],
         ddq_max=[5.0, 5.0],
         use_analytical_bounds=use_analytical_bounds,
@@ -30,10 +30,16 @@ def _make_cfg(use_analytical_bounds: bool, **overrides) -> ExcitedTrajectoryConf
     return cfg
 
 
-def test_analytical_bounds_tighten_coeff_box():
-    """With use_analytical_bounds=True the coeff box shrinks below the manual value."""
+def test_analytical_bounds_replace_coeff_box():
+    """With use_analytical_bounds=True the coeff box is the analytical bound (no manual box)."""
     traj = ExcitedTrajectory(_make_cfg(use_analytical_bounds=True))
     assert all(b < 0.5 for b in traj.coeff_bounds)
+
+
+def test_coeff_bounds_forbidden_with_analytical_bounds():
+    """coeff_bounds cannot be combined with an active analytical bound."""
+    with pytest.raises(ValueError, match="coeff_bounds cannot be combined"):
+        ExcitedTrajectory(_make_cfg(use_analytical_bounds=True, coeff_bounds=[0.5, 0.5]))
 
 
 def test_direct_mode_keeps_manual_coeff_box():

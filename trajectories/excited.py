@@ -155,32 +155,33 @@ class ExcitedTrajectory(BaseTrajectory):
         self.q_min = np.array(cfg.q_min, dtype=np.float64) if cfg.q_min is not None else None
         self.q_max = np.array(cfg.q_max, dtype=np.float64) if cfg.q_max is not None else None
 
-        # Compute coeff_bounds: manual, analytical, or both (take tighter)
-        if cfg.coeff_bounds is None:
-            manual_bounds = np.full(self.num_joints, 0.5)
-        else:
-            manual_bounds = np.array([float(b) for b in cfg.coeff_bounds])
-
         self.dq_max = np.array(cfg.dq_max, dtype=np.float64) if cfg.dq_max is not None else None
         self.ddq_max = np.array(cfg.ddq_max, dtype=np.float64) if cfg.ddq_max is not None else None
         self.use_analytical_bounds = cfg.use_analytical_bounds
 
+        # coeff_bounds and the analytical (dq_max/ddq_max-derived) bound are two
+        # independent upper bounds on the same variable only if both are physically
+        # grounded. When the analytical bound is active it is the sole grounded
+        # constraint, so a manual coeff_bounds cannot also be set here (it would
+        # either be redundant or silently override the physical bound with an
+        # arbitrary number).
         if (self.dq_max is not None or self.ddq_max is not None) and self.use_analytical_bounds:
+            if cfg.coeff_bounds is not None:
+                raise ValueError(
+                    "coeff_bounds cannot be combined with dq_max/ddq_max + use_analytical_bounds=True: "
+                    "the analytical triangle-inequality bound is the sole grounded constraint in this "
+                    "mode. Either drop coeff_bounds, or set use_analytical_bounds=False to use "
+                    "coeff_bounds as the box bound with dq_max/ddq_max enforced as direct constraints."
+                )
             analytical_bounds = self.compute_fourier_bounds(
                 self.num_joints, cfg.num_harmonics, cfg.base_freq, cfg.duration, self.dq_max, self.ddq_max
             )
-            self.coeff_bounds = np.minimum(manual_bounds, analytical_bounds).tolist()
-            print(f"Analytical bounds: {analytical_bounds}")
-            for j in range(self.num_joints):
-                if analytical_bounds[j] < 0.5 * manual_bounds[j]:
-                    print(
-                        f"Warning: analytical bound for joint {j} ({analytical_bounds[j]:.4f}) "
-                        f"is much tighter than manual coeff_bounds ({manual_bounds[j]:.4f}); "
-                        "analytical bound will be used."
-                    )
-            print(f"Final coeff_bounds (min of manual & analytical): {self.coeff_bounds}")
+            self.coeff_bounds = analytical_bounds.tolist()
+            print(f"Analytical coeff_bounds: {self.coeff_bounds}")
+        elif cfg.coeff_bounds is None:
+            self.coeff_bounds = np.full(self.num_joints, 0.5).tolist()
         else:
-            self.coeff_bounds = manual_bounds.tolist()
+            self.coeff_bounds = [float(b) for b in cfg.coeff_bounds]
         self.kinematics_func = kwargs.get("kinematics_func", None)
         self.column_scale = cfg.column_scale
         self.objective_type = cfg.objective_type
