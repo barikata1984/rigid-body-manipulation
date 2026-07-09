@@ -2,15 +2,12 @@ config_class: ExcitedTrajectoryConfig
 duration: 20.0
 fps: 60.0
 num_joints: 6
-# duration=20s, real-hardware envelope, column-normalized condition number ~100.
-# Grid search finding: at the full coeff_bounds budget the least-exciting feasible
-# grid point (num_harmonics=1, base_freq=0.1) already optimizes down to cond~50, so
-# cond~100 is unreachable by (num_harmonics, base_freq) alone. To land near 100 the
-# non-q4 excitation amplitude is scaled to 0.45x the strict bounds (main spline is a
-# fixed ill-conditioned baseline; weaker excitation raises cond toward it). q4 keeps
-# its full 0.13 bound so it retains the same singularity-zone excursion as the
-# cond~50 sibling (q4 reaches +-0.17, ~92% inside the +-0.15 exclusion zone).
-num_harmonics: 1
+# num_harmonics/base_freq are shared across the cond10/50/100 trio (literature-
+# typical N=5, base_freq=0.1 Hz); differentiation between the three targets comes
+# from target_condition_number below, not from the (nh, base_freq) recipe or a
+# manual coeff_bounds scaling trick (both removed; see excited.py's coeff_bounds
+# validation and the now-debunked "pitch=0 singularity" premise for q4=0.13).
+num_harmonics: 5
 base_freq: 0.1
 
 # MuJoCo model paths for kinematics_func (enables optimization)
@@ -21,6 +18,8 @@ ee_body_name: link6
 optimizer_method: SLSQP
 n_restarts: 8
 max_iter: 30
+# Stop as soon as the (equilibrated) condition number reaches this target.
+target_condition_number: 100.0
 
 # Per-joint position limits (q4: [-0.25pi, 0.25pi])
 q_min: [-10.0, -10.0, -10.0, -10.0, -0.7853982, -10.0]
@@ -29,11 +28,15 @@ q_max: [10.0, 10.0, 10.0, 10.0, 0.7853982, 10.0]
 # diverges LQR tracking, so exclude a neighborhood of 0 for q4 only (margin 0 = inactive).
 singularity_center: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 singularity_margin: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-# Fourier coefficient bounds: non-q4 joints = strict 0.5 scaled by 0.45 (= 0.225) to
-# raise the column-normalized condition number to ~100; q4 kept at its strict 0.13.
-coeff_bounds: [0.225, 0.225, 0.225, 0.225, 0.13, 0.225]
-# Real-hardware envelope: slides 1.5 m/s & 7.5 m/s^2; hinges pi rad/s & 2pi rad/s^2.
-dq_max: [1.5, 1.5, 1.5, 3.14159, 3.14159, 3.14159]
+# Fourier coefficient bounds are derived analytically from dq_max/ddq_max below
+# (coeff_bounds must not be set here; see excited.py's coeff_bounds validation).
+# Real-hardware envelope: slides 1.5 m/s & 7.5 m/s^2; hinges (j3,j4) pi rad/s & 2pi
+# rad/s^2. q5 (yaw) has no velocity cap: this platform is not a UR5e (custom
+# 3-translational + 3-rotational rig), and q5 is deliberately spun through 8pi
+# (see main_trajectory end_pos) to sweep a spherical range of orientations for
+# identification coverage; capping it at the generic UR5e-derived pi rad/s only
+# inflates duration without a matching hardware reason.
+dq_max: [1.5, 1.5, 1.5, 3.14159, 3.14159, .inf]
 ddq_max: [7.5, 7.5, 7.5, 6.28318, 6.28318, 6.28318]
 use_analytical_bounds: true
 

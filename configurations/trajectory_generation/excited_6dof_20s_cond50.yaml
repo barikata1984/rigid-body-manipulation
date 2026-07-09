@@ -2,10 +2,14 @@ config_class: ExcitedTrajectoryConfig
 duration: 20.0
 fps: 60.0
 num_joints: 6
-# Grid-searched: num_harmonics / base_freq drive the (column-normalized) condition
-# number. Overridden on the CLI during the grid search; these are the chosen values.
-num_harmonics: 1
-base_freq: 0.094
+# num_harmonics/base_freq are shared across the cond10/50/100 trio (literature-
+# typical N=5, base_freq=0.1 Hz); differentiation between the three targets comes
+# from target_condition_number below, not from the (nh, base_freq) recipe. nh=1
+# was previously used here but is a degenerate single-harmonic case (defeats the
+# point of a Fourier-series excitation) and its reported cond was contaminated by
+# the now-removed coeff_bounds[4]=0.13 override.
+num_harmonics: 5
+base_freq: 0.1
 
 # MuJoCo model paths for kinematics_func (enables optimization)
 manipulator: xml_models/manipulators/sequential
@@ -14,15 +18,17 @@ ee_body_name: link6
 
 optimizer_method: SLSQP
 objective_type: condition_number
-n_restarts: 4
-max_iter: 20
+n_restarts: 8
+max_iter: 30
+# Stop as soon as the (equilibrated) condition number reaches this target.
+target_condition_number: 50.0
 
 # Column-equilibrate the observation matrix (required for a unit-invariant cond).
 column_scale: true
-# Enforce dq_max/ddq_max as direct SLSQP inequality constraints on the total
-# (main + excitation) trajectory, so feasibility is guaranteed rather than
-# approximated by the conservative analytical box bounds.
-use_analytical_bounds: false
+# Use the analytical triangle-inequality bounds derived from dq_max/ddq_max below
+# (same mechanism as the other excited_6dof* configs). coeff_bounds must not be
+# set in this mode; see excited.py's coeff_bounds validation.
+use_analytical_bounds: true
 
 # Per-joint position limits (q4: [-0.25pi, 0.25pi])
 q_min: [-10.0, -10.0, -10.0, -10.0, -0.7853982, -10.0]
@@ -31,12 +37,14 @@ q_max: [10.0, 10.0, 10.0, 10.0, 0.7853982, 10.0]
 # diverges LQR tracking, so exclude a neighborhood of 0 for q4 only.
 singularity_center: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 singularity_margin: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-# Per-joint Fourier coefficient box bounds: q4 tight (0.13, singularity), others wide.
-coeff_bounds: [0.5, 0.5, 0.5, 0.5, 0.13, 0.5]
 
 # Real-hardware kinematic envelope: translational 1.5 m/s & 7.5 m/s^2,
-# rotational pi rad/s & 2pi rad/s^2.
-dq_max: [1.5, 1.5, 1.5, 3.14159, 3.14159, 3.14159]
+# rotational (j3,j4) pi rad/s & 2pi rad/s^2. q5 (yaw) has no velocity cap: this
+# platform is not a UR5e (custom 3-translational + 3-rotational rig), and q5 is
+# deliberately spun through 8pi (see main_trajectory end_pos) to sweep a spherical
+# range of orientations for identification coverage; capping it at the generic
+# UR5e-derived pi rad/s only inflates duration without a matching hardware reason.
+dq_max: [1.5, 1.5, 1.5, 3.14159, 3.14159, .inf]
 ddq_max: [7.5, 7.5, 7.5, 6.28318, 6.28318, 6.28318]
 
 # Main trajectory: quintic spline enriched with excitation. duration matches 20s;
