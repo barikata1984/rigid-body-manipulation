@@ -1,0 +1,22 @@
+[
+  {
+    "timestamp": "2026-07-11T15:36:49",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260711_153649",
+    "condition_number": 26.652983476658775,
+    "config": "configurations/trajectory_generation/excited_6dof_20s_cond50.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-11T15:51:19",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260711_155119",
+    "condition_number": 9.643309565401593,
+    "config": "configurations/trajectory_generation/excited_6dof_20s_cond50.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.1
+  }
+]
