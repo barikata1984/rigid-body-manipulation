@@ -1,3 +1,4 @@
+import dataclasses
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -156,7 +157,7 @@ def main():
         show_plot=config.show_plot,
         plot_path=plot_path,
         json_path=json_path,
-        metadata={"subcommand": subcommand},
+        metadata={"subcommand": subcommand, "generation_config": dataclasses.asdict(config)},
     )
 
     if plot_path:

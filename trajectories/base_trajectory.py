@@ -68,7 +68,7 @@ class BaseTrajectory(ABC):
         if json_path:
             Path(json_path).parent.mkdir(parents=True, exist_ok=True)
             with open(json_path, "w") as f:
-                json.dump(data, f, indent=4)
+                json.dump(data, f, indent=4, default=str)
 
         print(f"Trajectory JSON saved to {json_path}")
 
