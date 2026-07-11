@@ -23,14 +23,14 @@ max_iter: 30
 # Stop as soon as the (equilibrated) condition number reaches this target.
 target_condition_number: 10.0
 
-# Real-machine kinematic envelope: translation (j0-2) 1.5 m/s, 7.5 m/s^2;
-# rotation (j3,j4) pi rad/s, 2pi rad/s^2. q5 (yaw) has no velocity cap: this
-# platform is not a UR5e (custom 3-translational + 3-rotational rig), and q5 is
-# deliberately spun through 8pi (see main_trajectory end_pos) to sweep a spherical
-# range of orientations for identification coverage; capping it at the generic
-# UR5e-derived pi rad/s only inflates duration without a matching hardware reason.
-dq_max: [1.5, 1.5, 1.5, 3.14159, 3.14159, .inf]
-ddq_max: [7.5, 7.5, 7.5, 6.28318, 6.28318, 6.28318]
+# Kinematic envelope intentionally tightened below real-hardware limits to raise
+# the analytical Fourier coefficient bounds' floor, so target_condition_number can
+# actually early-stop the cond50/cond100 targets instead of overshooting on iter 1.
+# Translation (j0-2): 1 m/s, 2 m/s^2; rotation (j3,j4): 0.5pi rad/s, pi rad/s^2;
+# rotation (j5, yaw): dq uncapped (base spline requires ~2.36 rad/s from end_pos=8pi),
+# ddq_max = pi rad/s^2.
+dq_max: [0.3, 0.3, 0.3, 0.5, 0.5, .inf]
+ddq_max: [0.6, 0.6, 0.6, 1.0, 1.0, 1.0]
 
 # Per-joint position limits (q4: [-0.25pi, 0.25pi])
 q_min: [-10.0, -10.0, -10.0, -10.0, -0.7853982, -10.0]
