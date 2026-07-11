@@ -9,13 +9,11 @@
 
 6DOF で約 30 秒/反復. 実用上の問題になりうる.
 
-## [2026-07-09] cond10/cond50/cond100.yaml が条件数を分化できていない
+## [2026-07-11] cond10/cond50/cond100.yaml の差別化が envelope タイト化で逆方向に破綻
 
-`excited_6dof_20s_cond10/50/100.yaml` の差別化機構を `target_condition_number`(10/50/100)による早期停止に変更したが, cond50 と cond100 が現状**同一の cond=16.05 で収束**し, 分化できていない (実行例: `configurations/trajectories/excited_20260709_154917`, `_155019`).
+`excited_6dof_20s_cond10/50/100.yaml` の `dq_max`/`ddq_max` envelope を 2 段階でタイト化し, 到達可能な cond フロアを約 57 まで引き上げた (現行タイト envelope: 並進 dq/ddq=0.3/0.6, 回転(j4,j5) dq/ddq=0.5/1.0, 実測: `configurations/trajectories/excited_20260711_010719/`).
+これにより cond50 の差別化 (target_condition_number=50 で早期停止) は意図通り機能するようになった.
 
-原因: q4 の coeff_bounds バグ修正 (本ファイル旧エントリ, 解決済み) と q5 の速度制約撤去により, この envelope で到達可能な条件数の範囲が大きく改善した (nh=5, base_freq=0.1 のフル収束で cond=6.44 程度まで到達可能, 詳細は `notes/LOGS/log_trajectory_optimization.md` 2026-07-09 エントリ参照). そのため target_condition_number=50/100 は共に「最初の1反復で既に上回っている」水準になり, 両者とも実質未最適化のまま停止する.
+しかし 3 YAML を同一 envelope にしたため, 差別化の破綻が逆方向で再発した: cond10(target=10) はこのフロア (57) より低い値を要求しており到達不能で, 事実上フル実行 (`max_iter × n_restarts`) になる. cond100(target=100) は 1 反復目の cond (57.85) が既に target を下回るため, 実質未最適化のまま即発火する.
 
-さらに調査した結果, num_harmonics・base_freq のいずれも, 最適化をフル収束させる限り確実に悪条件を生むレバーにはならないと判明した (nh=1: cond=7.45, base_freq=0.02: cond=7.30, base_freq=1.0: cond=2.40 — いずれも一桁〜低い二桁に収束). 意図的に悪条件な軌道を得るには, パラメータ選択ではなく最適化予算(反復数)を制約する早期停止方式への再設計が必要と考えられる.
-
-対応候補: `target_condition_number` を経験的に到達可能な範囲(概ね 2〜17)を前提に再設計する. `notes/TODO.md` 参照.
-
+対応候補: (a) 3 YAML それぞれに別 envelope を設定する (cond10 は緩め, cond50 は現行のタイト envelope, cond100 はさらにタイトに), (b) `target_condition_number` による早期停止という差別化機構自体を再設計する. 判断は未着手 (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-11 エントリ, `notes/TODO.md`).

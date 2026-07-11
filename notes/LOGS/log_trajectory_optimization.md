@@ -716,3 +716,62 @@ UR5e 公式データシート (2023年1月版, collective spec sheet を直接�
 ### 本セッションで生成された6つの実験用軌道出力 (探索的プローブ, 文献的に確定した設定ではない)
 
 `configurations/trajectories/excited_20260709_154709/` (cond10 プローブ, cond=6.44), `_154917/` (cond50 プローブ, cond=16.05), `_155019/` (cond100 プローブ, cond=16.05), `_160052/` (nh=1 フル収束プローブ, cond=7.45), `_165828/` (base_freq=1.0 プローブ, cond=2.40), `_170927/` (base_freq=0.02 プローブ, cond=7.30). `catalog.jsonl` にこれら6件のエントリが自動追記された.
+
+## 2026-07-11: dq/ddq envelope 縮小による cond フロア引き上げ実験
+
+### 背景
+
+2026-07-09 の時点で, `coeff_bounds[4]=0.13` の撤去と q5 速度上限撤廃 (envelope: dq=[1.5,1.5,1.5,π,π,inf], ddq=[7.5,7.5,7.5,2π,2π,2π]) により到達可能な cond フロアが 2〜17 の帯まで下がっていた. `target_condition_number=50/100` はいずれも 1 反復目 (cond=16.05) で早期停止条件を満たしてしまい, cond50/cond100 の差別化が機能していなかった (`notes/ISSUES.md` 旧エントリ). 本セッションの目標は cond50 用に 40-50 帯の cond フロアを作ることである.
+
+### 設計方針の確定
+
+ユーザーは前セッションまでに使われていた手動 `coeff_bounds` によるフロア操作を明示的に禁止した. 残るレバーは `dq_max`/`ddq_max` envelope のタイト化のみである. envelope は `compute_fourier_bounds` の三角不等式を介してフーリエ係数の解析的バウンドを狭め, 結果として到達可能な cond フロアを引き上げる (2026-07-07 エントリで確立済みの関係).
+
+また, 反復ごとの cond 出力については, `trajectories/excited.py:418-432` の SLSQP コールバックに既存の `iter N/max_iter: Cond = X` 出力機構をそのまま活用した. 新規実装は不要だった.
+
+### envelope タイト化 2 段階と到達 cond
+
+cond10/50/100 の 3 YAML は元々同一の envelope を持っていたため, 変更もこの 3 ファイルに一律で適用した (`configurations/trajectory_generation/excited_6dof_20s_cond{10,50,100}.yaml`). 各段階で `pixi run generate-trajectory excited --config <cond10.yaml> --n-restarts 1 --max-iter 15` を実行し到達 cond を確認した (nh=5, base_freq=0.1 固定).
+
+| envelope | 並進 dq/ddq | 回転(j4,j5) dq/ddq | j6(yaw) dq/ddq | 到達 cond | run dir |
+|---|---|---|---|---|---|
+| 旧 (2026-07-09 実機想定) | 1.5 / 7.5 | π / 2π | inf / 2π | 約 6.4 (nh=5/bf=0.1 フル収束の別セッション実測) | - |
+| 中 (本セッション試行 1) | 1.0 / 2.0 | 0.5π / π | inf / π | 12.4 (15 iter で収束) | `configurations/trajectories/excited_20260710_164727/` |
+| タイト (本セッション試行 2, 現行) | 0.3 / 0.6 | 0.5 / 1.0 | inf / 1.0 | 56.8 (6 iter で SLSQP ftol 自主停止) | `configurations/trajectories/excited_20260711_010719/` |
+
+タイト envelope 実行時の反復ごとの cond 推移:
+
+```
+iter 1: 57.85
+iter 2: 57.33
+iter 3: 57.32
+iter 4: 57.03
+iter 5: 56.77
+iter 6: 56.77 (final, SLSQP ftol)
+```
+
+タイト envelope 下での解析的係数バウンドは `[0.00538, 0.00538, 0.00538, 0.00897, 0.00897, 0.00897]` で, 旧 envelope の約 1/9 に相当する.
+
+各 YAML のコメントは「Real-hardware kinematic envelope」から「Kinematic envelope intentionally tightened below real-hardware limits」に改めた. 旧コメントは変更前の数値をそのまま記載しており, 値変更後は事実と不整合になるためである.
+
+### 所見
+
+**envelope のタイト化は cond フロアを移動させる有効かつ唯一のクリーンなレバーである.** num_harmonics・base_freq はフル収束下では効かないと 2026-07-09 に判明済みで, 手動 `coeff_bounds` は禁止されているため, envelope が事実上残る唯一の設計変数になる.
+
+envelope の縮小と cond 上昇の関係はおおむね対数線形の感触を示した. 並進 dq を 1.5→1.0→0.3 (係数比 1→0.67→0.2), 回転(j4,j5) dq を π→0.5π→0.5 (係数比 1→0.5→0.16) と縮小したところ, 到達 cond は 6.4→12.4→56.8 と推移した. 「envelope を約 3 倍タイトにすると cond が約 5 倍になる」という粗い経験則が読み取れる.
+
+2 段階目の変更で一発で cond≈57 に到達し, 目標としていた 40-50 帯の直近上限を捉えた形になった. 目標帯に厳密に合わせるには envelope をわずかに緩める (例: 並進 dq を 0.4-0.5, 回転 dq を 0.7 程度に戻す) 調整が必要だが, 現状の 56.8 をそのまま cond50 用として採用することもできる水準である.
+
+### base spline の feasibility 確認
+
+現行のタイト envelope 下で, メイン (base) スプライン軌道が速度制約を満たすかを確認した. j1-j3 (並進, Δq=0) と j5 (pitch, Δq=0) は base のピーク速度が 0 で無条件に feasible. j4 (roll, Δq=π) の quintic ピーク速度は `1.875 × π / 20 ≈ 0.294 rad/s` で, `dq_max[3]=0.5` に対し余裕 0.2 rad/s を残し feasible. j6 (yaw) は `dq_max` が `inf` のままなので制約自体が存在しない. 現行 envelope では全関節で base spline が feasible であることを確認した.
+
+### 残る設計テンション
+
+3 YAML を同一 envelope にタイト化した結果, cond10/50/100 の差別化の壊れ方が反転した:
+
+- cond10 (target=10): タイト envelope のフロアが 57 のため target=10 に到達不能. `target_condition_number` が発火せず `max_iter × n_restarts` のフル実行になる.
+- cond50 (target=50): フロア直下の値であるため, 通常は 1〜数反復で意図通り早期停止する.
+- cond100 (target=100): 1 反復目 (57.85) が既に target を下回るため, 実質未最適化のまま即発火する.
+
+「3 YAML 単一 envelope + `target_condition_number` による差別化」という建て付けが, cond10/cond100 の両端で成立しなくなっている. 次に判断すべきは (a) 3 ファイルそれぞれに別 envelope を与える (cond10 は緩め, cond50 は現行のタイト envelope, cond100 はさらにタイトにする), (b) 差別化の建て付け自体を再設計する, のいずれを取るかである. 本セッションではこの判断には着手していない (詳細: `notes/TODO.md`, `notes/ISSUES.md`).
