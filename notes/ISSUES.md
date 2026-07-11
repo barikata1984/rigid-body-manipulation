@@ -17,3 +17,5 @@
 しかし 3 YAML を同一 envelope にしたため, 差別化の破綻が逆方向で再発した: cond10(target=10) はこのフロア (57) より低い値を要求しており到達不能で, 事実上フル実行 (`max_iter × n_restarts`) になる. cond100(target=100) は 1 反復目の cond (57.85) が既に target を下回るため, 実質未最適化のまま即発火する.
 
 対応候補: (a) 3 YAML それぞれに別 envelope を設定する (cond10 は緩め, cond50 は現行のタイト envelope, cond100 はさらにタイトに), (b) `target_condition_number` による早期停止という差別化機構自体を再設計する. 判断は未着手 (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-11 エントリ, `notes/TODO.md`).
+
+追記 (2026-07-11): envelope タイトさと到達 cond の関係を 5 点の実測データで対数線形モデル化し, 検証範囲内 (cond 約 6〜57) で誤差 7% 以内の補間予測ができることを確認した (cond≈25 の envelope 予測 → 実測 26.65, cond<10 の envelope 予測 → 実測 9.64). 対応候補 (a) の具体的な envelope 割り当てにこのモデルを使える見込みが立ったが, 3 YAML への割り当て自体はまだ判断していない. 未解決のまま (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-11 エントリ).

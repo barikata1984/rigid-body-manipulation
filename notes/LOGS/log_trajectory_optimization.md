@@ -775,3 +775,44 @@ envelope の縮小と cond 上昇の関係はおおむね対数線形の感触�
 - cond100 (target=100): 1 反復目 (57.85) が既に target を下回るため, 実質未最適化のまま即発火する.
 
 「3 YAML 単一 envelope + `target_condition_number` による差別化」という建て付けが, cond10/cond100 の両端で成立しなくなっている. 次に判断すべきは (a) 3 ファイルそれぞれに別 envelope を与える (cond10 は緩め, cond50 は現行のタイト envelope, cond100 はさらにタイトにする), (b) 差別化の建て付け自体を再設計する, のいずれを取るかである. 本セッションではこの判断には着手していない (詳細: `notes/TODO.md`, `notes/ISSUES.md`).
+
+## 2026-07-11 (続き): catalog フォーマット再設計, ブランチマージ, envelope→cond 予測モデルの検証
+
+### ブランチマージ
+
+`feat-singularity-avoidance` を `dev-robio2026` にマージした (fast-forward, `8f9870f` → `7e5d1cd`).
+
+### catalog / trajectory 記録の再設計
+
+背景: 従来の `catalog.jsonl` は各実行の config 全体 (~40 フィールド) を丸ごと複製する fat なエントリで, 人間が一覧を確認するには冗長すぎた.
+
+- `trajectories/catalog.py`: `catalog.jsonl` (JSON Lines, fat entries) から `catalog.json` (JSON 配列, pretty-printed) に切り替えた. 新形式のエントリは `timestamp`, `subcommand`, `output_dir`, `condition_number`, `config` (パス文字列), `objective_type`, `num_harmonics`, `base_freq` の 8 フィールドに絞り込んだ, 一覧性重視のスリムな形式.
+- `trajectories/generate.py`: 各実行の `trajectory.json` に `metadata.generation_config` として完全な generation config のスナップショットを埋め込むようにした. 再現性の担保を catalog (要約用) 側ではなく, 各実行結果自身が持つ設計に変更した.
+- `trajectories/base_trajectory.py`: `write_to_json` 内の `json.dump` に `default=str` を追加し, Path オブジェクトのシリアライズを可能にした.
+- 旧 `catalog.jsonl` はそのまま残した. `generation_config` を持たない過去 ~98 件の historical run にとって, 完全な config を再現する唯一の記録であるため.
+
+### 古い trajectory データのクリーンアップ
+
+25 個の trajectory ディレクトリ (`excited_*` 24 件 + `gridsearch_stageB` 1 件) を削除し, `excited_20260711_010719/` (cond≈56.8) のみを残した. `catalog.jsonl` も 1 エントリまでトリムした.
+
+### envelope→cond 予測モデルの構築と検証
+
+直前のエントリで得た envelope タイトさと到達 cond の関係 (旧 1.5/π → 6.4, 中 1.0/1.57 → 12.4, タイト 0.3/0.5 → 56.8 の 3 点) に, 本セッションで追加した 2 点を加えて 5 点の対数線形 (log-linear) モデルを構築し, envelope パラメータの補間予測に用いた (すべて ddq/dq 比 2.0 固定. 旧 1.5/π のみ比率が異なる):
+
+| dq_trans / dq_rot | cond |
+|---|---|
+| 1.5 / π | 6.4 |
+| 1.3 / 2.1 | 9.64 |
+| 1.0 / 1.57 | 12.4 |
+| 0.55 / 0.9 | 26.65 |
+| 0.3 / 0.5 | 56.8 |
+
+予測 1: cond≈25 を狙い `dq_max=[0.55,0.55,0.55,0.9,0.9,inf]`, `ddq_max=[1.1,1.1,1.1,1.8,1.8,1.8]` を試した → 実測 cond=26.65 (`configurations/trajectories/excited_20260711_153649/`).
+
+予測 2: cond<10 を狙い `dq_max=[1.3,1.3,1.3,2.1,2.1,inf]`, `ddq_max=[2.6,2.6,2.6,4.2,4.2,4.2]` を試した → 実測 cond=9.64 (`configurations/trajectories/excited_20260711_155119/`).
+
+### 所見
+
+対数線形モデルは検証範囲内 (cond 約 6〜57) の補間において誤差 7% 以内に収まり, 十分な精度で機能した. cond10/50/100 の差別化再設計 (未解決, `notes/TODO.md`, `notes/ISSUES.md`) にこのモデルを envelope 選定の道具として活用できる見込みが立ったが, 3 YAML への具体的な envelope 割り当てはまだ判断していない.
+
+旧 1.5/π の結果 (cond=6.4) は上記クリーンアップで他の全古い trajectory と共に削除済みで, ディスク上にはもう残っていない (この表がその値の唯一の記録).
