@@ -18,5 +18,55 @@
     "objective_type": "condition_number",
     "num_harmonics": 5,
     "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-11T16:34:17",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260711_163417",
+    "condition_number": 24.575587527803098,
+    "config": "/tmp/claude-1000/-home-ak-workspace-rigid-body-manipulation/4494a234-42d4-4ff1-bf47-c7889efe96e4/scratchpad/cond25_probe.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-11T16:30:53",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260711_163053",
+    "condition_number": 56.76908680133376,
+    "config": "configurations/trajectory_generation/excited_6dof_20s_cond10.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-11T23:22:41",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260711_232241",
+    "condition_number": 43.957990422584146,
+    "config": "/tmp/claude-1000/-home-ak-workspace-rigid-body-manipulation/4494a234-42d4-4ff1-bf47-c7889efe96e4/scratchpad/cond50_probe.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-12T00:21:13",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260712_002113",
+    "condition_number": 92.04028912381105,
+    "config": "/tmp/claude-1000/-home-ak-workspace-rigid-body-manipulation/4494a234-42d4-4ff1-bf47-c7889efe96e4/scratchpad/cond100_probe.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-11T23:28:50",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260711_232850",
+    "condition_number": 2.986026865732504,
+    "config": "/tmp/claude-1000/-home-ak-workspace-rigid-body-manipulation/4494a234-42d4-4ff1-bf47-c7889efe96e4/scratchpad/cond6_probe.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.1
   }
 ]
