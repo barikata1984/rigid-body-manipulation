@@ -121,6 +121,22 @@ def main():
     gt_iparams, ls_iparams, tls_iparams = identify_inertial_params(result, gt)
     simulation.recorder.finish(result["frames"], gt_iparams, ls_iparams, tls_iparams)
 
+    if result.get("unperturbed_frames") is not None:
+        print("\nUnperturbed (noise-free) Identification:")
+        unperturbed_result = {
+            "regressors": result["unperturbed_regressors"],
+            "wrenches": result["unperturbed_wrenches"],
+        }
+        gt_iparams, ls_iparams_u, tls_iparams_u = identify_inertial_params(unperturbed_result, gt)
+        simulation.recorder.write_split_transforms(
+            result["unperturbed_frames"],
+            gt_iparams,
+            ls_iparams_u,
+            tls_iparams_u,
+            name_prefix="unperturbed_transforms",
+            copy_images=False,
+        )
+
 
 if __name__ == "__main__":
     main()

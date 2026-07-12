@@ -13,6 +13,7 @@ import numpy as np
 from mujoco._structs import MjData, MjModel
 from mujoco.renderer import Renderer
 from omegaconf import MISSING
+
 from utilities import get_element_id
 
 from .base_recorder import BaseRecorderConfig
@@ -125,17 +126,21 @@ class StandardRecorder:
 
         return train, valid, test
 
-    def _process_split(self, frames, gt_iparams, ls_iparams, tls_iparams, split=None):
+    def _process_split(
+        self, frames, gt_iparams, ls_iparams, tls_iparams, split=None, name_prefix="transforms", copy_images=True
+    ):
         suffix = ""
 
         if split:
             suffix = f"_{split}"
-            split_image_dir = self.dataset_dir / split
-            split_image_dir.mkdir(parents=True, exist_ok=True)
 
-            for frame in frames:
-                image_path = Path(frame["file_path"])
-                shutil.copy(image_path, split_image_dir / image_path.name)
+            if copy_images:
+                split_image_dir = self.dataset_dir / split
+                split_image_dir.mkdir(parents=True, exist_ok=True)
+
+                for frame in frames:
+                    image_path = Path(frame["file_path"])
+                    shutil.copy(image_path, split_image_dir / image_path.name)
 
         labels = ["total_mass", "mx", "my", "mz", "ixx", "iyy", "izz", "ixy", "iyz", "izx", "aabb_scale"]
 
@@ -146,15 +151,20 @@ class StandardRecorder:
         split_transform["ls"] = [*ls_iparams, np.nan]
         split_transform["tls"] = [*tls_iparams, np.nan]
 
-        with open(self.dataset_dir / f"transforms{suffix}.json", "w") as f:
+        with open(self.dataset_dir / f"{name_prefix}{suffix}.json", "w") as f:
             json.dump(split_transform, f, indent=2)
+
+    def write_split_transforms(
+        self, frames, gt_iparams, ls_iparams, tls_iparams, name_prefix="transforms", copy_images=True
+    ):
+        train_frames, valid_frames, test_frames = self._split(frames)
+
+        kwargs = {"name_prefix": name_prefix, "copy_images": copy_images}
+        self._process_split(frames, gt_iparams, ls_iparams, tls_iparams, **kwargs)
+        self._process_split(train_frames, gt_iparams, ls_iparams, tls_iparams, split="train", **kwargs)
+        self._process_split(valid_frames, gt_iparams, ls_iparams, tls_iparams, split="valid", **kwargs)
+        self._process_split(test_frames, gt_iparams, ls_iparams, tls_iparams, split="test", **kwargs)
 
     def finish(self, frames, gt_iparams, ls_iparams, tls_iparams):
         self.videowriter.release()
-
-        train_frames, valid_frames, test_frames = self._split(frames)
-
-        self._process_split(frames, gt_iparams, ls_iparams, tls_iparams)
-        self._process_split(train_frames, gt_iparams, ls_iparams, tls_iparams, split="train")
-        self._process_split(valid_frames, gt_iparams, ls_iparams, tls_iparams, split="valid")
-        self._process_split(test_frames, gt_iparams, ls_iparams, tls_iparams, split="test")
+        self.write_split_transforms(frames, gt_iparams, ls_iparams, tls_iparams)

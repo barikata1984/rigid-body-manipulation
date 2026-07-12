@@ -8,13 +8,13 @@ from mujoco._structs import MjData, MjModel
 from omegaconf import MISSING
 from tqdm import tqdm
 
-from factory import instantiate
 from controllers import LinearQuadraticRegulatorConfig
 from dynamics.dynamics import (
     calculate_frame_dynamics,
     get_linacc,
     setup_robot_dynamics_parameters,
 )
+from factory import instantiate
 from recorders import StandardRecorderConfig
 from sensors import Sensors
 from visualization.visualization import ax_plot_lines, ax_plot_lines_w_tgt
@@ -59,6 +59,7 @@ class SimulatorConfig(BaseSimulatorConfig):
     target_trajectory: str | None = None
     generate_trajectory: str | None = None
     diffpos_dt: float = 1.0
+    get_unperturbed: bool = True
 
 
 # Naming convention of spatial and dynamics variables:
@@ -161,6 +162,8 @@ class Simulator:
 
         # Data buffers collected during simulation
         self.data = SimulationData()
+        self.get_unperturbed = cfg.get_unperturbed
+        self.data_unperturbed = SimulationData() if self.get_unperturbed else None
 
     def run(self):
         if not self.recorder.videowriter.isOpened():
@@ -209,7 +212,41 @@ class Simulator:
         # Visualize data
         self._visualize(self.data)
 
-        return {"frames": frames, "regressors": self.data.regressors, "wrenches": self.data.wrenches}
+        result = {"frames": frames, "regressors": self.data.regressors, "wrenches": self.data.wrenches}
+
+        if self.get_unperturbed:
+            # Images, transforms, and poses are noise-independent, so reuse those of the noisy frames
+            unperturbed_containers = [
+                self.data.file_paths,
+                self.data.transform_matrices,
+                self.data.poses_sen_obj,
+                self.data_unperturbed.twists_sen,
+                self.data_unperturbed.dtwists_sen,
+                self.data_unperturbed.wrenches,
+                self.data_unperturbed.regressors,
+                self.data_unperturbed.act_trajectory,
+            ]
+
+            unperturbed_frames = []
+            for fpath, tf, pose, t, dt, w, r, act in zip(*unperturbed_containers, strict=True):
+                unperturbed_frames.append(
+                    {
+                        "file_path": fpath,
+                        "transform_matrix": tf,
+                        "pose_sen_obj": pose,
+                        "twist_sen": t,
+                        "dtwist_sen": dt,
+                        "wrench": w.tolist(),
+                        "regressor": r.tolist(),
+                        "jointvars_clean": act.tolist(),  # [qpos, qvel, qacc] for offline noise re-synthesis
+                    }
+                )
+
+            result["unperturbed_frames"] = unperturbed_frames
+            result["unperturbed_regressors"] = self.data_unperturbed.regressors
+            result["unperturbed_wrenches"] = self.data_unperturbed.wrenches
+
+        return result
 
     def _store_current_data(self, tgt_traj, act_traj):
         self.data.time.append(self.d.time)
@@ -229,6 +266,18 @@ class Simulator:
         self.data.wrenches.append(wrench)
 
         self.data.regressors.append(regressor)
+
+        if self.get_unperturbed:
+            # perturbed=False reads raw MuJoCo values and draws no rng, so the noisy stream is unaffected
+            act_traj_clean = np.stack(self.sensors.get("jointvars", perturbed=False))  # type: ignore
+            twist_clean, dtwist_clean, regressor_clean = calculate_frame_dynamics(
+                act_traj_clean, self.inverse, self.id_ll, self.pose_x_ll, self.pose_ll_llj, self.pose_x_sen
+            )
+            self.data_unperturbed.act_trajectory.append(act_traj_clean)
+            self.data_unperturbed.twists_sen.append(twist_clean.tolist())
+            self.data_unperturbed.dtwists_sen.append(dtwist_clean.tolist())
+            self.data_unperturbed.wrenches.append(wrench)  # wrench is already noise-free
+            self.data_unperturbed.regressors.append(regressor_clean)
 
         # Writing a single frame of a dataset =============================
         file_name = f"{self.data.frame_count:04}.png"
