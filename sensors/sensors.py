@@ -10,17 +10,23 @@ class Sensors:
         m: MjModel,
         d: MjData,
         fps: float,
+        noise_scale: float = 1.0,
     ) -> None:
         self.m = m
         self.d = d
         self._sensordata = d.sensordata
-        self.jointpos_stddev = np.array(
+        self.jointpos_stddev = noise_scale * np.array(
             [5.0e-4, 5.0e-4, 5.0e-4, 1.0e-3, 1.0e-3, 1.0e-3]  # [m, m, m, rad, rad, rad], may strong
             # [1.0e-4, 1.0e-4, 1.0e-4, 5.0e-4, 5.0e-4, 5.0e-4]  # [m, m, m, rad, rad, rad], may weak
         )
         self.force_stddev = 2 * np.ones(3)  # [N]
         self.torque_stddev = 0.1 * np.ones(3)  # [Nm]
-        self.jointvar_noise_scaler = np.sqrt(2) * fps
+        # Velocity/acceleration are modeled as finite differences of noisy positions:
+        # - first difference (x[k] - x[k-1]) / dt: coeffs [1, -1], sum of squares 2 -> sqrt(2) * fps
+        # - second central difference (x[k] - 2 x[k-1] + x[k-2]) / dt**2:
+        #   coeffs [1, -2, 1], sum of squares 6 -> sqrt(6) * fps**2
+        self.jointvel_noise_scaler = np.sqrt(2) * fps
+        self.jointacc_noise_scaler = np.sqrt(6) * fps**2
         self.rng = np.random.default_rng()
         self._force_idx = get_sensor_measurement_idx(m, name="force")
         self._torque_idx = get_sensor_measurement_idx(m, name="torque")
@@ -38,10 +44,8 @@ class Sensors:
 
     def _get_jointvars(self, perturbed: bool) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         qpos = self._get_joint_measurement(self.d.qpos, self.jointpos_stddev, perturbed)
-        qvel = self._get_joint_measurement(self.d.qvel, self.jointpos_stddev * self.jointvar_noise_scaler, perturbed)
-        qacc = self._get_joint_measurement(
-            self.d.qacc, self.jointpos_stddev * self.jointvar_noise_scaler**2, perturbed
-        )
+        qvel = self._get_joint_measurement(self.d.qvel, self.jointpos_stddev * self.jointvel_noise_scaler, perturbed)
+        qacc = self._get_joint_measurement(self.d.qacc, self.jointpos_stddev * self.jointacc_noise_scaler, perturbed)
         return qpos, qvel, qacc
 
     def _get_force(self, perturbed: bool) -> np.ndarray:
@@ -79,11 +83,11 @@ class Sensors:
             return self._get_joint_measurement(self.d.qpos, self.jointpos_stddev, perturbed)
         elif key == "jointvel":
             return self._get_joint_measurement(
-                self.d.qvel, self.jointpos_stddev * self.jointvar_noise_scaler, perturbed
+                self.d.qvel, self.jointpos_stddev * self.jointvel_noise_scaler, perturbed
             )
         elif key == "jointacc":
             return self._get_joint_measurement(
-                self.d.qacc, self.jointpos_stddev * self.jointvar_noise_scaler**2, perturbed
+                self.d.qacc, self.jointpos_stddev * self.jointacc_noise_scaler, perturbed
             )
         elif key == "jointvars":
             return self._get_jointvars(perturbed)

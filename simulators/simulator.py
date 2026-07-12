@@ -60,6 +60,7 @@ class SimulatorConfig(BaseSimulatorConfig):
     generate_trajectory: str | None = None
     diffpos_dt: float = 1.0
     get_unperturbed: bool = True
+    noise_scale: float = 1.0
 
 
 # Naming convention of spatial and dynamics variables:
@@ -135,7 +136,7 @@ class Simulator:
         self.m = m
         self.d = d
 
-        self.sensors = Sensors(self.m, self.d, self.fps)
+        self.sensors = Sensors(self.m, self.d, self.fps, noise_scale=cfg.noise_scale)
 
         _params = setup_robot_dynamics_parameters(self.m, self.d)
         self.poses = _params.poses
