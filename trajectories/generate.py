@@ -60,6 +60,11 @@ def _explicitly_set_cli_keys(cli_config) -> set[str]:
 
 
 def main():
+    # Force line-buffered stdout so per-iteration optimizer prints are visible
+    # when the output is redirected to a file (Python defaults to block buffering
+    # for non-tty stdout, which delays visibility of the SLSQP callback progress).
+    sys.stdout.reconfigure(line_buffering=True)
+
     # Parse CLI arguments using tyro
     cli_config = tyro.cli(TrajectoryConfig)
 
