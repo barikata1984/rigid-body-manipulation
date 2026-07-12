@@ -68,5 +68,35 @@
     "objective_type": "condition_number",
     "num_harmonics": 5,
     "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-12T14:15:10",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260712_141510",
+    "condition_number": 253.8767190908415,
+    "config": "/tmp/claude-1000/-home-ak-workspace-rigid-body-manipulation/4494a234-42d4-4ff1-bf47-c7889efe96e4/scratchpad/cond43_10s.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-12T14:15:05",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260712_141505",
+    "condition_number": 153.43537850742734,
+    "config": "/tmp/claude-1000/-home-ak-workspace-rigid-body-manipulation/4494a234-42d4-4ff1-bf47-c7889efe96e4/scratchpad/cond24_10s.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-12T14:15:19",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260712_141519",
+    "condition_number": 24.077495096917623,
+    "config": "/tmp/claude-1000/-home-ak-workspace-rigid-body-manipulation/4494a234-42d4-4ff1-bf47-c7889efe96e4/scratchpad/cond3_10s.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.1
   }
 ]
