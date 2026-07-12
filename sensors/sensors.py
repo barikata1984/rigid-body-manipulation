@@ -11,6 +11,8 @@ class Sensors:
         d: MjData,
         fps: float,
         noise_scale: float = 1.0,
+        force_noise_scale: float = 1.0,
+        torque_noise_scale: float = 1.0,
     ) -> None:
         self.m = m
         self.d = d
@@ -19,8 +21,8 @@ class Sensors:
             [5.0e-4, 5.0e-4, 5.0e-4, 1.0e-3, 1.0e-3, 1.0e-3]  # [m, m, m, rad, rad, rad], may strong
             # [1.0e-4, 1.0e-4, 1.0e-4, 5.0e-4, 5.0e-4, 5.0e-4]  # [m, m, m, rad, rad, rad], may weak
         )
-        self.force_stddev = 2 * np.ones(3)  # [N]
-        self.torque_stddev = 0.1 * np.ones(3)  # [Nm]
+        self.force_stddev = force_noise_scale * 2 * np.ones(3)  # [N]
+        self.torque_stddev = torque_noise_scale * 0.1 * np.ones(3)  # [Nm]
         # Velocity/acceleration are modeled as finite differences of noisy positions:
         # - first difference (x[k] - x[k-1]) / dt: coeffs [1, -1], sum of squares 2 -> sqrt(2) * fps
         # - second central difference (x[k] - 2 x[k-1] + x[k-2]) / dt**2:

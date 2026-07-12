@@ -61,6 +61,9 @@ class SimulatorConfig(BaseSimulatorConfig):
     diffpos_dt: float = 1.0
     get_unperturbed: bool = True
     noise_scale: float = 1.0
+    perturb_wrench: bool = True
+    force_noise_scale: float = 1.0
+    torque_noise_scale: float = 1.0
 
 
 # Naming convention of spatial and dynamics variables:
@@ -136,7 +139,15 @@ class Simulator:
         self.m = m
         self.d = d
 
-        self.sensors = Sensors(self.m, self.d, self.fps, noise_scale=cfg.noise_scale)
+        self.sensors = Sensors(
+            self.m,
+            self.d,
+            self.fps,
+            noise_scale=cfg.noise_scale,
+            force_noise_scale=cfg.force_noise_scale,
+            torque_noise_scale=cfg.torque_noise_scale,
+        )
+        self.perturb_wrench = cfg.perturb_wrench
 
         _params = setup_robot_dynamics_parameters(self.m, self.d)
         self.poses = _params.poses
@@ -263,7 +274,7 @@ class Simulator:
         linacc_sen_obji = get_linacc(twist_sen, dtwist_sen, self.pose_sen_obji)
         self.data.linaccs_sen_obji.append(linacc_sen_obji)
 
-        wrench = self.sensors.get("wrench")
+        wrench = self.sensors.get("wrench", perturbed=self.perturb_wrench)
         self.data.wrenches.append(wrench)
 
         self.data.regressors.append(regressor)
@@ -277,7 +288,8 @@ class Simulator:
             self.data_unperturbed.act_trajectory.append(act_traj_clean)
             self.data_unperturbed.twists_sen.append(twist_clean.tolist())
             self.data_unperturbed.dtwists_sen.append(dtwist_clean.tolist())
-            self.data_unperturbed.wrenches.append(wrench)  # wrench is already noise-free
+            # perturbed=False reads raw sensordata and draws no rng
+            self.data_unperturbed.wrenches.append(self.sensors.get("wrench", perturbed=False))
             self.data_unperturbed.regressors.append(regressor_clean)
 
         # Writing a single frame of a dataset =============================
