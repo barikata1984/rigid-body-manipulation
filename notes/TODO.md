@@ -21,12 +21,14 @@
     - [x] envelope-cond ペアの三点確定 (2026-07-12: 対数線形モデルで cond10=1.3/2.1→9.64, cond50=0.35/0.6→43.96, cond100=0.22/0.37→92.04 の 3 帯が揃った. ただし独立に判明した base_freq 問題 (下記新規 TODO) により, envelope 割当ての YAML 反映は保留)
 - [ ] `excited_6dof_strict.yaml` の nh スイープ(nh∈{2,3,5,10}, base_freq=0.1)を実行し, 単一調波(nh=1)の劣化を回避した非退化な本番用軌道を選定する (2026-07-09 のセッションで合意されたが未着手)
 - [ ] base_freq=0.1 が同定 SNR を制限している問題への対処: FTA で cond=2.99 と cond=9.64 の TLS L2 がほぼ同水準 (0.20 vs 0.19) と判明. 加速度が f² スケールするため bf=0.1 では envelope 使用率が 11-17% にとどまり同定 SNR が不足. 対応候補は (1) bf を 0.2-0.4 Hz 帯に上げて cond と L2 の関係を再校正, (2) 文献調査で得た唯一の verbatim 数値 (Swevers 2007 CSM: f_0=0.033 Hz, sparse harmonics 20th/25th) を参考に sparse harmonics 方式に切替, (3) このまま bf=0.1 を維持し cond を独立変数とする study と割り切る (ただし L2 は 0.2 前後で頭打ち). 詳細: notes/LOGS/log_trajectory_optimization.md 2026-07-12 エントリ, notes/ISSUES.md
-  - [ ] cond 24 (envelope 0.5/0.9, n_restarts=1)・cond 43 (envelope 0.35/0.6, n_restarts=1)・cond 2.99 (envelope 1.5/π, n_restarts=8 × max_iter=30 のフル探索) の 3 条件を, `duration` を 20s から 10s に変更 (bf=0.1 は据え置き) して再実行する. 目的: Swevers 1997 原論文 (f_0=0.1 Hz, N=5, T=10s=1周期) と周期数を揃え, T=20s (2周期) との同定 L2 差を見る. 3 件は並列実行可 (20 コア利用可能)
+  - [x] duration を 20s→10s に変更 (bf=0.1 据置き) して cond 24 / cond 43 / cond 2.99 の 3 条件を再実行し Swevers 1997 (T=10s=1周期) と周期数を揃える (2026-07-12: 3 軌道生成 + sim 実施. cond は 5.8-8.1x 悪化するが TLS L2 は 0.165-0.204 帯に張り付き, 周期数一致仮説は L2 改善には効かないと判明)
+  - [x] 系統的 total_mass 低推定バイアスの root cause 特定 (2026-07-12: FTA で `sensors/sensors.py:17-23` の qacc 測定ノイズ σ=3.6 m/s² が真因と特定. bf=0.1 で peak qacc ~1 m/s² と SNR 0.3:1. TLS の EIV 補償で 15% 残バイアス. 検証: `simulator.py:170` を `perturbed=False` に一時変更 → LS mass=1.116096 (誤差 3e-6), TLS L2=0.000173 で 1180x 改善. 設計変更は未実施 — 完了後にコード側は per-location revert 済み)
 
 ## Simulation / Identification
 
 - [x] `excited_6dof.yaml` の `start_pos` を manipulator XML の `initial_state` に合わせる
 - [ ] TLS 慣性パラメータ同定の精度検証: L2 誤差 0.209(spline) vs 0.140(excited)の差を定量的に評価する
+- [ ] センサーノイズ (`sensors/sensors.py:17-23` の jointpos_stddev / jointvar_noise_scaler) と同定パイプラインの整合をとる設計判断: (a) `SimulatorConfig` に `perturbation: bool` フラグを追加してユーザーが実験毎に切り替え, (b) ノイズなしを default にして「実機模擬モード」だけ明示的に on, (c) MuJoCo 真値 (`d.qpos/qvel/qacc`) をメタデータ保存して事後にノイズ再合成可能にする, (d) EIV (errors-in-variables) を明示的に扱う回帰式に変更する, のどの組み合わせを取るか. FTA 結果: ノイズを切れば TLS L2=0.000173 でほぼ完全同定可能. 詳細: notes/LOGS/log_trajectory_optimization.md 2026-07-12 (続 2) エントリ, notes/ISSUES.md
 
 ## Code Cleanup
 

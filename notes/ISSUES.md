@@ -9,14 +9,12 @@
 
 6DOF で約 30 秒/反復. 実用上の問題になりうる.
 
-## [2026-07-12] base_freq=0.1 Hz が同定 SNR を律速している問題
+## [2026-07-12] センサーノイズ (qacc σ=3.6 m/s²) が同定精度を律速
 
-cond=2.99 (envelope 1.5/π) と cond=9.64 (envelope 1.3/2.1) の軌道で TLS L2 がほぼ同水準 (0.204 vs 0.193) となり, cond が同定精度の予測子として機能しない状態を検出した.
+hammer 慣性同定で total_mass が LS 28-29% 低推定, TLS 14-17% 低推定という系統的バイアスを 5 条件 (envelope・T・cond いずれも異なる) で検出した. cond=2.99〜253.88 の 84 倍レンジでも TLS L2 は 0.165-0.204 帯にほぼ一定.
 
-FTA による根本原因: base_freq=0.1 では加速度が `q̈ ∝ (2π k f_0)²` により f_0 の 2 乗でスケールするため, envelope (ddq_max) の使用率が 11-17% にとどまり, 慣性同定 (τ = M(q)q̈ の回帰) に必要な加速度信号の SNR が不足する. Van der Sluis/Swevers の等化 cond は観測行列 Y の相対誤差増幅率のみを測り, 観測信号自体の絶対 SNR は評価しないため, cond が低くても L2 が改善しない.
+FTA で `sensors/sensors.py:17-23` のノイズ設定が真因と特定した. `jointpos_stddev × jointvar_noise_scaler² = 5e-4 × (√2 × 60)² = 3.6 m/s²` が qacc に加わる. `simulators/simulator.py:170` の `perturbed=True` がハードコード. bf=0.1 で実測 peak qacc は約 1 m/s² と, ノイズが信号の 3-4 倍大きい. 慣性同定は τ = M(q)q̈ を回帰するため EIV 減衰で LS が下方バイアス, TLS が部分補償するが 15% が残る. cond は Y の相対誤差増幅率のみを測り絶対 SNR を評価しないため, cond に依存しない.
 
-訂正 (2026-07-12 追記): 本エントリは当初「f_0=0.1 Hz の verbatim な一次資料はなく, 唯一確認できた verbatim 数値は Swevers 2007 CSM の f_0=0.033 Hz」と記録していたが誤りだった. 実際には Swevers 1997 (IEEE T-RA, フーリエ級数励起の原論文) が f_0=0.1 Hz, N=5, T=10s (=1周期) を verbatim に明記しており, 現行 YAML の f_0=0.1, N=5 と完全に一致する. したがって f_0=0.1 Hz は文献的根拠を持ち, 「孫引きの俗説」ではない (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-12 (続き) エントリ).
+決定的検証: `simulator.py:170` を一時的に `perturbed=False` に変更 → LS mass=1.116096 (誤差 3e-6, 0.0003%), LS L2=0.000173 (ノイズありの 0.204 から 1180x 改善). ノイズが唯一の主要因. 2026-07-07 の bf=0.5 setup で L2=0.018 を達成できていたのは peak qacc ~25 m/s² で SNR 十分だったため.
 
-ただし, この訂正は SNR 不足の問題自体を解消しない. f_0=0.1 Hz の妥当性と同定 SNR 不足は独立の論点である. 未解決の論点は「f_0=0.1 Hz が妥当か」ではなく, (f_0, N, T) を組で見たときの設計選択に移った. 具体的には (1) Swevers 1997 は T=10s (1周期) だが現行は同じ f_0 で T=20s (2周期) であり, 周期数の違いが同定 SNR に与える影響が未検証, (2) Huang 2025 (RAL) は f_0≈0.04 Hz とさらに低い基本周波数でも N=7 まで調波数を上げて加速度を確保しており, N を増やす選択肢が未検討, という 2 点が新たに浮上した.
-
-対応候補: (a) duration を 20s→10s に変更し Swevers 1997 と周期数を揃えて再同定する (再実行タスクとして `notes/TODO.md` に記録済み, 未実行), (b) N を増やして高調波から加速度を稼ぐ, (c) base_freq を 0.2-0.4 Hz 帯に上げて cond と L2 の関係を再校正する, (d) 現状の bf=0.1 を維持し, cond を独立変数とする study と割り切る (ただし L2 は 0.2 前後で頭打ち). 判断は未着手 (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-12 エントリ, `notes/TODO.md`).
+対応候補: (a) `SimulatorConfig` に `perturbation: bool` フラグを追加して実験ごとに切替可能にする, (b) ノイズなしを default にして「実機模擬モード」だけ明示的に on, (c) MuJoCo 真値 (`d.qpos/qvel/qacc`) をメタデータに常時保存して事後にノイズ再合成可能にする, (d) EIV を明示的に扱う回帰式 (総合最小二乗 の適切な定式化, 器差モデル込み等) に変更する. 判断は未着手 (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-12 (続 2) エントリ, `notes/TODO.md`).

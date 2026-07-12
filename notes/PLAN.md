@@ -180,6 +180,8 @@ Van der Sluis の等化 cond は観測行列 Y の conditioning (相対誤差増
 ただし文献的根拠の有無は同定 SNR 不足の問題を解消しない. Swevers 1997 は T=10s (1周期) だが現行は T=20s (2周期) であり, 周期数の違いが同定 SNR にどう影響するかは未検証である.
 したがって cond 目標の達成 (envelope 選定) とは独立に, 適切な (f_0, N, T) の組み合わせの選定が必要である.
 
+追記 (2026-07-12 続 2): duration=10s (Swevers 1997 と周期数を一致) で 3 条件を再実行したところ, cond は 5.8-8.1 倍悪化したが TLS L2 は 0.165-0.204 帯に張り付いたままで, 周期数一致仮説は L2 改善には効かないと判明した. 続けて FTA で全 5 sim 出力の total_mass 低推定バイアスを追跡した結果, SNR 不足の真因は base_freq ではなく `sensors/sensors.py` のセンサーノイズ側にあると判明した. qacc ノイズ標準偏差 (並進 σ=3.6 m/s², 回転 σ=7.2 rad/s²) は 2 段階微分によるノイズ増幅を想定した設計値だが, bf=0.1 の低加速度信号 (peak ~1 m/s²) に対してはノイズが信号の 3-4 倍大きく, 信号自体を圧倒する. 検証としてノイズを切った (`perturbed=False`) ところ LS mass の誤差が 3e-6 まで縮み, TLS L2 が 1180 倍改善した (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-12 (続 2) エントリ, `notes/ISSUES.md`). 次のステップは (a) ノイズをフラグ化して実験ごとに切替可能にする, (b) MuJoCo 真値を常に保存して事後にノイズを再合成できるようにする, (c) EIV (errors-in-variables) を明示的に扱う回帰式に変更する, の 3 択で, 設計判断が必要である. これは既存 Stage 群 (Stage 0-7) とは独立の設計軸であり Stage 番号は付けない.
+
 ### generate.py の修正
 
 OmegaConf merge で CLI のデフォルト値が YAML の値を上書きするバグを修正.

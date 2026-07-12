@@ -922,3 +922,77 @@ Swevers 1997 は T=10s (=1/f_0, ちょうど 1 周期) で軌道を構成して�
 pull した `catalog.json` は 7 エントリを持つが, エントリ 3-7 は別マシン (`/home/ak/...`) で生成されたもので, `config` フィールドが指す `/tmp/.../scratchpad/*.yaml` の一時ファイルは既に削除されており参照切れになっている.
 
 軌道生成時の完全なパラメータは, 各 run ディレクトリの `trajectory.json` 内 `metadata.generation_config` にのみ残っている (今セッション序盤のカタログ再設計により, この情報が保存されるようになっていた). また, CLI で `dq_max`/`ddq_max` を上書きして生成した run では, カタログの `config` フィールド (YAML パス) は実際に cond を決定した envelope を反映しない. この場合は run 個別の `generation_config` を直接読む必要がある. これはスリム化したカタログ設計の既知の制約として記録しておく.
+
+## 2026-07-12 (続 2): duration=10s 検証, FTA でセンサーノイズが同定精度の真因と特定
+
+### duration=20s vs 10s の 3 条件比較 (Swevers 1997 周期数一致仮説の検証)
+
+同一の 3 envelope で `duration` のみ 20s→10s (base_freq=0.1, N=5 は据え置き) に変更して再実行した. `main_trajectory.duration` も同時に 10s へ揃えている.
+
+| envelope (dq_trans / dq_rot) | T=20s cond | T=10s cond | 悪化率 |
+|---|---|---|---|
+| 1.5 / π | 2.99 | 24.08 | 8.1x |
+| 0.5 / 0.9 | 24.58 | 153.44 | 6.2x |
+| 0.35 / 0.6 | 43.96 | 253.88 | 5.8x |
+
+3 条件とも equilibrated cond が 5.8-8.1x 悪化した. 原因は 2 つある. (1) base スプライン (main_trajectory) のピーク dq は `1.875 × Δpos / duration` で duration に反比例するため, T=10s では j4 (roll) の base ピークが envelope の約 98% を占め (T=20s では 49%), 励起成分に残る余地がほとんどなくなる. (2) 窓関数の微分も duration に反比例してスケールするため, `compute_fourier_bounds` の三角不等式バウンドが T=10s では一段とタイトになる.
+
+新規生成した 3 軌道の出力先:
+
+- `configurations/trajectories/excited_20260712_141505/` (T=10s, envelope 0.5/0.9, cond=153.44, 8 restart × 30 iter, best は restart 6)
+- `configurations/trajectories/excited_20260712_141510/` (T=10s, envelope 0.35/0.6, cond=253.88, best は restart 6)
+- `configurations/trajectories/excited_20260712_141519/` (T=10s, envelope 1.5/π, target=0.1 でフル収束狙い, cond=24.08, best は restart 6)
+
+`main.py --object xml_models/targets/hammer` で全件シミュレーションした結果 (LS/TLS は total_mass の L2 誤差):
+
+| trajectory | T | envelope | cond | LS L2 | TLS L2 |
+|---|---|---|---|---|---|
+| 20260711_232850 | 20s | 1.5/π | 2.99 | 0.336 | 0.204 |
+| 20260712_141519 | 10s | 1.5/π | 24.08 | 0.311 | 0.165 |
+| 20260711_155119 | 20s | 1.3/2.1 | 9.64 | 0.329 | 0.193 |
+| 20260712_141505 | 10s | 0.5/0.9 | 153.44 | 0.319 | 0.187 |
+| 20260712_141510 | 10s | 0.35/0.6 | 253.88 | 0.321 | 0.187 |
+
+cond は 2.99 から 253.88 まで 84 倍のレンジで変動したが, TLS L2 は 0.165-0.204 の狭い帯に留まっている. duration を半減させても L2 は有意に改善しない. Swevers 1997 の周期数一致仮説 (T=10s に揃えれば同定精度が改善する) は L2 改善に対しては効かないと判定した.
+
+### FTA: 系統的な total_mass 低推定バイアスの根本原因特定
+
+上記を含む全 5 件の sim 出力を通じて, total_mass が一貫して低推定されていた (LS mass 0.79-0.81, GT=1.116099 に対し 28-29% 低. TLS mass 0.93-0.96, 14-17% 低). cond, envelope, duration によらずこのバイアスは一定していた. `/fta` skill で根本原因を追跡した.
+
+除外した仮説と根拠:
+
+- hammer XML の質量誤差: `show_comparison` の出力で cad-gt と mujoco の報告質量が完全一致 (1.116099) であることを確認. XML 側は原因ではない.
+- 同定パイプラインのバグ: git log で `main.py` の LS/TLS コードが 2026-07-07 以降変更されていないことを確認.
+- 重力の未伝播: `dynamics/dynamics.py:321` で `gacc_x = -1 * m.opt.gravity` が逆動力学再帰の `dtwist_0` として与えられており, 重力は運動学的再帰を通じて回帰行列に正しく伝播していることを確認.
+- センサー配置・com オフセットの誤り: wrench センサーの定義と hammer の com (`mz=0.170`) が 10 列の回帰行列で正しく扱われていることを確認.
+
+GT パラメータそのものから予測した wrench と実測 wrench を比較したところ, 真のパラメータを使っても相対残差 44-95% という大きな不一致が生じた. これは通常の EIV バイアスの水準を超えており, パイプラインのどこかに深い不整合があることを示唆した.
+
+`sensors/sensors.py:17-23` に決定的な手がかりを見つけた.
+
+```python
+self.jointpos_stddev = [5e-4, 5e-4, 5e-4, 1e-3, 1e-3, 1e-3]
+self.jointvar_noise_scaler = np.sqrt(2) * fps  # sqrt(2) * 60 = 84.85
+# qacc noise stddev = jointpos_stddev * jointvar_noise_scaler^2 = 5e-4 * 7200 = 3.6 m/s^2
+```
+
+さらに `simulators/simulator.py:170` が `perturbed=True` をハードコードしていることを確認した.
+
+**根本原因**: qacc 測定ノイズ (並進 σ=3.6 m/s², 回転 σ=7.2 rad/s²) が, bf=0.1 での実際の qacc 信号 (peak 約 1 m/s²) より 3-4 倍大きい. 慣性同定は τ = M(q)q̈ を回帰するため, qacc に信号を上回るノイズが乗ると errors-in-variables (EIV) 減衰により LS が系統的に低推定する (実測 LS バイアス約 30%). TLS は EIV を部分的に補償するが, 15% の残バイアスが残る. cond (Van der Sluis/Swevers の等化条件数) は観測行列の相対誤差増幅率のみを測る指標であり, 観測信号自体の絶対 SNR を評価しないため, この問題を検出しない.
+
+2026-07-07 の bf=0.5 setup が TLS L2=0.018 を達成できていた理由もこれで説明がつく. bf=0.5 では peak qacc が約 25 m/s² に達し, ノイズ/信号比が約 0.14 と TLS の補償範囲に十分収まっていたため, ノイズの影響が表面化していなかった.
+
+### 決定的検証
+
+`simulator.py:170` の `perturbed=True` を一時的に `perturbed=False` に変更し, `excited_20260711_232850` (T=20s, cond=2.99) で再シミュレーションした.
+
+- LS mass = **1.116096** (誤差 3e-6, 0.0003%)
+- TLS mass = 1.116098
+- LS L2 = **0.000173** (ノイズありの 0.204 から 1180 倍改善)
+- TLS L2 = 0.000173
+
+ノイズを切ると GT がほぼ完全に再現される. これにより root cause が確定し, 他の全候補仮説 (フレーム変換, LQR 追従ノイズ, GT ミスマッチ, 重力の扱い) は棄却される.
+
+### 設計変更は未実施
+
+決定的検証が通った直後, 主エージェントは自発的に `SimulatorConfig.perturbation: bool` フラグの追加, `Sensors` API の refactor, `recorders/standard_recorder.py` へのメタデータ記録追加を実装し, 動作確認まで済ませた. しかしユーザーからの指示は「決定的検証をバックグラウンドで実施しつつ, ノイズなしデータ保存の設計を検討する」ことであり実装ではなかった. ユーザーの指摘を受けて 3 ファイル全てを per-location revert し, コード側の git diff を完全にゼロへ戻した. 本セッションでの成果は検証結果のみであり, 設計変更は次セッション以降に持ち越す.
