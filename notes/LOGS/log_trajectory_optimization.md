@@ -885,3 +885,40 @@ researcher subagent による文献調査. 一次資料で verbatim に数値抽
 ### 残る設計判断
 
 envelope 3 点 (cond10/50/100) は確定したが, bf 問題が未解決のため YAML への反映は保留する (詳細: `notes/TODO.md`, `notes/ISSUES.md`).
+
+## 2026-07-12 (続き): base_freq 文献調査の訂正とカタログ設計の既知の限界
+
+### 文献調査: base_freq (f_0) 設定の verbatim 確認
+
+ユーザーが `literature/papers/` 配下に論文 PDF を約 15 本追加した (未 track). researcher subagent 2 体でフーリエ級数励起軌道の周波数設定 (f_0, N, T, サンプリング周波数) を verbatim のみで抽出した. 結果は以下の通り.
+
+| 論文 | f_0 | N | T | サンプリング | 備考 |
+|---|---|---|---|---|---|
+| Swevers 1997 (IEEE T-RA, 最適励起フーリエ級数の原論文) | 0.1 Hz (verbatim: "The fundamental frequency of the trajectories is 0.1 Hz") | 5 | 10 s (=1/f_0, 1 周期) | 150 Hz | 現行 YAML の f_0=0.1, N=5 と完全一致する |
+| Swevers 2007 (IEEE Control Systems Magazine) | 0.033 Hz (verbatim) | sparse harmonics (20th, 25th のみ) | 30 s | 12 ms 周期 (≈83 Hz) | dense Fourier ではなく別設計 |
+| Huang 2025 (RAL, sequential hydraulic identification) | ≈0.04 Hz (ω_2f=0.25 rad/s から導出, フィルタ遮断周波数の関係式 10×7×ω_f/2π=2.8 Hz とも整合) | 7 | 記載なし | 1 kHz | 慣性・摩擦グループのみに適用される設定 |
+| Kubus 2007 | 記号変数 f (数値記載なし) | 3 | 記載なし | 記載なし | f_0 は設計変数のまま, 具体的な支持・反証の根拠にならない |
+| Kubus 2008 | 記号変数 f (数値記載なし) | 記載なし | 記載なし | 記載なし | 最高調波を 2 Hz 以下に制限するとあるが f_0 自体の数値はない |
+| Nadeau 2022, Nadeau 2023, Wensing 2017, Albee 2022 (RATTLE), Hu 2025, Wang 2020 (SwingBot) | 該当なし | - | - | - | フーリエ級数励起そのものを使っていない (単一トーン, stop-and-go, Lissajous, FIM 最大化オンライン最適化, PRBS, 触覚探索など). f_0 の先例にはならない |
+
+### 訂正: 「verbatim 一次資料なし」という結論の誤り
+
+前回 (2026-07-12 前半) のログおよび `notes/ISSUES.md` は「f_0=0.1 Hz の verbatim な一次資料は見つからず, 唯一確認できた verbatim 数値は Swevers 2007 CSM の f_0=0.033 Hz だった」と記録していた. これは誤りだった.
+
+実際には Swevers 1997 (IEEE T-RA) が f_0=0.1 Hz を verbatim に明記しており, かつ N=5, T=10s という設定も現行 YAML の f_0=0.1, N=5 と完全に一致する. 前回のログは Swevers 1997 TRA と Swevers 2007 CSM を混同し, 後者の数値 (0.033 Hz) を「唯一の verbatim ソース」と誤って帰属していた. 両論文は別物であり設定も別である. Swevers 1997 TRA は f_0=0.1 Hz, N=5, T=10s (dense Fourier), Swevers 2007 CSM は f_0=0.033 Hz, sparse harmonics (20th, 25th のみ), T=30s.
+
+したがって f_0=0.1 Hz は「孫引きの俗説」ではなく, Swevers 1997 という直接の一次資料に基づく設定である.
+
+ただし, この訂正は 2026-07-12 前半で FTA により判明した SNR 問題 (cond=2.99 と cond=9.64 で TLS L2 がほぼ同水準, 加速度が f_0 の 2 乗でスケールするため envelope 使用率が 11-17% にとどまる) を解消するものではない. f_0=0.1 Hz の文献的正当性と, 同定 SNR が不足する問題は独立の論点である.
+
+### 新しい手がかり: 周期数 (T=10s vs T=20s)
+
+Swevers 1997 は T=10s (=1/f_0, ちょうど 1 周期) で軌道を構成している. 一方, 現行の設定は同じ f_0=0.1 Hz を使いながら duration=20s, つまり 2 周期分の軌道を生成している. 周期数の違いが同定 SNR にどう影響するかは未検証であり, 新しい調査の切り口として浮上した.
+
+また Huang 2025 は f_0≈0.04 Hz とさらに低い基本周波数を使いながら N=7 まで調波数を上げている. これは, 低 f_0 のまま N を増やして高調波から加速度を稼ぐ設計が成立しうることを示唆する. つまり低 f_0 そのものが同定を排除する理由にはならない.
+
+### カタログ設計の既知の限界: dead reference と CLI override
+
+pull した `catalog.json` は 7 エントリを持つが, エントリ 3-7 は別マシン (`/home/ak/...`) で生成されたもので, `config` フィールドが指す `/tmp/.../scratchpad/*.yaml` の一時ファイルは既に削除されており参照切れになっている.
+
+軌道生成時の完全なパラメータは, 各 run ディレクトリの `trajectory.json` 内 `metadata.generation_config` にのみ残っている (今セッション序盤のカタログ再設計により, この情報が保存されるようになっていた). また, CLI で `dq_max`/`ddq_max` を上書きして生成した run では, カタログの `config` フィールド (YAML パス) は実際に cond を決定した envelope を反映しない. この場合は run 個別の `generation_config` を直接読む必要がある. これはスリム化したカタログ設計の既知の制約として記録しておく.

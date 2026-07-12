@@ -15,4 +15,8 @@ cond=2.99 (envelope 1.5/π) と cond=9.64 (envelope 1.3/2.1) の軌道で TLS L2
 
 FTA による根本原因: base_freq=0.1 では加速度が `q̈ ∝ (2π k f_0)²` により f_0 の 2 乗でスケールするため, envelope (ddq_max) の使用率が 11-17% にとどまり, 慣性同定 (τ = M(q)q̈ の回帰) に必要な加速度信号の SNR が不足する. Van der Sluis/Swevers の等化 cond は観測行列 Y の相対誤差増幅率のみを測り, 観測信号自体の絶対 SNR は評価しないため, cond が低くても L2 が改善しない.
 
-対応候補: (1) base_freq を 0.2-0.4 Hz 帯に上げて cond と L2 の関係を再校正する, (2) sparse harmonics 方式 (Swevers 2007 CSM: f_0=0.033 Hz, 20th/25th harmonics のみを参考) に切り替える, (3) 現状の bf=0.1 を維持し, cond を独立変数とする study と割り切る (ただし L2 は 0.2 前後で頭打ち). 判断は未着手 (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-12 エントリ, `notes/TODO.md`).
+訂正 (2026-07-12 追記): 本エントリは当初「f_0=0.1 Hz の verbatim な一次資料はなく, 唯一確認できた verbatim 数値は Swevers 2007 CSM の f_0=0.033 Hz」と記録していたが誤りだった. 実際には Swevers 1997 (IEEE T-RA, フーリエ級数励起の原論文) が f_0=0.1 Hz, N=5, T=10s (=1周期) を verbatim に明記しており, 現行 YAML の f_0=0.1, N=5 と完全に一致する. したがって f_0=0.1 Hz は文献的根拠を持ち, 「孫引きの俗説」ではない (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-12 (続き) エントリ).
+
+ただし, この訂正は SNR 不足の問題自体を解消しない. f_0=0.1 Hz の妥当性と同定 SNR 不足は独立の論点である. 未解決の論点は「f_0=0.1 Hz が妥当か」ではなく, (f_0, N, T) を組で見たときの設計選択に移った. 具体的には (1) Swevers 1997 は T=10s (1周期) だが現行は同じ f_0 で T=20s (2周期) であり, 周期数の違いが同定 SNR に与える影響が未検証, (2) Huang 2025 (RAL) は f_0≈0.04 Hz とさらに低い基本周波数でも N=7 まで調波数を上げて加速度を確保しており, N を増やす選択肢が未検討, という 2 点が新たに浮上した.
+
+対応候補: (a) duration を 20s→10s に変更し Swevers 1997 と周期数を揃えて再同定する (再実行タスクとして `notes/TODO.md` に記録済み, 未実行), (b) N を増やして高調波から加速度を稼ぐ, (c) base_freq を 0.2-0.4 Hz 帯に上げて cond と L2 の関係を再校正する, (d) 現状の bf=0.1 を維持し, cond を独立変数とする study と割り切る (ただし L2 は 0.2 前後で頭打ち). 判断は未着手 (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-12 エントリ, `notes/TODO.md`).
