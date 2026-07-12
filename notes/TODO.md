@@ -30,7 +30,10 @@
 - [ ] TLS 慣性パラメータ同定の精度検証: L2 誤差 0.209(spline) vs 0.140(excited)の差を定量的に評価する
 - [ ] センサーノイズ (`sensors/sensors.py:17-23` の jointpos_stddev / jointvar_noise_scaler) と同定パイプラインの整合をとる設計判断: (a) `SimulatorConfig` に `perturbation: bool` フラグを追加してユーザーが実験毎に切り替え, (b) ノイズなしを default にして「実機模擬モード」だけ明示的に on, (c) MuJoCo 真値 (`d.qpos/qvel/qacc`) をメタデータ保存して事後にノイズ再合成可能にする, (d) EIV (errors-in-variables) を明示的に扱う回帰式に変更する, のどの組み合わせを取るか. FTA 結果: ノイズを切れば TLS L2=0.000173 でほぼ完全同定可能. 詳細: notes/LOGS/log_trajectory_optimization.md 2026-07-12 (続 2) エントリ, notes/ISSUES.md
   - [x] `get_unperturbed` ノイズなしデータ出力の実装 (done 2026-07-12: `SimulatorConfig.get_unperturbed` を追加し, ノイズなし複製 (`jointvars_clean` 込み) をシミュレーションから直接出力可能にした. 同一軌道 (cond=9.64) で検証: ノイズあり TLS L2=0.183 → ノイズなし TLS L2=3.2e-5 (5700x 改善). 詳細: notes/LOGS/log_trajectory_optimization.md 2026-07-12 (続 3) エントリ)
-  - [ ] 適切なセンサーノイズ σ を決定する (基準 (実機センサー仕様 vs 許容同定 L2) + σ スイープが必要. `sensors.py` の qacc ノイズ `jointpos_stddev * (sqrt(2)*fps)**2` という fps² 差分増幅モデルの妥当性も精査する)
+  - [x] 適切なセンサーノイズ σ を決定する (基準 (実機センサー仕様 vs 許容同定 L2) + σ スイープが必要. `sensors.py` の qacc ノイズ `jointpos_stddev * (sqrt(2)*fps)**2` という fps² 差分増幅モデルの妥当性も精査する) (2026-07-12 (続 4): fps² 差分増幅モデル自体は正しいが, 二階中心差分の係数二乗和は `sqrt(2)²=2` ではなく `[1,-2,1]` の二乗和 6 であるべきと判明し, `jointacc_noise_scaler` を `sqrt(6)*fps²` に修正した (qacc ノイズ約 22% 増). `noise_scale` ノブを追加し 6 点の基準 σ スイープを実施, TLS L2 が 0.05 を割るのは noise_scale≈0.25(qacc_sigma≈1.1 m/s²)からと判明. ただし基準 `jointpos_stddev` そのものの実機グラウンディングは未着手のまま残る (下記新規 TODO 参照). 詳細: notes/LOGS/log_trajectory_optimization.md 2026-07-12 (続 4) エントリ)
+  - [ ] wrench (force/torque) センサーに独立スケールのノイズを追加し, 回帰行列 Y とターゲット τ の両方にノイズが乗る errors-in-variables 問題として LS/TLS を比較する (`_get_wrench(perturbed=True)` は実装済みだが simulator 側が未使用)
+  - [ ] `jointpos_stddev` / `force_stddev` / `torque_stddev` を実機の関節エンコーダおよび FT センサー仕様に基づいてグラウンディングする (現状は未検証の見積もり)
+  - [ ] `Sensors` に seed パラメータを追加し, ノイズスイープ比較を再現可能にする
 
 ## Code Cleanup
 
