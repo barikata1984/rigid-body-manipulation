@@ -9,13 +9,10 @@
 
 6DOF で約 30 秒/反復. 実用上の問題になりうる.
 
-## [2026-07-11] cond10/cond50/cond100.yaml の差別化が envelope タイト化で逆方向に破綻
+## [2026-07-12] base_freq=0.1 Hz が同定 SNR を律速している問題
 
-`excited_6dof_20s_cond10/50/100.yaml` の `dq_max`/`ddq_max` envelope を 2 段階でタイト化し, 到達可能な cond フロアを約 57 まで引き上げた (現行タイト envelope: 並進 dq/ddq=0.3/0.6, 回転(j4,j5) dq/ddq=0.5/1.0, 実測: `configurations/trajectories/excited_20260711_010719/`).
-これにより cond50 の差別化 (target_condition_number=50 で早期停止) は意図通り機能するようになった.
+cond=2.99 (envelope 1.5/π) と cond=9.64 (envelope 1.3/2.1) の軌道で TLS L2 がほぼ同水準 (0.204 vs 0.193) となり, cond が同定精度の予測子として機能しない状態を検出した.
 
-しかし 3 YAML を同一 envelope にしたため, 差別化の破綻が逆方向で再発した: cond10(target=10) はこのフロア (57) より低い値を要求しており到達不能で, 事実上フル実行 (`max_iter × n_restarts`) になる. cond100(target=100) は 1 反復目の cond (57.85) が既に target を下回るため, 実質未最適化のまま即発火する.
+FTA による根本原因: base_freq=0.1 では加速度が `q̈ ∝ (2π k f_0)²` により f_0 の 2 乗でスケールするため, envelope (ddq_max) の使用率が 11-17% にとどまり, 慣性同定 (τ = M(q)q̈ の回帰) に必要な加速度信号の SNR が不足する. Van der Sluis/Swevers の等化 cond は観測行列 Y の相対誤差増幅率のみを測り, 観測信号自体の絶対 SNR は評価しないため, cond が低くても L2 が改善しない.
 
-対応候補: (a) 3 YAML それぞれに別 envelope を設定する (cond10 は緩め, cond50 は現行のタイト envelope, cond100 はさらにタイトに), (b) `target_condition_number` による早期停止という差別化機構自体を再設計する. 判断は未着手 (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-11 エントリ, `notes/TODO.md`).
-
-追記 (2026-07-11): envelope タイトさと到達 cond の関係を 5 点の実測データで対数線形モデル化し, 検証範囲内 (cond 約 6〜57) で誤差 7% 以内の補間予測ができることを確認した (cond≈25 の envelope 予測 → 実測 26.65, cond<10 の envelope 予測 → 実測 9.64). 対応候補 (a) の具体的な envelope 割り当てにこのモデルを使える見込みが立ったが, 3 YAML への割り当て自体はまだ判断していない. 未解決のまま (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-11 エントリ).
+対応候補: (1) base_freq を 0.2-0.4 Hz 帯に上げて cond と L2 の関係を再校正する, (2) sparse harmonics 方式 (Swevers 2007 CSM: f_0=0.033 Hz, 20th/25th harmonics のみを参考) に切り替える, (3) 現状の bf=0.1 を維持し, cond を独立変数とする study と割り切る (ただし L2 は 0.2 前後で頭打ち). 判断は未着手 (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-12 エントリ, `notes/TODO.md`).

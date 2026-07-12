@@ -171,6 +171,14 @@ ddq_max: [0.4, 0.4, 0.4, 8.0, 8.0, 8.0]
 訂正 (2026-07-09): 上記の併用仕様自体が, `coeff_bounds[4]=0.13` という根拠のない手動値を常に支配させる副作用を生んでいたと判明した (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-09 エントリ, `notes/ISSUES.md`).
 現行仕様: `dq_max`/`ddq_max` が設定され `use_analytical_bounds=True` (既定) の場合, 解析的バウンド (三角不等式) が `coeff_bounds` の唯一の情報源となる. この場合に `coeff_bounds` も指定すると `ValueError`. `dq_max`/`ddq_max` が未設定, または `use_analytical_bounds=False` の場合のみ, 手動 `coeff_bounds` がボックスバウンドとして機能する.
 
+### base_freq と同定 SNR のトレードオフ (2026-07-12 追記)
+
+envelope-cond ペア (cond10/50/100 用の 3 点) が確定した後の実地検証で, `base_freq` が cond 最適化と同定精度の間に別のトレードオフを生む設計変数であることが判明した.
+Van der Sluis の等化 cond は観測行列 Y の conditioning (相対誤差増幅率) を測る指標であり, 観測信号そのものの絶対 SNR は評価しない.
+慣性同定は τ = M(q)q̈ を回帰するため, 同じ振幅係数でも base_freq が低いほど加速度 q̈ が小さくなり (q̈ は f_0 の 2 乗でスケールする), 同定に使える信号が痩せる. 実際 bf=0.1 と bf=0.5 は同じ envelope でも q̈ ピークが約 25 倍異なる.
+現行 YAML の bf=0.1 は文献調査で直接的な根拠が見つからず, 孫引きの可能性が高い (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-12 エントリ).
+したがって cond 目標の達成 (envelope 選定) とは独立に, 適切な base_freq の選定が必要である.
+
 ### generate.py の修正
 
 OmegaConf merge で CLI のデフォルト値が YAML の値を上書きするバグを修正.

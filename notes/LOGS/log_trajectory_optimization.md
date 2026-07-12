@@ -816,3 +816,72 @@ envelope の縮小と cond 上昇の関係はおおむね対数線形の感触�
 対数線形モデルは検証範囲内 (cond 約 6〜57) の補間において誤差 7% 以内に収まり, 十分な精度で機能した. cond10/50/100 の差別化再設計 (未解決, `notes/TODO.md`, `notes/ISSUES.md`) にこのモデルを envelope 選定の道具として活用できる見込みが立ったが, 3 YAML への具体的な envelope 割り当てはまだ判断していない.
 
 旧 1.5/π の結果 (cond=6.4) は上記クリーンアップで他の全古い trajectory と共に削除済みで, ディスク上にはもう残っていない (この表がその値の唯一の記録).
+
+## 2026-07-12: envelope-cond ペア確定, stdout buffering 修正, FTA で base_freq が同定精度の律速要因と判明
+
+### envelope-cond ペア探索
+
+cond10/50/100 用の envelope 割り当てを確定させるため, 5 本の追加最適化を実行した.
+
+| envelope (dq_trans / dq_rot) | ddq (trans / rot) | target | 達成 cond | 出力 | 備考 |
+|---|---|---|---|---|---|
+| 0.3 / 0.5 | 0.6 / 1.0 | 50 | 56.77 (未達, ftol で自主停止) | `configurations/trajectories/excited_20260711_163053/` | 8 restart, patience=5 で早期停止 |
+| 0.5 / 0.9 | 1.0 / 1.8 | 25 | 24.58 (restart 1, iter 2) | `configurations/trajectories/excited_20260711_163417/` | プローブ |
+| 0.35 / 0.6 | 0.7 / 1.2 | 50 | 43.96 (restart 1, iter 1) | `configurations/trajectories/excited_20260711_232241/` | **cond50 envelope 確定** |
+| 1.5 / π | 7.5 / 2π | 0.1 (フル収束狙い) | 2.9860 (restart 4 最良, 8 restart × 30 iter, 約 2.7 時間) | `configurations/trajectories/excited_20260711_232850/` | 旧記録 6.4 は限定リスタート下の局所解. フル探索で 2.99 まで下がる |
+| 0.22 / 0.37 | 0.44 / 0.74 | 100 | 92.04 (restart 1, iter 1) | `configurations/trajectories/excited_20260712_002113/` | **cond100 envelope 確定** |
+
+envelope-cond データ表を更新した (すべて equilibrated cond):
+
+| dq_trans / dq_rot | cond |
+|---|---|
+| 1.5 / π | 2.99 (旧記録 6.4 は多重リスタート下で更新) |
+| 1.3 / 2.1 | 9.64 |
+| 1.0 / 1.57 | 12.4 |
+| 0.5 / 0.9 | 24.58 |
+| 0.55 / 0.9 | 26.65 |
+| 0.35 / 0.6 | 43.96 |
+| 0.3 / 0.5 | 56.77 |
+| 0.22 / 0.37 | 92.04 |
+
+対数線形モデルは本セッションで 3 点 (cond10=9.64, cond50=43.96, cond100=92.04) を追加検証した. 補間精度は cond 6-92 の全帯域で誤差数% 以内に収まる. cond10/50/100 の 3 envelope が出揃った: cond10=1.3/2.1, cond50=0.35/0.6, cond100=0.22/0.37 (dq_trans/dq_rot). ただし下記 FTA の結果, YAML への反映は保留する (詳細後述).
+
+### stdout buffering の修正
+
+`trajectories/generate.py` の `main()` 関数冒頭に `sys.stdout.reconfigure(line_buffering=True)` を追加した.
+Python のデフォルトはリダイレクト先ファイルへの出力を block-buffered (~8KB) にするため, SLSQP コールバックの `iter N/max_iter: Cond = X` 出力が実際にはファイルに書き込まれず, 走行中の進捗確認が不可能だった. line_buffering=True で行単位で即座に flush されるようになった.
+
+この修正前に起動した cond=2.99 生成ジョブ (約 2.7 時間) は最後まで buffered のまま走り, プロセス終了時にまとめて flush された.
+
+### FTA: cond=2.99 の同定 L2 が高い問題
+
+envelope 1.5/π で得た cond=2.99 (equilibrated) 軌道 `excited_20260711_232850` を `main.py --object xml_models/targets/hammer` でシミュレーションしたところ, **TLS L2 = 0.204** だった. 2026-07-07 の実測 (非等化 cond=8.36 → TLS L2 = 0.018) と比較して 10 倍悪い水準である.
+
+追加検証として cond=9.64 (envelope 1.3/2.1) の軌道 `excited_20260711_155119` でも同定を実行したところ, **TLS L2 = 0.193** だった. cond が 3 倍違うのに L2 はほぼ同水準である.
+
+`/fta` skill で根本原因を分析した結果は以下の通り.
+
+- **根本原因**: `base_freq=0.1 Hz` (現行 cond10.yaml 既定値) による加速度信号の SNR 不足.
+- **メカニズム**: フーリエ級数の第 k 調波の加速度は `|q̈_k| ∝ (2π k f_0)²` で基本周波数 f_0 の 2 乗にスケールする. bf=0.1 では実測 peak ddq_trans ≈ 0.8-1.25 m/s² で, envelope (ddq_max=7.5) の使用率はわずか 11-17% にとどまる. bf=0.5 (2026-07-07 のベンチマーク) なら同じ振幅係数で q̈ が 25 倍出る. 慣性同定は τ = M(q)q̈ を回帰するため, q̈ の絶対値が識別 SNR を決定する.
+- **等化 cond の限界**: Van der Sluis / Swevers の等化 cond は Y 行列の相対誤差増幅率 `κ(Y)` を測るだけで, 観測信号 w 自体の SNR (||n||/||w||) は評価しない. cond が完璧に低くても信号が小さければ ||δx||/||x|| ≤ κ(Y) · ||n||/||w|| の右辺第 2 項が支配し, 識別は悪化する.
+- **除外された仮説**: 同定コードのバグ (git log で LS/TLS 部は変更なし), LQR ゲイン変更 (main.py の変更は出力ディレクトリ命名のみ), hammer XML の変更 (最近変更なし), 等化 vs 非等化の差のみへの帰属 (等化差 ~10x を補正しても 4x のギャップが残り, bf 差の方が支配的).
+
+### 文献調査: base_freq 選定の根拠
+
+researcher subagent による文献調査. 一次資料で verbatim に数値抽出できたのは 1 件のみだった.
+
+- Swevers, Verdonck, De Schutter, "Dynamic Model Identification for Industrial Robots," *IEEE Control Systems Magazine* 27(5), 2007, pp. 58-71: `f_0 = 0.033 Hz`, `T = 30 s`, sparse harmonics (20th と 25th のみ, dense ではない), sampling 12 ms.
+
+存在は確認できたが数値抽出に失敗した論文 (PDF が binary で WebFetch 不可):
+
+- Swevers et al. 1997 (IEEE T-RA 13(5), 730-740) — フーリエ級数原論文
+- Gautier & Khalil 1992 (IJRR 11(4)), DOI: 10.1177/027836499201100408
+- Park 2006 (Robotica), DOI: 10.1017/S0263574706002712
+
+「Swevers 系の文献典型は f_0=0.1 Hz, N=5, 16 周期」という定説は検索で頻出したが, verbatim な一次ソースには辿れなかった. 現行で使っている bf=0.1 は孫引きだった可能性が高い. 一方 Swevers 2007 CSM の最高周波数は `25 × 0.033 = 0.83 Hz` で, 我々の bf=0.1 × N=5 = 0.5 Hz より高い.
+
+**推論による推奨レンジ (文献 verbatim ではない)**: duration=20s, N=5 dense, 60 fps sampling を前提に `f_0 ≈ 0.2-0.4 Hz` を試すのが妥当と考えられる. 対数線形モデルによる cond 側の再校正 (bf 変更で envelope-cond 関係もシフトする可能性がある) と, L2 の実測を同時に行う必要がある.
+
+### 残る設計判断
+
+envelope 3 点 (cond10/50/100) は確定したが, bf 問題が未解決のため YAML への反映は保留する (詳細: `notes/TODO.md`, `notes/ISSUES.md`).
