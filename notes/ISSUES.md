@@ -18,3 +18,5 @@ FTA で `sensors/sensors.py:17-23` のノイズ設定が真因と特定した. `
 決定的検証: `simulator.py:170` を一時的に `perturbed=False` に変更 → LS mass=1.116096 (誤差 3e-6, 0.0003%), LS L2=0.000173 (ノイズありの 0.204 から 1180x 改善). ノイズが唯一の主要因. 2026-07-07 の bf=0.5 setup で L2=0.018 を達成できていたのは peak qacc ~25 m/s² で SNR 十分だったため.
 
 対応候補: (a) `SimulatorConfig` に `perturbation: bool` フラグを追加して実験ごとに切替可能にする, (b) ノイズなしを default にして「実機模擬モード」だけ明示的に on, (c) MuJoCo 真値 (`d.qpos/qvel/qacc`) をメタデータに常時保存して事後にノイズ再合成可能にする, (d) EIV を明示的に扱う回帰式 (総合最小二乗 の適切な定式化, 器差モデル込み等) に変更する. 判断は未着手 (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-12 (続 2) エントリ, `notes/TODO.md`).
+
+追記 (2026-07-12): `SimulatorConfig.get_unperturbed` によりノイズなし参照出力が実装され, 同一軌道でノイズあり TLS L2=0.183 → ノイズなし TLS L2=3.2e-5 (5700x 改善) を独立に再確認した. これにより offline でのノイズモデル較正が可能になったが, 本問題自体は未解決である. 論点は「センサーノイズのモデル・大きさが同定精度の律速要因である」ことに絞られた (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-12 (続 3) エントリ).
