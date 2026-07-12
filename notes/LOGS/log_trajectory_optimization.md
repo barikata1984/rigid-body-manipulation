@@ -1125,3 +1125,44 @@ fps**2 スケーリングと sqrt(6) の 2 定数はモデル選択で確定済�
 1. wrench (force/torque) センサーにも独立スケールのノイズを追加し, 同定を回帰行列 Y とターゲット τ の両方にノイズが乗る本来の errors-in-variables 問題にする. 設計は既に scoped 済み: `force_stddev=2N`, `torque_stddev=0.1Nm`, `_get_wrench(perturbed=True)` は別スケール経路としてコードに既に存在するが, 現行の simulator は `get("wrench")` を `perturbed=True` なしで呼んでいるため wrench の実測は現状ノイズなしのままである.
 2. 関節エンコーダの分解能・ノイズ仕様と力覚センサのノイズ仕様を調査し, `jointpos_stddev` / `force_stddev` / `torque_stddev` を実機仕様に基づいて決定する. 現行値は未検証の見積もりである (`jointpos_stddev` はコードコメントで「may [be too] strong」と自己申告されている. `force_stddev=2N` はハンマーのペイロード重力 (約 11N) の約 18% に相当し, これも過大である可能性が高い).
 3. 再現可能なスイープ比較のため `Sensors` に seed パラメータを追加することを検討する.
+
+## 2026-07-13: wrench ノイズの実装と EIV スイープによる TLS 破綻の発見
+
+### 実装
+
+wrench (force/torque) センサーにも独立スケールのノイズを追加した.
+
+- `sensors/sensors.py`: `force_noise_scale` / `torque_noise_scale` (既定 1.0) を追加し, それぞれ `force_stddev=2N` / `torque_stddev=0.1Nm` に掛ける (`noise_scale` と同じパターン).
+- `simulators/simulator.py`: `SimulatorConfig` に `perturb_wrench: bool = True` / `force_noise_scale` / `torque_noise_scale` を追加し `Sensors(...)` に渡す. `_store_current_data` はノイズありバッファに `get("wrench", perturbed=self.perturb_wrench)` を, unperturbed バッファに別途 `get("wrench", perturbed=False)` を格納する (従来は clean な wrench を共有していたが, wrench を摂動すると共有できないため分離した). `perturb_wrench=False` かつ `get_unperturbed=False` で従来と完全同一の挙動になる. tyro の CLI は `--perturb-wrench` / `--no-perturb-wrench` (真偽値は値渡しでなくフラグ対).
+
+### EIV スイープ結果
+
+運動学ノイズを noise_scale=0.1 に固定し, wrench ノイズ W (= force scale = torque scale) を振った (軌道 excited_20260711_155119).
+
+| W | force σ [N] | torque σ [Nm] | LS L2 | TLS L2 |
+|---|---|---|---|---|
+| 0.0 | 0.0 | 0.0 | 0.0134 | 0.0120 |
+| 0.25 | 0.5 | 0.025 | 0.0153 | 0.0115 |
+| 0.5 | 1.0 | 0.05 | 0.0133 | 0.0298 |
+| 1.0 | 2.0 | 0.1 | 0.0155 | 0.0692 |
+| 2.0 | 4.0 | 0.2 | 0.0359 | 0.4494 |
+
+### 発見: 事前仮説「wrench ノイズで TLS が LS に勝つ」は誤りだった
+
+- LS は wrench (ターゲット) ノイズにほぼ不感である. ターゲットベクトル単独のノイズは分散を増やすがバイアスを生まない (Gauss-Markov). LS のバイアスは回帰子 Y (運動学) のノイズから生じるものであり, ここでは Y のノイズを固定しているため LS L2 は W=2 までほぼ動かない.
+- 素の TLS は W=0.5 から劣化し W=2 で崩壊する (L2=0.449, total_mass が gt 1.116 に対し 1.35 と過大推定). 機構は次の通り: 素の TLS は拡大行列 [Y | τ] の全列に等分散ノイズを仮定する. 運動学ノイズが小さく (Y はほぼクリーン) wrench ノイズが大きいと列間が heteroscedastic になり, ほぼクリーンな Y 列まで補正が波及して過補正する.
+- コードレベルで確認した: `regressions/total_least_squares.py` の `total_lstsq` は `scipy.odr.odr(...)` を重み引数 (`we`/`wd`) なしで呼んでいる. すなわち重みなし ODR = 等分散を仮定する素の TLS であり, 上記の misscaling は仮説でなく事実である.
+- 含意: この問題で TLS が LS に勝つのは回帰子 (運動学) ノイズを扱う場面であり, これが同定の真の律速要因である. 現実的な FT ノイズは TLS の優位を示すものではなく, もし FT ノイズが運動学ノイズに対し不均衡に大きければ, 素の TLS は列ごとの既知 σ を重みとして渡す scaled/generalized TLS に置き換える必要がある. その要否は実機の相対ノイズ量次第であり, 次の実機仕様調査で判明する.
+
+### 基準 σ スイープ表 (2026-07-12 続 4) の qacc σ 表記の訂正
+
+2026-07-12 の基準 σ スイープ表は qacc σ を並進関節 (m/s²) のみで記載し, 回転側を省略していた.
+ノイズ自体は全 6 関節に加わっている (`noise_scale` は `jointpos_stddev` 配列全体に掛かる); 表示していた代表値が並進のみだった.
+noise_scale=1.0 での正しい値: 並進 qacc σ = 5e-4 × √6 × 60² = 4.409 m/s², 回転 qacc σ = 1e-3 × √6 × 60² = 8.818 rad/s² (回転の基準 σ が 2 倍のため qacc ノイズも 2 倍, 単位は rad/s²).
+`jointpos_stddev` は並進 (5e-4 m, prismatic j1-3) と回転 (1e-3 rad, revolute j4-6) で値も単位も異なり, 単一のスケールとしては直接比較できない.
+
+### 次のステップ (未着手)
+
+実機仕様の調査でノイズの大きさをグラウンディングする: prismatic/revolute 関節の位置センサ (エンコーダ) 分解能・ノイズを `jointpos_stddev` に (並進と回転を分けて), FT センサのノイズを `force_stddev`/`torque_stddev` に対応づける.
+マニピュレータ `xml_models/manipulators/sequential` が実在機の模擬か汎用仮想機かも判別する (仕様の当て方が変わる).
+wrench EIV の発見により, エンコーダ対 FT の相対ノイズ量が scaled/generalized TLS の要否も決める.
