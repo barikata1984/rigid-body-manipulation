@@ -186,6 +186,8 @@ Van der Sluis の等化 cond は観測行列 Y の conditioning (相対誤差増
 
 追記 (2026-07-12 続 4): 上記 σ 較正の前提となる qacc ノイズモデルそのものに誤りがあったと判明した. `jointacc_noise_scaler` は二階中心差分 `(x[k]-2x[k-1]+x[k-2])/dt**2` の係数 `[1,-2,1]` の二乗和 (=6) から `sqrt(6)*fps**2` とすべきところ, 一階差分の係数二乗和 (=2) を誤って流用した `2*fps**2` になっていた. `sqrt(6)*fps**2` に修正し (qacc ノイズが約 22% 増加), `jointpos_stddev` に乗算する `noise_scale` パラメータを新設して基準 σ に対する感度スイープを実施した. 既定 (noise_scale=1.0) では TLS L2=0.259 と依然として大きく, TLS L2 が 0.05 を初めて下回るのは noise_scale≈0.25 (qacc_sigma≈1.1 m/s², 既定の約 1/4) からだった. fps² スケーリングと sqrt(6) という定数はノイズモデルの選択から数学的に確定する量であり, 調整対象ではない. 基準となる `jointpos_stddev` の実機グラウンディングのみが依然として未確定であり, これが上記 (a)/(c)/(d) の判断に先立って必要である (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-12 (続 4) エントリ, `notes/ISSUES.md`).
 
+追記 (2026-07-13/14): wrench (force/torque) センサーノイズは実在センサーの公称仕様 (Robotiq FT300-S: force σ=0.1N, torque σ=0.005Nm) に基づいて決定した. 現行コードのデフォルト (2N/0.1Nm) はこの公称値のちょうど 20 倍過大だったが, 比率 (20:1) 自体は偶然一致していた. kinematics ノイズと同時に与えた実験と, kinematics ノイズを厳密にゼロにした極端条件でのスイープの両方で, 公称値相当の wrench ノイズは total_mass 誤差 <0.03% と無害であることを確認した. したがって同定 SNR の律速要因は kinematics (qacc) ノイズ側に絞られ, `jointpos_stddev` の実機グラウンディングが唯一の未確定量として残る. なお kinematics=0 の極端条件では, 重みなし TLS が σ に対しほぼ二乗でバイアスを蓄積する現象 (Y の誤差がゼロでも wrench 側の残差を Y 側に誤配分し, 存在しない減衰を補正するため) が別途見つかった. これは実測ノイズ相当の条件では顕在化しないが, 素の TLS の妥当性が wrench ノイズの絶対量ではなく Y と τ の誤差比で決まることを示す (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-13/14 エントリ).
+
 ### generate.py の修正
 
 OmegaConf merge で CLI のデフォルト値が YAML の値を上書きするバグを修正.

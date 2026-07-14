@@ -21,6 +21,20 @@ FTA で `sensors/sensors.py:17-23` のノイズ設定が真因と特定した. `
 
 追記 (2026-07-12): `SimulatorConfig.get_unperturbed` によりノイズなし参照出力が実装され, 同一軌道でノイズあり TLS L2=0.183 → ノイズなし TLS L2=3.2e-5 (5700x 改善) を独立に再確認した. これにより offline でのノイズモデル較正が可能になったが, 本問題自体は未解決である. 論点は「センサーノイズのモデル・大きさが同定精度の律速要因である」ことに絞られた (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-12 (続 3) エントリ).
 
-追記 (2026-07-13): wrench (force/torque) にも独立スケールのノイズを追加できるよう実装し (`perturb_wrench`/`force_noise_scale`/`torque_noise_scale`), EIV スイープを実施した. 事前仮説「wrench ノイズで TLS が LS に勝つ」は棄却された. LS は τ 単独のノイズにほぼ不感 (バイアス源は回帰子 Y のノイズ), 素の TLS は wrench ノイズが Y ノイズより不均衡に大きいと過補正し崩壊する (W=2 で TLS L2=0.449). 原因は `regressions/total_least_squares.py` の `total_lstsq` が重みなし `scipy.odr` を呼び, [Y|τ] 全列の等分散を仮定するため. heteroscedastic な実機ノイズ下では scaled/generalized TLS (列ごとの既知 σ を重みに) が必要になりうるが, 要否は実機の相対ノイズ量次第で未確定 (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-13 エントリ).
-
 追記 (2026-07-12 続 4): 上記の qacc σ=3.6 m/s² という値自体に誤りがあったと判明した. `jointacc_noise_scaler` の実装は `(sqrt(2)*fps)**2 = 2*fps**2` だったが, これは二階中心差分 `(x[k]-2x[k-1]+x[k-2])/dt**2` を構成する係数 `[1,-2,1]` の二乗和 (=6) を使うべきところを, 一階差分の係数二乗和 (=2) の二乗として誤って導出したものだった. `sqrt(6)*fps**2` に修正した結果, 既定の qacc_sigma_trans は 3.6 m/s² から約 4.4 m/s² に約 22% 増加した (fps² スケーリング自体と sqrt(6) という定数はノイズモデルの選択から数学的に確定するため, ここに調整の余地はない). 修正後の値で `noise_scale` (新設の基準 σ 倍率パラメータ) を 0.03〜1.0 で振ったところ, 既定 (noise_scale=1.0, qacc_sigma=4.4 m/s²) は TLS L2=0.259 と依然として同定に過大なノイズであり, TLS L2 が 0.05 を初めて下回るのは noise_scale≈0.25 (qacc_sigma≈1.1 m/s²) からだった. 基準となる `jointpos_stddev` の適切な値は実機のエンコーダ/FT センサー仕様に基づくグラウンディングが依然として必要であり, 本問題は未解決のまま残る. なお `Sensors` が unseeded RNG のため, 上記スイープの各点は単一実現であり run-to-run variance を含む (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-12 (続 4) エントリ).
+
+追記 (2026-07-13/14): wrench (force/torque) 側は実機グラウンディングにより律速要因から外れたと判明した. Robotiq FT300-S の公称シグナルノイズ (force σ=0.1N, torque σ=0.005Nm) は現行コードのデフォルト (2N/0.1Nm) のちょうど 1/20 である. kinematics ノイズ (noise_scale=0.1) と同時に与えた場合, wrench 側の寄与は kinematics 起因の誤差フロアに完全に埋もれて検出できなかった. kinematics ノイズを厳密にゼロにした極端条件のスイープでも, Robotiq 公称値相当 (R=1) では total_mass 誤差 <0.03%, L2 ≤0.0013 と無害だった. これにより本問題の律速要因は kinematics (qacc) ノイズ側に絞られた. ただし本問題自体は未解決である (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-13/14 エントリ).
+
+## [2026-07-14] dataset 出力ディレクトリに run 識別子がなく, 同一軌道の繰り返し実行が上書きされる
+
+`main.py` の `_build_dataset_subdir` (main.py:21-37) は出力先を「軌道 JSON の親ディレクトリ名 + 条件数」からのみ組み立てる (例: `datasets/hammer/excited_20260711_155119_cond10`). ディレクトリ名中のタイムスタンプは軌道の生成時刻であって, シミュレーション実行の時刻ではない.
+
+そのため同一軌道でノイズ設定だけ変えて繰り返し実行すると, 全 run が同じディレクトリへ上書きされ, 最後の run の結果しか残らない. 2026-07-13/14 の wrench ノイズスイープ (14 run) がこれに該当し, パラメータ別の再分析には再実行が必要な状態になっている.
+
+ノイズ設定を変えて同一軌道を繰り返す使い方は最近始まったもので, 「軌道 1 つに結果 1 つ」という出力設計の暗黙の前提が追いついていない. 出力先に run のタイムスタンプまたは連番を含める設計変更が必要 (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-13/14 エントリ, `notes/TODO.md`).
+
+## [2026-07-14] 同定精度の評価が total_mass 単体に偏っている
+
+慣性パラメータ同定の精度評価は, 10 個のパラメータ (mass, 一次モーメント mx/my/mz, 慣性テンソル 6 成分) のうち total_mass 1 個だけを見て行われてきた. しかし 2026-07-13/14 の wrench ノイズスイープでは, R=20 (現行デフォルト相当) での LS L2 ≈ 0.017 のうち mass の寄与は 0.003 程度で, L2 の大部分は残り 9 パラメータが担っている.
+
+force ノイズは mass に, torque ノイズは主にモーメント・慣性成分に流れるはずで, mass は誤差が最も出にくい成分だった可能性がある. パラメータ別の誤差分布は未評価である. GT がゼロ近辺の成分は相対誤差が定義できないため, 評価尺度 (絶対誤差か, 質量×寸法等の特性スケールで正規化するか) の決定も必要である (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-13/14 エントリ, `notes/TODO.md`).
