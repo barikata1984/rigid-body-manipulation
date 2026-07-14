@@ -1,0 +1,672 @@
+730                                                                             IEEE TRANSACTIONS ON ROBOTICS AND AUTOMATION, VOL. 13, NO. 5, OCTOBER 1997
+
+
+
+
+              Optimal Robot Excitation and Identification
+                       Jan Swevers, Chris Ganseman, Dilek Bilgin Tükel, Joris De Schutter, Member, IEEE,
+                                            and Hendrik Van Brussel, Fellow, IEEE
+
+
+
+   Abstract—This paper discusses experimental robot identifica-                                 to stop the robot end effector at the different spot welding
+tion based on a statistical framework. It presents a new approach                               places depends on the robot dynamics.
+toward the design of optimal robot excitation trajectories, and
+                                                                                                   Experimental robot identification is the only efficient way
+formulates the maximum-likelihood estimation of dynamic robot
+model parameters. The differences between the new design ap-                                    to obtain accurate robot models as well as indications on
+proach and the existing approaches lie in the parameterization                                  their accuracy, confidence and validity. The dynamic model
+of the excitation trajectory and in the optimization criterion. The                             parameters provided by robot manufacturers are insufficient,
+excitation trajectory for each joint is a finite Fourier series. This
+                                                                                                inaccurate, or often nonexisting, especially those dealing with
+approach guarantees periodic excitation which is advantageous
+because it allows: 1) time-domain data averaging; 2) estimation                                 friction and compliance characteristics. Direct measurement
+of the characteristics of the measurement noise, which is valuable                              of the physical parameters is unrealistic, because of the com-
+in case of maximum-likelihood parameter estimation. In addition,                                plexity of most robots.
+the use of finite Fourier series allows calculation of the joint                                   Experimental robot identification deals with the problem
+velocities and accelerations in an analytic way from the measured
+position response, and allows specification of the bandwidth                                    of estimating the robot model parameters from the response
+of the excitation trajectories. The optimization criterion is the                               measured during a robot experiment. It is well recognized that
+uncertainty on the estimated parameters or a lower bound for it,                                reliable, accurate, and efficient robot identification requires
+instead of the often used condition of the parameter estimation                                 specially designed experiments. When designing an identi-
+problem. Simulations show that this criterion yields parame-
+ter estimates with smaller uncertainty bounds than trajectories                                 fication experiment for a robot manipulator, it is essential to
+optimized according to the classical criterion. Experiments on                                  consider whether the excitation is sufficient to provide accurate
+an industrial robot show that the presented trajectory design                                   and fast parameter estimation in the presence of disturbances
+and maximum-likelihood parameter estimation approaches com-                                     such as measurement noise and actuator disturbances. Most
+plement each other to make a practicable robot identification
+technique which yields accurate robot models.                                                   papers related to experimental robot identification measure
+                                                                                                the influence of these disturbances on the parameter estimates
+   Index Terms—Identification, optimal excitation, robot dynam-
+ics.
+                                                                                                by the condition (number) [1] of the set of equations that
+                                                                                                generate the parameters [2]–[4], and use this condition number
+                                                                                                as the criterion for the optimization of the excitation. This
+                                I. INTRODUCTION                                                 criterion is appropriate in a deterministic framework. This pa-
+                                                                                                per approaches the excitation-trajectory optimization (and the
+T     HE KEY aspects in competitive manufacturing today
+      are quality, costs, and time. In this respect, off-line
+programming supported by simulation, and accurate motion
+                                                                                                parameter estimation) within a stochastic (errors-in-variables)
+                                                                                                framework.
+control have become necessary. Accurate robot control and                                          Consistent parameter estimation requires accounting for
+realistic robot simulation require an accurate dynamic robot                                    the statistical properties of the measurement noise. Errors-in-
+model. The design of an advanced robot controller, such as                                      variables estimation methods consider random disturbances
+a computed torque or a computed velocity controller is based                                    on both input and output measurements [5]. Several of these
+on the robot model, and its performance depends directly on                                     methods exist [6]–[8], though only few of them have been ap-
+the model accuracy. Robot simulation without dynamic robot                                      plied to the estimation of dynamic robot parameters: Xi applies
+model cannot provide realistic execution time estimates, e.g.,                                  the total least square (TLS) parameter estimation method to
+in the case of spot welding operations, where the time required                                 the identification of the robot inertial parameters [9]. The TLS
+                                                                                                estimate is consistent if the covariance matrix of the noise (dis-
+   Manuscript received October 23, 1995; revised July 24, 1996. This paper
+was recommended for publication by Associate Editor J. C. Trinkle and Editor                    turbances) on the elements of the regression matrix describing
+S. Salcudean upon evaluation of the reviewers’ comments.                                        the equation errors is proportional to the identity matrix [6].
+   J. Swevers is with the Fund for Scientific Research, Flanders, Division                      This is not the case in the application of Xi [9] because of the
+of Production, Machine Design and Automation (PMA), Department of
+Mechanical Engineering, Katholieke Universiteit Leuven, Celestijnenlaan 300                     structure of the regression matrix. The generalized total least
+B, B 3001 Heverlee, Belgium (e-mail: Jan.Swevers@mech.kuleuven.ac.be).                          squares (GTLS) method, which allows correlations between the
+   C. Ganseman, J. De Schutter, H. Van Brussel are with the Division
+of Production, Machine Design and Automation (PMA), Department of
+                                                                                                noise on the elements of the regression matrix, should be used
+Mechanical Engineering, Katholieke Universiteit Leuven, Celestijnenlaan 300                     instead, provided that all errors are random variables and that
+B, B 3001 Heverlee, Belgium.                                                                    the covariance matrix can be calculated. The nonlinear depen-
+   D. Bilgin Tükel is with the Altinay Robotics and Automation Company,
+Istanbul, Turkey.                                                                               dency of the regression matrix on the joint angle measurements
+   Publisher Item Identifier S 1042-296X(97)07145-0.                                            makes the calculation of the required covariance matrix very
+                                                                        1042–296X/97$10.00  1997 IEEE
+
+
+
+
+      Authorized licensed use limited to: Katholieke Universiteit Leuven. Downloaded on August 17, 2009 at 10:39 from IEEE Xplore. Restrictions apply.
+SWEVERS et al.: OPTIMAL ROBOT EXCITATION AND IDENTIFICATION                                                                                                  731
+
+
+
+difficult, if not impossible. The maximum-likelihood estimator                                a robot model to which the trajectory design and maximum-
+is a consistent estimator even if the models are nonlinear in                                 likelihood estimation methods which are presented below, are
+the parameters and measurements, which occurs for example                                     still applicable.
+if complicated nonlinear friction models are included in the                                     Remark 2: Kinematic errors are deterministic and result in
+robot model. This method is therefore preferred to the TLS or                                 systematic modeling errors and biased parameter estimates
+the GTLS method.                                                                              if the joint angle measurements are not corrected using a
+   This paper (1) formulates the maximum-likelihood esti-                                     kinematic error-model. It is assumed that these errors are not
+mation (MLE) of robot model parameters (Section II), (2)                                      significant, or are compensated for. Inclusion of these (sys-
+presents a new approach toward the design of optimal robot                                    tematic) errors in       [(2)] is not appropriate, because the
+excitation trajectories (Section III), and (3) discusses the ap-                              maximum-likelihood parameter estimation method described
+plication of the presented techniques for the experimental                                    below cannot account for systematic measurement errors since
+identification of the first three axes of a KUKA IR 361                                       it assumes random disturbances.
+industrial robot (Section V). Section IV shows, by means of
+simulations, that the maximum-likelihood parameter estima-                                    A. Maximum-Likelihood Parameter Estimation
+tor, is (asymptotically) efficient and unbiased, and that the
+                                                                                                 This section formulates the maximum-likelihood estima-
+proposed trajectory optimization criterion yields parameter
+                                                                                              tion of dynamical robot parameters, which is similar to the
+estimates with smaller uncertainty bounds than robot excitation
+                                                                                              maximum-likelihood estimation of geometrical robot param-
+optimized through minimization of the condition number.
+                                                                                              eters used for kinematic robot calibration and presented in
+                                                                                              [12]–[14].
+         II. ESTIMATION OF THE ROBOT PARAMETERS                                                  The maximum-likelihood estimate          of the parameter
+   The dynamic model of an -degree-of-freedom rigid robot is                                  vector    is given by the value of      which maximizes the
+linear in the friction coefficients and the parameters of the mass                            likelihood of the measurement           and         for
+distribution if they are combined in the so called barycentric                                   to     Since the noise on the different measurements is
+parameters [10]. After model reduction [11], the dynamic robot                                independent and Gaussian, this corresponds to minimizing the
+model can be written as a minimal set of linear equations                                     following quadratic cost function [12], [13], [15]:
+
+                                                                                      (1)                                                                   (3)
+
+   is the -vector of the joint angles.       is the -vector of
+actuator torques.             is the          regression matrix,                              with          the noise on the measured joint angle           and
+depending on the joint angles, velocities, and accelerations.                                         the noise on the measured actuator torque           .
+   is the number of independent robot parameters. is the                                      and       are their corresponding variances. It is assumed that
+  -vector containing the unknown barycentric parameters and                                   these variances are constant and known.
+friction coefficients.                                                                           The minimization of criterion (3), taking into account (1),
+   Robot identification deals with the problem of estimating                                  is a nonlinear least squares optimization problem. Its practical
+the model parameters [(1)] from the data measured during                                      implementation requires that            and        be calculated
+a robot excitation experiment. In most cases, the data are                                    for every estimate of given the measured data                 and
+sequences of joint angles and motor currents, from which a                                             This is not possible with the present formulation, since
+sequence of joint velocities, accelerations, and motor torques                                the joint angles         and actuator torques        can not be
+are calculated. Actuator torques are assumed to be proportional                               calculated based on the knowledge of only. The parameter
+to the actuator current.                                                                      vector , i.e., the degrees of freedom of the maximum-
+   In system identification based on a statistical framework, it                              likelihood optimization problem, has to be extended with a
+is common to assume that the measured joint angles                                            trajectory parameterization :                       and         ).
+and actuator torques          for      1 to     are corrupted by                              This parameterization is related to the optimization of the
+independent zero-mean Gaussian noise                    , i.e.,                               robot excitation, and is discussed in Section III. It allows
+                                                                                              reformulation of the maximum-likelihood criterion (3) as
+                                                                                              follows:
+                                                                                      (2)
+
+The noise-free joint angles         and actuator torques
+satisfy (1).                                                                                                                                                (4)
+   Remark 1: Considering a linear relation between the motor
+current and torque is a first order approximation, which may                                  with
+result in modeling errors. Extension of the robot model with
+a model describing the relation between the motor torque and
+the motor current eliminates these modeling errors, and yields
+
+
+    Authorized licensed use limited to: Katholieke Universiteit Leuven. Downloaded on August 17, 2009 at 10:39 from IEEE Xplore. Restrictions apply.
+732                                                                             IEEE TRANSACTIONS ON ROBOTICS AND AUTOMATION, VOL. 13, NO. 5, OCTOBER 1997
+
+
+
+and                the th element of                                                            and
+
+                                                                                                                                                 ..
+and                                                                                                                                               .           (8)
+
+                                                                                        (5)
+   This quadratic criterion has to be minimized in          for a                               and     is the diagonal covariance matrix of the measured
+given sequence of measured joint angles             and actuator                                actuator torques. The covariance matrix of the MLE      is
+torques         This minimization can be performed using the                                    equal to
+Gauss–Newton or the Levenberg–Marquardt method.                                                                                                               (9)
+   The MLE is invariant with respect to parameter vector
+scaling and consequently data scaling, consistent, asymptot-                                       If noise on all actuator torque measurements has the same
+ically unbiased, and asymptotically efficient [7], [15], i.e., the                              standard deviation, the maximum-likelihood estimation re-
+covariance matrix of the MLE converges asymptotically to                                        duces to the standard linear least squares estimation
+
+                                                                                                                                                             (10)
+with
+                                                                                                   Application of the standard linear least squares method if
+                                                                                                the above-mentioned assumption of equal standard deviation is
+                                                                                                not satisfied, corresponds to ignoring the statistical properties
+                                                                                        (6)     of the disturbances, i.e., approaching the parameter estimation
+                                                                                                within a deterministic framework rather than the statistical
+where        and     represent the measured and exact data,                                     (errors-in-variables) framework within which the maximum-
+respectively, represents the MLE of         This bound for the                                  likelihood estimation approach is formulated. The condition
+covariance matrix is called the Cramér–Rao lower bound.                                        number of matrix        is a measure for the sensitivity of the
+is called the Fisher information matrix. It is a measure of                                     least squares solution      (10) to perturbations on the elements
+the amount of information present in the measurements in                                        of     and provided that the matrix is well equilibrated [1],
+relation to the parameters. This means that the uncertainty on                                  [3]. The normalization of matrix , i.e., the division of the
+the parameter estimates decreases if there is more information                                  columns of by their norm, takes care of the equilibration and
+available from the measurements.                                                                in addition improves the condition number. Consequently it is
+   This suggests an appropriate design criterion for robot                                      better to estimate the model parameters using the normalized
+excitation trajectories: design a robot excitation trajectory                                   matrix and rescale the estimated model parameters afterwards.
+which “maximizes” the Fisher information matrix. This min-                                      The condition number of the normalized matrix is therefore
+imizes the theoretical lower bound on the uncertainty of the                                    an appropriate trajectory design criterion in the deterministic
+parameter estimates, which can be reached asymptotically if                                     framework.
+the parameters are estimated with the maximum-likelihood
+estimator.                                                                                                        III. GENERATION OF OPTIMAL ROBOT
+                                                                                                                        EXCITATION TRAJECTORIES
+B. Linear Least Squares Parameter Estimation                                                       The generation of an optimal robot excitation trajectory
+   The maximum-likelihood parameter estimation simplifies                                       involves nonlinear optimization with motion constraints (i.e.,
+significantly if the measured joint angles are free of noise.                                   constraints on joint angles, velocities, and accelerations, and
+This assumption can be justified by the fact that the noise                                     on the robot end effector position in the cartesian space
+level on the joint angle measurements is much smaller than                                      in order to avoid collision with the environment and with
+the noise level on the actuator torque measurements. Under                                      itself). Several approaches have been presented. They all
+this assumption, the trajectory parameter vector disappears                                     use a different trajectory parameterization. These parameters
+from the minimization criterion (3) and the MLE reduces to the                                  are the degrees of freedom of the optimization problem.
+weighted linear least squares estimate for which the weighting                                  Armstrong [16] describes an approach in which the degrees
+function is the reciprocal of the standard deviation of the noise                               of freedom are the points of a sequence of joint accelerations.
+on the measured actuator torque values [7], [14], [15]:                                         This approach is the most general one, but it results in a
+                                                                                                large number of degrees of freedom, such that optimization
+                                                                                                is cumbersome. The optimization is done by maximizing the
+                                                                                        (7)     minimum singular value of the matrix           [(8)]. Gautier [2],
+with                                                                                            [3] optimizes a linear combination of the condition number
+                                                                                                and the equilibrium of the set of equations that generate the
+                                                 ..                                             parameters, i.e., of matrix      The degrees of freedom are a
+                                                  .                                             finite set of joint angles and velocities separated in time. The
+                                                                                                actual trajectory is continuous and smooth, and is calculated by
+
+
+      Authorized licensed use limited to: Katholieke Universiteit Leuven. Downloaded on August 17, 2009 at 10:39 from IEEE Xplore. Restrictions apply.
+SWEVERS et al.: OPTIMAL ROBOT EXCITATION AND IDENTIFICATION                                                                                                 733
+
+
+
+interpolating a fifth-order polynomial between the optimized                                      important since motor current (torque) measurements are
+points, assuming zero initial and final acceleration. Only a very                                 very noisy.
+small part, namely the finite set of joint angles and velocities,                               • estimation of the characteristics of the measurement noise
+of the final trajectory is optimized. As a result, the total smooth                               [7]. This information is valuable in case of maximum-
+trajectory cannot be guaranteed to satisfy all motion constraints                                 likelihood parameter estimation. Section V-A discusses
+nor to be optimal with respect to the condition number or                                         the estimation of the noise variance in detail.
+the covariance matrix criterion. Adjusting the trajectory to fit                                • specification of the bandwidth of the excitation trajecto-
+the motion constraints involves trial-and-error and is hardly                                     ries, such that excitation of the robot flexibility can be
+discussed in [2] and [3]. The practicability of this trajectory                                   either completely avoided or intentionally brought about.
+design approach is therefore questionable. Otani [4] uses                                       • calculation of joint velocities and accelerations from the
+trajectories which are a combination of a cosine and a ramp,                                      measured response in an analytic way. For this purpose,
+such that the joint velocities change sinusoidally between zero                                   the measured encoder readings are first approximated,
+and their maximum value. The degrees of freedom are the                                           in a least squares sense, as a finite sum of sine and
+frequency and amplitude of the sinusoidal movements for                                           cosine functions. This corresponds to taking the discrete
+each joint, together with the initial robot configuration. The                                    Fourier transform of the encoder readings and selecting
+optimization criterion is the minimization of the condition                                       the main spectral lines. The Fourier transform does not
+number of matrix                                                                                  introduce leakage errors because of the periodicity of
+   All existing design approaches are (implicitly) based on a                                     the excitation. This frequency-domain approach toward
+deterministic framework, since the excitation trajectory design                                   the differentiation of time series is simple, efficient, and
+does not consider uncertainties on the measurements or the                                        accurate.
+parameter estimates. This section presents a new approach                                     None of the existing robot excitation methods possesses the
+toward the design of robot excitation trajectories which is                                   above mentioned features with the result that
+based on a statistical framework. It differs from the existing                                  • large data records, which are necessary in order to obtain
+methods in two aspects: the parameterization of the trajectory                                    reliable parameter estimates, cannot be compressed and
+and the optimization criterion.                                                                   result in large overdetermined sets of equations which
+                                                                                                  require large numbers of calculations to be solved;
+A. Parameterization of the Robot Excitation Trajectory                                          • the calculation of joint velocities and accelerations re-
+   The excitation trajectory for each joint is a finite sum                                       quires complex numerical differentiation techniques or
+of harmonic sine and cosine functions, i.e., a finite Fourier                                     specially designed IIR filters [17]. This approach is less
+series. The angular position    velocity     and acceleration                                     accurate than the exact frequency-domain approach which
+   trajectories for joint of a -degrees-of-freedom robot are                                      is only possible if the excitation is periodic;
+written as                                                                                      • estimation of the noise characteristics requires extra ex-
+                                                                                                  periments;
+                                                                                                • special precautions have to be taken, for example filtering
+                                                                                                  of the excitation trajectory, in order to avoid excitation of
+                                                                                                  the robot flexibility.
+
+                                                                                              B. Optimization of the Parameterized Robot
+                                                                                              Excitation Trajectory
+                                                                                    (11)
+                                                                                                 The covariance matrix of the estimated model parameters is
+                                                                                              the only correct experiment design criterion if the parameter
+with        the fundamental pulsation of the Fourier series.                                  estimation is approached within a statistical framework [5].
+This Fourier series specifies a periodic function with period                                    If the joint angle measurements are free of noise, and if
+                  The fundamental pulsation is common for                                     the model parameters are estimated according to maximum-
+all joints, in order to preserve the periodicity of the overall                               likelihood criterion (7), the covariance matrix of the estimated
+robot excitation. Each Fourier series contains                                                model parameters equals (9). Expression (9) does not depend
+parameters, that constitute the degrees of freedom for the                                    on the measurements or the estimated parameters. It depends
+optimization problem:       and     for       to      which are                               on the exact joint angles, velocities and accelerations which are
+the amplitudes of the cosine and sine functions, and      which                               assumed to correspond to the designed excitation trajectory. As
+is the offset on the position trajectory. The offset determines                               a result, the optimization of the model parameter covariance
+the robot configuration around which excitation will occur.                                   matrix as a function of the trajectory parameters does not
+The parameters for all joints are grouped into vector                                         require the knowledge of the exact model parameter vector
+   This approach guarantees bandlimited periodic trajectories                                    The covariance matrix of the parameter estimates can not be
+and therefore allows:                                                                         calculated if the actuator torque and joint angle measurements
+   • time-domain data averaging, which improves the signal-                                   are both corrupted by noise [7]. However, the covariance
+     to-noise ratio of the experimental data. This is extremely                               matrix approaches the Cramér–Rao lower bound, i.e., the
+
+
+    Authorized licensed use limited to: Katholieke Universiteit Leuven. Downloaded on August 17, 2009 at 10:39 from IEEE Xplore. Restrictions apply.
+734                                                                             IEEE TRANSACTIONS ON ROBOTICS AND AUTOMATION, VOL. 13, NO. 5, OCTOBER 1997
+
+
+
+inverse of the Fisher information matrix [(6)], asymptotically
+if the parameters are estimated with an efficient estimator,
+for example a maximum-likelihood estimator. This suggests
+taking the Cramér–Rao lower bound on the covariance matrix
+instead of the covariance matrix itself as the robot excitation
+design criterion. The Cramér–Rao lower bound or the Fisher
+information matrix [(6)] depend only on parameter vector
+(5), since the exact data, i.e., the exact joint angles, velocities
+and accelerations and the exact actuator torques, can be
+calculated from       using (1) and (11). Hence minimization
+of the Cramér–Rao lower bound in            requires the knowl-
+edge of the exact model parameter vector which however,
+is not available. Nevertheless, a consistent estimate of the
+Cramér–Rao lower bound can be calculated from a consistent,
+i.e., a maximum-likelihood, estimate of
+   This suggests an iterative procedure in which the
+Cramér–Rao lower bound is minimized as a function of the                                       Fig. 1. KUKA 361 IR robot.
+trajectory parameters       for successive maximum-likelihood
+estimates of model parameter vector          The iterative process
+starts with an initial estimate of         It results from initial                                 The simulation uses a model of a KUKA IR 361 robot.
+experimental data obtained from a robot excitation which has                                    Only the first three axes are considered. Fig. 1 shows the
+been optimized according to the condition number of matrix                                      robot, its base coordinate system                   and coordinate
+     Based on the initial estimate of the Cramér–Rao lower                                     systems for the first three links:                     1, 2, 3. The
+bound is minimized as a function of            resulting in a new                               inertial parameters of the links are related to their coordinate
+excitation trajectory. Hence robot excitation and parameter                                     systems.
+estimation can be repeated until convergence occurs.                                               •                 are the moments of inertia of link about
+   The covariance matrix or its Cramér–Rao lower bound                                              the           and     axis, respectively,      1, 2, 3.
+cannot be optimized in matrix sense. They have to be re-                                           •                are the inertia products of link         1, 2, 3.
+placed by a representative scalar measure. Ljung [5] presents                                      •               is the position of the center of mass of link
+some possible scalar measures.                         with     the                                  in                     1, 2, 3.
+covariance matrix or its Cramér–Rao lower bound, is called                                        •           is the position of the joint of link                in
+the d-optimality criterion and is the most appealing of these                                                            0, 1, 2.
+measures: 1) its minimum is independent of the scaling                                             •     : is the mass of link          1, 2, 3.
+of the parameters and 2) it has a physically interpretation:                                    The joint friction model includes viscous and Coulomb fric-
+the determinant of         is related to the volume of highest                                  tion, represented by constant coefficients         and , respec-
+probability density region for the parameters [15].                                             tively.
+   The minimization of the uncertainty on the estimated param-
+eters or its lower bound is a complex nonlinear optimization
+                                                                                                A. The Robot Model
+problem with motion constraints. The motion constraints are
+limitations on the joint angles, velocities, and accelerations,                                   The robot model has been derived according to the modified
+and on the robot end effector position in the cartesian space                                   Newton–Euler formalism [11]. Columns 2 and 3 of Table I
+in order to avoid collision with the environment and with                                       present the resulting minimal set of parameters after model
+itself. This last type of constraint involves forward kinematics                                reduction and the values that are used for the simulation
+calculations. All constraints are implemented as continuous                                     experiments, respectively. The minimal robot model is given
+functions which are negative if the constraint is satisfied and                                 by (1) for which         is a 3      1 column vector,         a 21
+positive if it is violated.                                                                        1 column vector, and          a 3      21 matrix. The exact
+                                                                                                actuator torques are calculated according to (1) using the
+                                                                                                model parameters presented in Table I and an optimized
+IV. NUMERICAL EXAMPLE AND SIMULATION OF EXPERIMENT
+                                                                                                excitation trajectory. Section IV-B discusses the trajectory
+  This section shows, by means of simulations, that:                                            optimization. Adding independent zero-mean Gaussian noise
+  1) the proposed maximum-likelihood parameter estimator                                        to the exact actuator torques simulates torque measurement
+     is (asymptotically) efficient and unbiased;                                                noise. The variance of the noise is 25           26         and 10
+  2) that the excitation trajectory resulting from optimiza-                                           for the actuator torques of joint 1, 2, and 3, respectively.
+     tion of the determinant of the covariance matrix yields                                    These values correspond to experimentally obtained noise
+     parameter estimates with smaller variances than robot                                      variance values. The joint angles are assumed to be free of
+     excitation optimized through minimization of the condi-                                    noise. Consequently, the MLE of the model parameters is
+     tion number.                                                                               given by (7).
+
+
+      Authorized licensed use limited to: Katholieke Universiteit Leuven. Downloaded on August 17, 2009 at 10:39 from IEEE Xplore. Restrictions apply.
+SWEVERS et al.: OPTIMAL ROBOT EXCITATION AND IDENTIFICATION                                                                                                              735
+
+
+
+                                TABLE I
+                   DATA FOR THE SIMULATION EXPERIMENTS
+
+
+
+
+                                                                                              Fig. 2. Robot excitation trajectory optimized according to the criterion based
+                                                                                              on the condition number (criterion 1) (solid line: axis 1, dashed line: axis 2,
+                                                                                              dash-dotted line: axis 3).
+
+
+                                                                                                 The excitation trajectories are five-term Fourier series, yield-
+                                                                                              ing 11 parameters for each joint. The fundamental frequency of
+                                                                                              the trajectories is 0.1 Hz. The sampling rate for the simulation
+B. Trajectory Optimization                                                                    is 150 Hz. The length of the data sequence is 1500 data
+                                                                                              samples, i.e., one period of the trajectory.
+  The robot excitation trajectory is optimized according to
+                                                                                                 The constrained optimizations are performed using the
+two criteria.
+                                                                                              “CONSTR” function of the Optimization Toolbox of Mat-
+  c1) The condition number of the normalized                  ma-                             lab. This function uses a sequential quadratic programming
+      trix [(7)]. This criterion corresponds to the criterion                                 method. Reference [18] describes the Matlab implementation
+      used in [2], [3], [4], except that matrix          is scaled                            of the constrained optimization in detail.
+      with the reciprocal values of the standard deviation of                                    Fig. 2 shows the optimized excitation trajectories according
+      the noise on the actuator torques, and that the resulting                               to the criterion based on the condition number. The iteration
+      matrix is normalized. The scaling with the reciprocal                                   process was stopped after 10 000 iterations, where it reached
+      values of the standard deviation can be justified by                                    a condition number equal to 4.15. The determinant of the
+      the fact that maximum-likelihood estimation, which                                      covariance matrix corresponding to this trajectory is equal to
+      corresponds to weighted linear least squares in this                                    1.76 10       Fig. 3 shows the optimized excitation trajectories
+      case, is used instead of standard linear least squares                                  according to the criterion based on the determinant of the
+      estimation.                                                                             covariance matrix. The iteration process was also stopped after
+  c2)                                         is the information                              10 000 iterations, where it reached a determinant equal to 2.36
+      matrix related to the maximum-likelihood estimation                                     10       The condition number of the normalized             matrix
+      of the parameters. It is equal to the inverse of the                                    corresponding to this trajectory is equal to 5.94. These values
+      covariance matrix of the parameter estimates [(9)].                                     show that both criteria result in small condition numbers.
+  Both optimization criteria are comparable with respect to                                   The values for the determinant are different: the minimization
+complexity of implementation and efficiency.                                                  of the determinant criterion produces an excitation trajectory
+  The motion constraints correspond to those of the KUKA                                      which results in parameter estimates with smaller uncertainty
+IR 361 in our laboratory environment.                                                         bounds.
+  • Joint angle limits (rad):                                                                    Columns 3 and 4 of Table II shows the square root of the
+    and                 1.2.                                                                  diagonal elements of the covariance matrix [(9)] corresponding
+  • Joint velocity limits (rad/s):                 1.45.                                      to both trajectories         and        for criterion c1 and c2,
+  • Joint acceleration limits (rad/s ):              3.                                       respectively). These elements are the standard deviations of
+  • Limits on the height of the end effector (mm): 800           .                            the maximum-likelihood model parameter estimates. These
+  • The robot touches its base if            700 mm and                                       columns show that all standard deviations corresponding to
+    1800 mm.         is the distance of the end effector from                                 the second criterion are smaller than the standard deviations
+    the first robot axis.      is the height of the end effector                              corresponding to the first criterion, except for parameters
+    above the ground.        and      are obtained from forward                               2, 9, 16, 17, 20, and 21. The overall uncertainty on the
+    kinematics calculations.                                                                  parameter estimates is measured by the determinant of the
+
+
+    Authorized licensed use limited to: Katholieke Universiteit Leuven. Downloaded on August 17, 2009 at 10:39 from IEEE Xplore. Restrictions apply.
+736                                                                             IEEE TRANSACTIONS ON ROBOTICS AND AUTOMATION, VOL. 13, NO. 5, OCTOBER 1997
+
+
+
+                                                                                                                                   TABLE II
+                                                                                                                     RESULTS OF THE SIMULATION EXPERIMENTS
+
+
+
+
+Fig. 3. Robot excitation trajectory optimized according to the criterion based
+on the determinant of the covariance matrix (criterion 2) (solid line: axis 1,
+dashed line: axis 2, dash–dotted line: axis 3).
+
+
+covariance matrix, which is a measure for the volume of
+highest probability density region for the parameters [15]. The
+determinant of the covariance matrices (1.76 10        and 2.36
+10       show that the overall uncertainty on the parameter                                       The ratios      have a   distribution with                 degrees
+estimates is smaller for trajectory two than for trajectory one.                                of freedom. The 90% confidence interval equals
+   In order to check the (asymptotic) unbiasedness and effi-
+ciency of the maximum-likelihood estimator, the parameter
+estimation is simulated           200 times for the trajectory
+shown in Fig. 3 and different sequences of zero-mean Gauss-
+ian actuator torque noise. This enables the calculation of the
+mean value and the standard deviation          of the parameter                                 Column 5 of Table II shows the variance estimates
+estimates     (columns 2 and 5 of Table II, respectively):                                      Comparison of columns 4 and 5 shows that 19 of the 21
+                                                                                                ratios, i.e., 90%, lie within the confidence interval. This
+                                                                                                shows that the MLE of is efficient for a data record of 1500
+                                                                                                data samples. Shorter data records, for example data records of
+                                                                                                500 data samples, result in parameter estimates for which the
+                                                         for            to                      covariance matrix is significantly larger that the Cramér–Rao
+                                                                                                bound.
+
+Subscript denotes the th element of the parameter vector.
+                                                                                                                     V. EXPERIMENTAL VERIFICATION
+Subscript denotes the th estimate of the parameter vector.
+   The parameter estimates       are samples of a normal dis-                                      This section illustrates the presented robot excitation design
+tribution with mean        and standard deviation          (see                                 method and the maximum-likelihood estimation method by
+Section II).      is the th diagonal element of the covariance                                  means of identification experiments on the first three links of
+matrix of the parameter estimates [(9)]. Their mean value                                       a KUKA IR 361 industrial robot (see Fig. 1). The experimental
+has a normal distribution, with mean and standard deviation                                     identification is based on the minimal model set described in
+           The 68% confidence interval for the mean value is                                    Section IV. The parameter set is extended with parameters that
+                                                                                                measure the offset on the torque measurements and parameters
+                                                                                                that model the spring which compensates the gravitation for
+                                                                                                the second link [19]. Section V-A describes the experiments
+Column 6 of Table II shows the values                Compari-                                   and the data processing. Section V-B describes the estimation
+son of columns 3 (Table I), 2 and 6 (Table II) shows that 16 of                                 of the parameters and Section V-C describes the validation of
+the 21 mean parameter values , i.e., 76%, lie within their                                      the model.
+confidence interval. This shows that the MLE of is unbiased
+for a data record of 1500 data samples. Shorter data records,                                   A. Description of the Experiments and Data Processing
+for example data records of 500 data samples, result in biased                                     The first three links of the KUKA robot have been identi-
+estimates.                                                                                      fied for two different excitation trajectories: (1) a trajectory
+
+
+      Authorized licensed use limited to: Katholieke Universiteit Leuven. Downloaded on August 17, 2009 at 10:39 from IEEE Xplore. Restrictions apply.
+SWEVERS et al.: OPTIMAL ROBOT EXCITATION AND IDENTIFICATION                                                                                               737
+
+
+
+
+Fig. 4. Measured torque, estimated torque, and estimation residue.
+
+
+which is optimized according to the condition number of                                        introduced by the analog anti-aliasing filters. The formulated
+the normalized              matrix [(7)], and (2) a trajectory                                 maximum-likelihood parameter estimation method assumes
+which is optimized according to                            [(9)].                              uncorrelated measurement noise. The prewhitening filters are
+Criterion two is based on the assumption that the measured                                     the inverse of the digital equivalents of the analog filters.
+joint angles are free of noise and that (7) is the MLE. The                                    The digital equivalents are obtained by means of maximum-
+experimental results will show that the noise on the joint angle                               likelihood frequency-domain identification based on measured
+measurements is not zero but small, and that its influence of                                  frequency response functions of the analog filters [7]. The
+the MLE is negligible. Consequently, the assumption is valid.                                  inversion of the digital equivalents is based on the extended
+   Trajectory 1 yields a condition number equal to 47.3 and                                    bandwidth zero phase error tracking method [18], [20].
+a determinant equal to 5.26 10            Trajectory 2 yields a                                   Following the data prewhitening, the data sequences are
+condition number equal to 111.7 and a determinant equal to                                     averaged over 16 periods in order to improve the signal-to-
+1.85 10       These condition numbers are significantly higher                                 noise ratio of the measurements. Fig. 4 shows the averaged
+than the condition numbers obtained in Section IV due to the                                   motor torque measurements. The variance of the noise on
+parameters modeling the gravity compensation spring.                                           the averaged joint angle and actuator torque measurements
+   The models obtained using trajectory 1 and 2 are referred                                   is estimated by calculating the sample variance and dividing
+to as models 1 and 2, respectively.                                                            it by 16
+   The motion constraints, the sampling frequency, and the
+number of parameters and the fundamental frequency of the
+excitation trajectory are the same as for the simulation experi-
+ments (see Section IV-B). Data are collected after the transient
+response of the robot has died out. The joint angle is measured
+by means of an encoder mounted on the motor shaft, and the
+actuator torque is measured indirectly by means of the motor
+current. Analog eighth-order low-pass Butterworth filters1 with                                    is equal to number of samples per period, i.e., 1500.
+a bandwidth of 40 Hz protect the sampling of the motor current                                 Subscript indicates the excitation period (        1, 2,    ,
+signal from aliasing errors. This filtering introduces amplitude                               16.         and        represent the averaged encoder and
+and phase distortions, which are corrected by prewhitening                                     motor torque measurements. Remark that the estimation of
+the sampled motor current sequences [5]. Prewhitening also                                     the variance according to the above-mentioned equations and
+removes the coloring and correlation of the measurement noise                                  the improvement of the signal to noise ratio through data
+                                                                                               averaging are only possible because of the periodicity of the
+  1 The used filters are manufactured by: GEPA gmbH, 80 707 Münich,                           excitation. The estimated variances are 1.1223 10 rad ,
+Germany                                                                                        8.2822 10 rad , 2.9061 10 rad for the position of,
+
+
+     Authorized licensed use limited to: Katholieke Universiteit Leuven. Downloaded on August 17, 2009 at 10:39 from IEEE Xplore. Restrictions apply.
+738                                                                             IEEE TRANSACTIONS ON ROBOTICS AND AUTOMATION, VOL. 13, NO. 5, OCTOBER 1997
+
+
+
+
+Fig. 5. Position, measured torque and estimation residue for the validation trajectory.
+
+
+respectively, axes 1, 2, and 3 and 25.1086 N m , 25.9428                                        and 23.1119 N m for, respectively, axes 1, 2 and 3) are
+N m , and 9.8947 N m for the torque of, respectively, axes                                      larger than the noise variances of the measured torques.
+1, 2, and 3.                                                                                    Despite modeling errors (stiction, backlash and flexibility in
+                                                                                                the transmissions, kinematic errors) the estimated models are
+                                                                                                accurate but biased.
+B. Maximum-Likelihood Parameter Estimation                                                         As a result of this bias, the diagonal elements of matrix
+   The optimization of criterion (4) is an iterative procedure                                                  [(9)], which is the covariance matrix of the
+which starts with linear least squares estimates of the trajectory                              parameter estimates in the assumption that the estimation is
+and model parameters. The weighted least squares estimate of                                    efficient and unbiased, are no longer valid estimates of the
+the trajectory parameters is based on the averaged joint angle                                  parameter uncertainty. As a result the identified parameters do
+measurements and (11). The linear least squares estimate of                                     not lie within the 3 uncertainty ranges.
+the model parameters is based on the averaged actuator torque
+measurements and (10) in which           is calculated using the
+estimated trajectory parameters instead of the averaged joint
+                                                                                                C. Model Validation
+angle measurements. Comparison of the maximum-likelihood
+estimate and the initial weighted least squares estimate of                                         The accuracy of the obtained parameter estimates can be
+the model and trajectory parameters showed that there is no                                     verified for a different validation trajectory by comparing the
+difference between both and therefore the influence of the joint                                measured torques and an estimate of these torques based on
+angle noise on the MLE is negligible, which could be expected                                   the model and the measured position data.
+from its small mean variance values.                                                                The validation trajectory goes through 20 points randomly
+   Fig. 4 shows the measured and estimated actuator torques,                                    chosen in the workspace of the robot. The robot moves with
+and the estimation residue for model 2. The estimation residues                                 maximum acceleration and deceleration between these points,
+for model 1 are comparable. However, we must bear in                                            and comes to full stop in each point. The velocities and
+mind that this comparison is not completely justified since                                     accelerations are calculated by means of specially designed
+the two trajectories are not the same. The peaks in the                                         filters [17].
+estimation residu occur at low joint angular velocity, which                                        Fig. 5 shows the position, the measured torque, and the
+indicates that the assumed friction model, which includes                                       estimation residu for model 2. The torques are filtered with
+viscous and Coulomb friction, is too simple. It can be expected                                 a low pass filter with cutoff frequency of 10 Hz. This reduces
+that including more advanced friction and gear models, as                                       the noise on
+described, e.g., in [21] and [22], results in smaller estimation                                    • the measured torques, which is high due to the inverse
+residus. Due to these modeling errors, the mean values of the                                         filtering to compensate the analog filter (cf. Section V-A)
+squared estimation residue (81.1050 N m , 88.8175 N m ,                                               and because data averaging is not possible here;
+
+
+      Authorized licensed use limited to: Katholieke Universiteit Leuven. Downloaded on August 17, 2009 at 10:39 from IEEE Xplore. Restrictions apply.
+SWEVERS et al.: OPTIMAL ROBOT EXCITATION AND IDENTIFICATION                                                                                                                  739
+
+
+
+   • the estimated torque due to noise on the calculated                                         [8] J. Swevers, B. De Moor, and H. Van Brussel, “Stepped sine system
+     acceleration and velocity data                                                                  identification, errors-in-variables and the quotient singular value decom-
+                                                                                                     position,” Mech. Syst. Signal Processing, vol. 6, no. 2, pp. 121–134,
+   The mean squared torque estimation residu for the validation                                      1992.
+trajectory is 45.0424 N m , 53.5891 N m , and 12.0303 N m                                        [9] F. Xi, “Effect of nongeometric errors on manipulator inertial calibra-
+                                                                                                     tion,” in Proc. IEEE Int. Conf. Robot. Automat., May 21–26, 1995, pp.
+for the axes 1, 2, and 3. Model 1 yields mean squared torque                                         1808–1813.
+estimation residus which are approximately 20% larger than                                      [10] P. Fisette, B. Raucent, and J.-C. Samin, “Minimal dynamic characteri-
+                                                                                                     zation of tree-like multibody systems,” in Computer-Aided Analysis of
+the mentioned values, indicating that model 2 is more accurate                                       Rigid and Flexible Mechan. Syst., NATO-Advanced Study Inst., Troia,
+than model 1 with respect to its ability to predict the motor                                        Portugal, 1993, vol. II, pp. 111–129.
+torques based on joint angular position measurements. The                                       [11] C. Atkeson, C. An, and J. Hollerbach, “Estimation of inertial parameters
+                                                                                                     of manipulator loads and links,” Int. J. Robot. Res., vol. 5, no. 3, pp.
+biasedness of the parameter estimates prevents formulating                                           101–119, 1986.
+statements with respect to the uncertainty on the parameter                                     [12] J. M. Renders, E. Rossignol, M. Becquet, and R. Hanus, “Kinematic
+                                                                                                     calibration and geometrical parameter identification for robots,” IEEE
+of both models.                                                                                      Trans. Robot. Automat., vol. 7, pp. 721–732, 1991.
+                                                                                                [13] C. W. Wampler, J. M. Hollerbach, and T. Arai, “An implicit loop
+                               VI. CONCLUSION                                                        method for kinematic calibration and its application to closed-chain
+                                                                                                     mechanisms,” IEEE Trans. Robot. Automat., vol. 11, pp. 710–724, 1995.
+   The presented robot excitation design method generates                                       [14] G. Zak, B. Benhabib, R. G. Fenton, and I. Saban, “Application of
+trajectories which aim at estimating the robot model parame-                                         weighted least squares parameter estimation method to the robot cal-
+                                                                                                     ibration,” Trans. ASME, J. Mech. Design, vol. 116, pp. 890–893, Sept.
+ters with minimal uncertainty. In addition, the trajectories are                                     1994.
+periodic and have a band-limited frequency contents. These at-                                  [15] G.C. Goodwin and R.L. Payne, Dynamic System Identification : Exper-
+tractive properties simplify the analysis and conditioning of the                                    iment Design and Data Analysis New York: Academic, 1977.
+                                                                                                [16] B. Armstrong, “On finding exciting trajectories for identification exper-
+measurements, for example the estimation and improvement                                             iments involving systems with nonlinear dynamics,” Int. J. Robot. Res.,
+of the signal-to-noise ratio.                                                                        vol. 8, no. 6, pp. 28–48, 1989.
+                                                                                                [17] R. Pintelon and J. Schoukens, “Real-time integration and differentiation
+   The formulated maximum-likelihood estimation method                                               of analog signals by means of digital filtering,” IEEE Trans. Instrum.
+takes into account actuator torque and joint angle measurement                                       Meas., vol. 39, pp. 923–927, 1990.
+noise, i.e., combines the estimation of exact joint angles,                                     [18] J. Swevers, C. Ganseman, J. De Schutter, and H. Van Brussel, “Ad-
+                                                                                                     ditional remarks related to the paper: Optimal robot excitation and
+angular velocities and accelerations, with the estimation of                                         identification,” Tech. Rep. 95R65, K.U. Leuven, Div. P.M.A., B 3001
+the robot parameters. Simulations show that the maximum-                                             Heverlee, Belgium, 1995.
+                                                                                                [19] J. Swevers, C. Ganseman, J. De Schutter, and H. Van Brussel, “Experi-
+likelihood estimation method is asymptotically unbiased and                                          mental robot identification using optimized periodic trajectories,” Mech.
+efficient.                                                                                           Syst. Signal Processing, vol. 10, no. 5, pp. 561–577, 1996.
+   Experiments on an industrial robot show the practicability of                                [20] D. Torfs, J. De Schutter, and J. Swevers, “Extended bandwidth zero
+                                                                                                     phase error tracking control of nonminimal phase systems,” Trans.
+the presented trajectory design and parameter estimation meth-                                       ASME, J. Dynam. Syst., Meas., Contr., vol. 114, no. 3, pp. 347–351,
+ods: the obtained robot model is more accurate than the model                                        555, 1992.
+                                                                                                [21] B. Armstrong-Hélouvry, Control of Machines with Friction. Boston,
+obtained using excitation trajectories designed according to the                                     MA: Kluwer Academic, 1991.
+more traditional condition number criterion.                                                    [22] K. Schroer, “Theory of kinematic modeling and numerical procedures
+                                                                                                     for robot calibration,” in Robot Calibration, R. Bernhardt and S. L.
+                             ACKNOWLEDGMENT                                                          Albright, Eds. London, England: Chapman and Hall, 1993, ch. 9, pp.
+                                                                                                     157–195.
+  This paper presents research results of the Belgian Program
+on Interuniversity Poles of attraction initiated by the Belgian
+State, Prime Minister’s Office, Science Policy Programming.                                                             Jan Swevers was born in Leuven, Belgium, in 1963.
+The scientific responsibility is assumed by its authors.                                                                He received the B.E. degree in electrical engineer-
+                                                                                                                        ing, in 1986, and the Ph.D. degree in mechanical
+                                   REFERENCES                                                                           engineering, in 1992, both from the Katholieke
+                                                                                                                        Universiteit (K.U.) Leuven, Heverlee, Belgium.
+ [1] G. H. Golub and C. F. Van Loan, Matrix Computations. Baltimore,                                                       Since 1992, he has been working as a Senior
+     MD: The Johns Hopkins Univ. Press, 1989.                                                                           Research Assistant of the Fund for Scientific Re-
+ [2] M. Gautier, C. Janin, and C. Presse, “Dynamic identification of robots                                             search, Flanders, at the K.U. Leuven, Department of
+     using least squares and extended kalman filtering methods,” in Proc.                                               Mechanical Engineering, Division P.M.A. (Produc-
+     Second Europ. Contr. Conf., Groningen, The Netherlands, 1993, pp.                                                  tion, Machine Design and Automation). He became
+     2291–2296.                                                                                                         Associate Professor in 1995. His research interests
+ [3] M. Gautier and W. Khalil, “Exciting trajectories for the identification                   include various aspects of system identification and control.
+     of base inertial parameters of robots,” Int. J. Robot. Res., vol. 11, no.
+     4, pp. 362–375, 1992.
+ [4] K. Otani and T. Kakizaki, “Motion planning and modeling for accurately
+     identifying dynamic parameters of an industrial robotic manipulator,” in                                                 Chris Ganseman was born in Zwevegem, Belgium,
+     24th ISIR, Tokyo, Japan, 1993, pp. 743–748.                                                                              in 1969. He received the B.E. degree in mechanical
+ [5] L. Ljung, System Idenfication: Theory for the User. Englewood Cliffs,                                                    engineering, in 1992, from the Katholieke Univer-
+     NJ: Prentice-Hall, 1987.                                                                                                 siteit (K.U.) Leuven, Heverlee, Belgium.
+ [6] S. Van Huffel and J. Vandewalle, “Analysis and properties of the
+     generalized total least squares problem A              
+                                                       B when some or all
+                                                                                                                                 Since 1993, he has been a Research Engineer
+     columns in A are subject to error,” SIAM J. Matrix Anal. Appl., vol.
+                                                                                                                              with the K.U. Leuven, Department of Mechanical
+                                                                                                                              Engineering, Division P.M.A. (Production, Machine
+     10, no. 3, pp. 294–315, 1989.                                                                                            Design, and Automation). His research interests
+ [7] J. Schoukens and R. Pintelon, Identification of Linear Systems: A Prac-                                                  include modeling and identification of the dynamics
+     tical Guideline to Accurate Modeling Oxford, England: Pergamon,                                                          and friction of robot manipulators.
+     1991.
+
+
+
+     Authorized licensed use limited to: Katholieke Universiteit Leuven. Downloaded on August 17, 2009 at 10:39 from IEEE Xplore. Restrictions apply.
+740                                                                             IEEE TRANSACTIONS ON ROBOTICS AND AUTOMATION, VOL. 13, NO. 5, OCTOBER 1997
+
+
+
+                              Dilek Bilgin Tükel was born in Adana, Turkey, in                                           Hendrik Van Brussel (S’68–M’71–SM’85–F’95)
+                              1965. She received the B.S. degree in electrical en-                                        was born in Ieper, Belgium, on October 24, 1944.
+                              gineering in 1987, and the M.S. degree in 1990 from                                         He received the degree of technical engineer in
+                              Bogazici University, Istanbul. She also received the                                        mechanical engineering from the Hoger Technisch
+                              Ph.D. degree in mechanical engineering in 1997                                              Instituut, Ostend, Belgium, in 1965, and the M.Sc.
+                              from the Katholieke Universiteit Leuven, Heverlee,                                          degree in electrical engineering from Katholieke
+                              Belgium.                                                                                    Universiteit (K.U.) Leuven, Heverlee, Belgium. In
+                                 She is currently with Altinay Robotics and Au-                                           1971, he received the Ph.D. degree in mechanical
+                              tomation Company, Istanbul, Turkey. Her research                                            engineering, also from K.U. Leuven.
+                              interests include modeling and control of multirobot                                          From 1971 to 1973, he was establishing a Metal
+                              systems and path planning.                                                                  Industries Development Centre in Bandung, Indone-
+                                                                                                sia, where he also was an associate professor with the Institut Teknologi
+                                                                                                Bandung, Indonesia. He is presently Full Professor in mechatronics and indus-
+                                                                                                trial automation and Chairman of the Department of Mechanical Engineering
+                                                                                                at K.U. Leuven. He was a pioneer in robotics research in Europe and an
+                           Joris De Schutter (M’96) received the degree in                      active promoter of the mechatronics idea as a new paradigm for concurrent
+                           mechanical engineering from the Katholieke Uni-                      machine design. He has published more than 200 papers on different aspects of
+                           versiteit (K.U.) Leuven, Heverlee, Belgium, in 1980,                 robotics, mechatronics, and flexible automation. His present research interests
+                           the M.S. degree from the Massachusetts Institute                     are shifting toward holonic manufacturing systems and precision engineering,
+                           of Technology, Cambridge, in 1981, and the Ph.                       including microrobotics.
+                           D. degree in mechanical engineering, also from the                      Dr. Van Brussel is a Fellow of the Society of Manufacturing Engineers,
+                           K.U. Leuven, in 1986.                                                and in 1994 he received a honory doctor degree from the “Politechnica”
+                              He then worked as a control systems engineer                      University in Bucharest, Romania, and from RWTH, Aachen, Germany. He
+                           in industry. In 1986 he became Lecturer with the                     is also a corresponding member of the Royal Academy of Sciences, Literature,
+                           Department of Mechanical Engineering, Division                       and Fine Arts of Belgium and an active member of the International Institution
+                           PMA (Production Engineering, Machine Design and                      for Production Engineering Research (CIRP).
+Automation), K.U. Leuven, where he is now full professor since 1995.
+He teaches courses in kinematics and dynamics of machinery, control, and
+robotics, and is the coordinator of the study program in mechatronics.
+He has published papers on sensor based robot control (especially force
+control), position control of flexible robots and drive systems, and on robot
+programming.
+
+
+
+
+      Authorized licensed use limited to: Katholieke Universiteit Leuven. Downloaded on August 17, 2009 at 10:39 from IEEE Xplore. Restrictions apply.
+

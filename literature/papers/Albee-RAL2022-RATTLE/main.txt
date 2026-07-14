@@ -1,0 +1,463 @@
+                                                   The RATTLE Motion Planning Algorithm for Robust Online
+                                                    Parametric Model Improvement with On-Orbit Validation
+                                        Keenan Albee1∗ , Monica Ekal2∗ , Brian Coltin3 , Rodrigo Ventura2 , Richard Linares1 , and David W. Miller1
+
+
+                                           Abstract— Certain forms of uncertainty that robotic systems
+                                        encounter, like parametric model uncertainties such as mass
+                                        and moments of inertia, can be explicitly learned within
+                                        the context of a known model. Quantifying such parametric
+                                        uncertainty is important for more accurate prediction of the
+arXiv:2203.01547v1 [cs.RO] 3 Mar 2022
+
+
+
+
+                                        system behavior, leading to safe and precise task execution.
+                                        In tandem, providing a form of robustness guarantee against
+                                        prevailing uncertainty levels like environmental disturbances
+                                        and current model knowledge is also desirable. To that end, the
+                                        authors’ previously proposed RATTLE algorithm, a framework
+                                        for online information-aware motion planning, is outlined and
+                                        extended to enhance its applicability to real robotic systems.
+                                        RATTLE provides a clear tradeoff between information-seeking
+                                        motion and traditional goal-achieving motion and features                    Fig. 1: The Astrobee robotic free-flyer maneuvering around
+                                        online-updateable models. Additionally, online-updateable low
+                                        level control robustness guarantees and a new method for au-
+                                                                                                                     simulated obstacles using the RATTLE algorithm onboard
+                                        tomatic adjustment of information content down to a specified                the International Space Station. Credit: ESA/NASA
+                                        estimation precision is proposed. Results of extensive experi-
+                                        mentation in microgravity using the Astrobee robots aboard                   to note the distinction between epistemic (“learnable”) and
+                                        the International Space Station and practical implementation                 aleatoric (“unresolvable”) uncertainties. If a robotic system
+                                        details are presented, demonstrating RATTLE’s capabilities for               can better understand epistemic uncertainties during system
+                                        real-time, robust, online-updateable, and model information-                 execution, it is logical to want to leverage this improved
+                                        seeking motion planning capabilities under parametric uncer-
+                                        tainty.                                                                      model knowledge for future planning and control tasks.
+                                                                                                                     Meanwhile, accounting for prevailing uncertainty levels in
+                                                                 I. I NTRODUCTION                                    the form of aleatoric uncertainty is an essential component
+                                                                                                                     of providing a form of guarantee on safe performance.
+                                           Robots must deal with multiple forms of uncertainty                          A number of motion planning and control works ad-
+                                        arising from sources such as environmental disturbances,                     dress the planning under uncertainty problem as a robust
+                                        unmodeled dynamics, and more. As robots are deployed in                      or chance-constrained planning problem. Robust planning
+                                        scenarios demanding greater precision and guarantees on                      and control treats the effects of uncertainty as unwanted,
+                                        robust performance, it becomes appealing to account for                      bounded disturbances, and designs disturbance rejecting
+                                        these uncertainties within the motion planning and control                   techniques to achieve control objectives in spite of them;
+                                        portions of the autonomy stack. Microgravity robotics pro-                   chance-constrained approaches provide probabilistic satisfac-
+                                        vides a guiding scenario in the form of on-orbit assembly                    tion of safety requirements. Robust or chance-constrained ap-
+                                        and payload transportation tasks [1] [2] [3] [4] [5] owing to                proaches have been proposed by a number of authors [6] [7]
+                                        a change in parameters such as mass and moment of inertia                    [8] [9], [10]. However, working with assumed, unchanging
+                                        while interacting with payloads. A key scenario is trans-                    uncertainty can lead to overly conservative behavior. Further,
+                                        portion of cargo in space station interiors by a robotic free-               computations in such approaches are not always real-time.
+                                        flyer operating alongside crew and other spacecraft while                       Another body of work attempts to aid estimation and
+                                        demanding safe execution under conditions with significant                   learning procedures through motion planning, known as
+                                        model uncertainty.                                                           information-aware planning. Within this exists a class of ap-
+                                           For precise execution for safety-critical tasks such as these,            proaches entirely focused on generating maximally exciting
+                                        it is often essential to adequately characterize the system.                 trajectories for offline system model identification, where the
+                                        Moreover, robustness guarantees on the current level of                      identification procedure is run in batch after-the-fact [11],
+                                        system knowledge are desirable. However, it is important                     [12], [13].
+                                        *Both authors contributed equally to this work.
+                                                                                                                        Some active learning approaches begin to blend system
+                                        1 Department of Aeronautics and Astronautics, Massachusetts Institute of     identification for online model learning with other nominal
+                                        Technology, {albee, linaresr, millerd}@mit.edu                               goals. For instance, [14] details a POMDP formulation with
+                                        2 Institute for Systems and Robotics, Instituto Superior Técnico, {mekal,
+                                                                                                                     covariance minimization in the cost function, and work
+                                        rodrigo.ventura}@isr.tecnico.ulisboa.pt
+                                        3      SGT       Inc.,      NASA        Ames        Research       Center,   on covariance steering, [15] [16] attempts to answer when
+                                        brian.coltin@nasa.gov                                                        adding excitation would be most effective. However, in
+general the scalability of these methods remains a challenge,                   II. P ROBLEM F ORMULATION
+real-time hardware demonstrations are uncommon, and these
+approaches do not address some practical details of motion
+planning such as dealing with global long-horizon planning.
+   For the guiding example of microgravity robotics, though
+system identification and active learning is a well-researched
+topic in the robotics literature, few works have presented
+results for microgravity robotics. In [12], the authors used
+telemtery data obtained from the ETS-VII satellite to esti-
+mate a reduced set of inertial parameters of a space manipula-
+tor. Works such as [17], [18] used the Synchronized Position
+Hold Engage Reorient Experimental Satellites (SPHERES)
+onboard the International Space Station (ISS) as a testbed
+for evaluating vision-based navigation and estimation algo-
+rithms, estimating properties of a spinning target. Measure-
+ments obtained from the ROKVISS manipulator installed            Fig. 2: A sketch of the 6 DOF dynamics of interest, among
+outside the ISS were used for estimation of friction and         a set of ellipsoidal obstacles. A global plan (red), obeys the
+stiffness parameters in space [19].                              translational dynamics and may even be replanned online
+   Despite these advancements, a gap exists between ap-          if requested. Information-containing local plans operate be-
+proaches which can handle robustness guarantees, and those       tween global plan waypoints.
+which seek model improvement. Further, motion planning
+                                                                    The dynamics of a robotic system with state x ∈ Rn , input
+and control methods often ignore the ability to use online up-
+                                                                 u ∈ Rm , and uncertain parameters θ ∈ Rj can be written as
+dates of system models for real-time enhancements to on-the-
+fly replanning or online-updateable control. The RATTLE al-                          ẋ = f (x, u, θ ) + wx                  (1)
+gorithm (Real-time information-Aware Targeted Trajectory                             y = h(x, u, θ ) + wy ,                  (2)
+planning for Learning via Estimation) was initially pro-
+posed to deal primarily with parametric information-aware        where the vector of the measured quantities is y ∈ Rl ,
+motion planning in the context of a complete motion plan-        wx ∼ N (0, ΣQ ), and wy ∼ N (0, ΣR ) where N repre-
+ning approach [20]. RATTLE, significantly extended in this       sents the Gaussian distribution. Only initial estimates of the
+work, is combined with low-level online-updateable con-          parameters θ 0 ∼ N (θ̂ 0 , Σθ,0 ) are known.
+trol robustness guarantees via robust tube MPC to provide          A goal region Xg is specified, which the robotic system
+tracking tube robustness. Additionally, a new information-       aims to approach from initial state x0 , while respecting input
+weighting method is proposed that automates the assign-          and state constraints u ∈ U and x ∈ Xf ree . A cost function
+ment of information-awareness in local planning. Finally,        of the form
+replanning is introduced for the global planner, opening up                                           Z tf
+greater flexibility in adapting to changing system models           J(x, u, t) = g(x(tf ), u(tf )) +       l(x(t), u(t)) dt. (3)
+                                                                                                     t0
+and constraints. RATTLE is demonstrated for the 6 DOF
+Newton-Euler dynamics in real-time on microgravity hard-         describes trajectory cost where g(x(tf ), u(tf )) is a terminal
+ware, and extensively validated in a set of experiments on the   cost and l(x(t), u(t)) is an accumulated cost. The motion
+International Space Station using the Astrobee robotic free-     planning problem is known to be at least PSPACE-hard,
+flyer [21]. This is the first time that an information-aware     even in deterministic kinematic problems, and often requires
+motion planning framework has been evaluated in space to         approximate solutions [22].
+the authors’ knowledge. This work’s contributions include:
+                                                                 A. Rigid Body Dynamics
+   • The complete RATTLE motion planning algorithm,
+      providing adjustable levels of parametric information-        For the guiding use case of interest, the linear and angular
+      aware planning with low-level control robustness           dynamics for a 6 DOF rigid body expressed in a body-fixed
+   • Automatic information-weighting for parameter learn-        frame not coincident with the center of mass are
+      ing, tied to current parameter variance levels
+                                                                                                                
+                                                                            F          mI3          −m[c]×            v̇
+   • Online-adjustable tube robustness guarantees for low-
+                                                                                 =                                       +
+                                                                         τ CM 0       m[c]× ICM − m[c]× [c]× ω̇       ω
+      level control                                                                                                        (4)
+                                                                                            ω ]× [ω
+                                                                                          m[ω     ω ]× c
+   • Hardware integration considerations, including practi-
+                                                                                   ω ]× (ICM − m[c]× [c]× ) ω
+                                                                                  [ω
+      cal improvements to global planning to enable online
+      replanning                                                 where v, ω ∈ R3 denote the linear velocity and angular
+   • Results of microgravity hardware experiments using the      velocity of the original center of mass (CM0 ), ICM is the
+      Astrobee freeflyer onboard the ISS, demonstrating RAT-     inertia tensor about the center of mass (CM), m is the system
+      TLE’s real-time performance on resource-constrained        mass, and c ∈ R3 is the CM offset from CM0 . F, τ ∈
+      hardware in the space environment                          R3 are the forces and torques applied through the FB body
+frame, where F indicates the inertial reference frame [20].           A. Global Planner
+[−]× is used to indicate a cross product matrix. The model’s             The global-sampling based planner must obey system
+parameters, assuming negligible center of mass change and             dynamics, perform long-horizon planning, and respect obsta-
+                                                   >
+known principal axes, are θ , [m, Ixx , Iyy , Izz ] .                 cle avoidance constraints. Sampling-based planners [23] are
+                                                                      particularly well-suited to this task—a kinodynamic RRT re-
+B. Obstacles
+                                                                      specting the translational dynamics is used for RATTLE [24].
+   The obstacle set Xobs is represented as a set of bounding          Using an ellipsoidal-on-ellipsoidal representation, efficient
+ellipsoids, E := {cx , cy , cz , rx , ry , rz }, where c∗ describes   convex collision checking algorithms may be employed for
+the centroid and r∗ describes semi-major axis length. Obsta-          three-dimensional collision detection [25]. For computational
+cles and a system frame diagram are as shown in Fig. 2.               speed, focus is placed on the translational dynamics of
+                                                                      equation 4 and a motion primitive approach is used to reduce
+                        III. M ETHODS                                 the branching factor: pre-selected input actions Ump propa-
+   The RATTLE algorithm addresses the planning under                  gated over small timesteps are used to produce the steer
+parametric uncertainty problem by tackling both epistemic             portion of the kino-RRT implementation. This enables global
+unceratinty reduction and aleatoric robustness. The algorithm         planning fast enough for replanning using updated dynamical
+can be summarized in four components: (1) a global kino-              properties, detailed further in Section IV. As shown in Fig.
+dynamic sampling-based planner for long-horizon collision-            2, the global plan (red) produces translational long-horizon
+free guidance; (2) a receding horizon local planner with              guidance, Pg := {xk , uk }, and is capable of replanning
+adjustable information weighting (Γ) on system model un-              using updated obstacle and model knowledge.
+knowns; (3) a robust model predictive controller with ad-             B. Information-Aware Local Planner
+justable robustness guarantees coupled with; (4) an online
+parameter estimation method, in this case an augmented                   The local planner performs receding horizon planning
+state extended Kalman filter (EKF). All elements of the               between global plan waypoints, denoted in green in Fig.
+planning and control feature online updateable models—the             2. Mid-level planning occurs over a replan period, Tl , with
+most recent parameter estimates are incorporated into the             updated information about robot parameters incorporated at
+planner and controller models for improved prediction and             each local plan computation. Additionally, this planner intro-
+tracking.                                                             duces excitation into trajectories by maximizing a weighted
+   These components, illustrated in Fig. 3, are also explained        trace of the Fisher Information Matrix (FIM) [26]. The FIM
+in detail in a more limited form in [20]. Each module                 essentially quantifies the amount of information contained
+is detailed individually, with particular attention paid to           by measurements about the parameters of interest. This
+augmentations made to RATTLE in this work.                            enables the robot to perform exploratory motions and collect
+                                                                      informative data that facilitate parameter estimation, balanc-
+                                                                      ing against other system objectives in a quantifiable way
+                                                                      via the cost function shown in equation 5. The discretized
+                                                                      nonlinear trajectory optimization problem solved by the mid-
+                                                                      level planner is
+                                                                                        N
+                                                                                        X −1
+                                                                                               x>            >            >       −1
+                                                                                                                                       
+                                                                       minimize    J=           t+k Qxt+k + ut+k Rut+k + Γ diag F
+                                                                           u
+                                                                                        k=0
+                                                                       subject to xt+k+1 = f (xt+k , ut+k , θ), k = 0, .., N − 1
+                                                                                   xt+k ∈ Xf ree , k = 0, .., N,
+                                                                                   ut+k ∈ U, k = 0, .., N − 1,
+                                                                                                                                  (5)
+                                                                         where N is the length of the horizon and Q  0
+                                                                      and R  0 are positive definite weighting matrices. The
+                                                                      relative weighting term, Γ ∈ Rj , is used to tune the
+                                                                      amount of information content of the trajectory. The output
+                                                                      Pl := {xt:t+N , ut:t+N −1 } is made available for control over
+                                                                      horizon N .
+                                                                         Instead of using heuristics to design Γ(t)’s evolution, this
+Fig. 3: The RATTLE planning framework, demonstrating                  work proposes a new method of guiding information content
+global long-horizon planning via kino-RRT, and shorter-               based on the covariance of the estimates, shown in Fig. 4,
+horizon local planning incorporating information-aware plan-          where α and β are tuning parameters for tolerance above
+ning via an adjustable weighting term, γ that can be tied             a minimum desired covariance, σn,i , and rate of weighting
+to parameter covariance. An online-updateable controller              decay, respectively. In effect, this introduces feedback from
+benefits from online robustness model updating.                       current model knowledge into the information content of lo-
+                                                                      cal plans, until characterization is within a desired precision
+tolerance. Weightings and noise floors may also be tweaked       D. Online Parameter Estimator
+individually per parameter, allowing selective information          In order to perform real-time parameter estimation and
+content to be assigned.                                          model-updating, an extended Kalman filter (EKF) is used in
+                                                                 RATTLE. The EKF propagates the commanded forces and
+ 1: procedure C O V A R W E I G H T (Σn , Γ0 , α, β)             torques using a locally linearized model of system dynamics,
+ 2:    Σk+1 ← UpdateCovar(Σk )                                   and compares this result with the state measurements in order
+ 3:    for ∀i do                                                 to determine θ ∼ N (θ̂, Σθ ). Another sequential estimation
+ 4:        if σi ≤ ασn,i then                                    approach can be used if desired, provided it is fast enough
+ 5:            γi ← 0                                            to provide real-time model updates.
+ 6:        else                   βσ n,i
+                                −                                                       IV. R ESULTS
+ 7:             γi ← γi,0 exp       σi
+
+                                                                    The RATTLE algorithm was validated in a high-fidelity
+Fig. 4: The covariance-based information weighting proce-        simulator of NASA’s Astrobee robot and in micrograv-
+dure. Based on a designated noise floor, parameter weight-       ity hardware demonstrations on the Astrobee free-flyers
+ings can be exponentially decreased to within a learning         aboard the International Space Station. These experiments
+tolerance. α and β are tuning parameters.                        demonstrate the benefit of online information-aware planning
+                                                                 in reducing parametric uncertainty and improving estimate
+                                                                 accuracy in real-time, in reducing the conservativeness of
+C. Robust Low-Level Control                                      robustness guarantees online, and responding to changing
+                                                                 constraints via replanning. Automatic information weighting
+   Robust tube model predictive control (MPC) is used for
+                                                                 based on parameter covariance levels is also demonstrated,
+low-level robust control of local plans, respecting current
+                                                                 along with some discussion of the practicalities of hardware
+uncertainty levels [27]. Unlike deterministic model predictive
+                                                                 implementation. This is the first use of information-aware
+control, which has no robustness guarantees under uncer-
+                                                                 planning on-orbit to the authors’ knowledge, and provides
+tainty, tube MPC provides a tube robustness certification
+                                                                 useful hardware verification of RATTLE’s capabilities in a
+that a system will stay within a reachable set Z (mRPI)
+                                                                 mixture of simulation and hardware demos.
+of a nominally planned trajectory z̄, under bounded, addi-
+tive disturbances wx ∈ W and an ancillary “disturbance
+rejection” controller. The nominally planned trajectory is
+subject to additional constraints, including tighter input and
+control constraints
+         L           and a Lguarantee that the nominal state
+z̄ ∈ x (−Z), where              is the Minkowski sum. The
+ancillary controller takes the form
+
+                     uanc = Kanc (x − z̄)                  (6)
+                         u = v + uanc                      (7)
+
+where v is an input from a nominal constraint-tightened
+MPC and x is the true state. The net effect of this control
+scheme creates a guarantee that under disturbances wx the
+system will remain within a robust tube of states centered
+on z̄.
+   RATTLE uses a linear tube MPC for translational robust-
+                                                                 Fig. 5: The RATTLE algorithm executing in the 6DOF
+ness guarantees. Due to the receding horizon nature, updated
+                                                                 Astrobee simulation environment. A global plan is produced
+model parameters and recomputed Z can be incorporated in
+                                                                 (a), tracked via information-containing local plans (b), and
+subsequent plans. The MPC provides robustness guarantees
+                                                                 even replanned online (c) in the presence of new obstacle
+against collisions under the above assumptions. Addition-
+                                                                 information, eventually reaching a goal region (d).
+ally, uncertainty from current parameter covariance levels
+is converted into noise to supplement wx in a simple 95th
+percentile evaluation of the current parameter estimates in      A. Implementation Discussion
+the discretized system dynamics, expanding uncertainty box
+                                                                   The Astrobees (Fig. 1) are cube-shaped free-flying robots
+constraints to include parameter uncertainty,
+                                                                 deployed on the International Space Station [21]. With
+                          
+                              I6
+                                        
+                                          wmax
+                                                               potential use cases including inspection and payload trans-
+                        n
+        W := wx ∈ R :              wx ≤             .    (8)     portation, Astrobee is currently used as an experimental
+                             −I6          wmax
+                                                                 microgravity test platform. The Astrobee robot software uses
+A tuned PD controller is used separately for attitude control    ROS middleware for communication, with nodes running
+in the guiding example [28].                                     on two Snapdragon-based processors. The Astrobee software
+Fig. 6: Online parameter estimates are shown, with a σ bound (top). Dashed vertical lines indicate when estimate confidence
+reaches shutoff levels and is reflected in the local plan (red). Below, information content is shown (black) against relative
+information weightings (red) for each parameter of interest. While parameter weightings are active, information content is
+increased. Note periods where information is obtained “for free” from existing global plan requirements for m and Izz .
+
+
+simulator environment offers the same ROS interfaces as the      and other implementation hurdles are discussed further in
+hardware and consists of high-fidelity models of Astrobee’s      [34].
+systems, including propulsion, navigation and effects such as
+drag [29].                                                       B. Simulation Results
+   In addition to algorithmic details, some implementation          An example of the RATTLE algorithm running in simula-
+novelties were required for the successful use of RATTLE’s       tion is shown in Fig. 5. Here, RATTLE progresses through
+components within the Astrobee software stack, showing           its initial global plan, with yellow kino-RRT tree shown,
+some of the important considerations when moving to hard-        with local plans of varying parametric information content.
+ware. Determination of post-saturation wrenches for use          A global replan is triggered when an “astronaut” obstacle
+by the EKF parameter estimator in place of controller-           is inserted near the global plan path, and a new global
+commanded wrenches was a critical step for estimator con-        plan is computed online, which is tracked by subsequent
+vergence, providing actual system inputs to the parameter        local plans to path completion. All executions of RATTLE
+estimator. Moreover, state measurements and commanded            follow this general format of global (re)plan generation,
+wrenches were not necessarily synchronous, and needed to         local information-containing trajectory generation, and low-
+be chronologically ordered before their use in the estima-       level robust control tracking; some of RATTLE’s unique
+tor. Astrobee’s default localization system is under active      uncertainty-aware components are now discussed in this
+development, and required special care in map-building and       simulation context.
+motion constraints to avoid severe pose estimate jumps,
+a major challenge for control. Further, the frequencies at
+which the local planner and controller components operated
+was essential to remaining within designated computational
+periods imposed by RATTLE, given in Table 11; ensur-
+ing real-time hardware computation is critical. Finally, the
+middleware coordination of RATTLE’s components is non-
+trivial, and deserves careful consideration to ensure model
+updates, planner outputs, and more are on-time and properly
+shared.
+   Multiple external libraries, integrated within the Astrobee
+flight software stack, were used on-orbit. The ACADO
+toolkit [30] was used for solving nonlinear programming          Fig. 7: Online updating of the minimum robust positively
+of the receding horizon planner, and CasADi [31] for im-         invariant set (mRPI), based on updated mass estimates.
+plementation of the robust tube MPC. Additionally, Bullet        Greater precision of estimated parameters can mean less
+Physics’ C++ collision checker [32] and autograd [33]            restrictive control robustness constraints—a phase plot for
+were used for collision detection and automatic differentia-     the z-axis is shown.
+tion respectively. Highlights of the Astrobee software stack
+Fig. 8: Information content of an informative and non-informative RATTLE plan on-orbit. Note the increased information
+content when parameter learning is explicitly weighed.
+
+
+   1) Covariance-Informed Information Weighting, Online           lated walls in addition to the physical interior, as in (a) of
+Parameter Estimation: Fig. 6 shows one of the principal           Fig.5.
+benefits of RATTLE: online uncertainty reduction through             The information content corresponding to the commanded
+parameter estimation. The cumulative information content in       local plans of these two runs, one with information weighting
+the local plan as the robot makes its way from the initial        and one without, are plotted in Fig. 8. It is evident that while
+position, (a) in Fig. 5, to the goal state, (d) is shown at the   comparable information content for the mass parameter is
+bottom of Fig. 6.                                                 obtained in both runs (both must translate to reach the goal),
+   Online automatic information weighting adjustment is en-       the information-aware run creates clear exploratory motion
+abled by the methods of Section III-B. Fig. 6 also illustrates    for inertia estimation. The corresponding parameter estima-
+this feature. At bottom, total Fisher information content         tion results are shown in Fig. 9. While both runs result in
+(black) for each parameter is plotted alongside weighting         comparable mass estimates, more accuracy and precision in
+levels γi (red) used for parameter learning in the local plan     the inertia estimates is obtained with the information-aware
+cost function. Weighting levels are automatically varied using    trajectory, as the exploratory motion aids in information
+the covariance-informed weighting procedure, until they are       content for online learning.
+turned off entirely once the parameter estimates reach the           2) Online Global Replanning, Planning Speeds: The
+designated noise floor, shown by a vertical red line at top.      global online replanning capabilities of RATTLE were also
+After this point, explicit weighting on information content is    demonstrated on-orbit. Fig. 10 illustrates the global and local
+dropped, reflected e.g., in the plateau of moment of inertia      plans for a replanning run, again with an “astronaut” obstacle
+information. There are two notable exceptions: m and Izz          introduced during execution of the original global plan.
+continue to receive some information content “for free,”          Global (re)planning and RATTLE’s other real-time model-
+since the global plan continues translating and has a final       updating components are enabled on hardware by efficient
+z-axis rotation. The net effect of information weighting is       computation time given the timescales of the dynamics of
+to increase information content above that of otherwise un-       interest. Planning/control periods and approximate hardware-
+weighted plans, not to remove information content altogether      demonstrated values are shown in Fig. 11. Exact processor
+(which, for m, would mean halting motion).                        details are provided in [21].
+   2) Online Tube Robustness Adjustment: Another key fea-                              V. C ONCLUSION
+ture of RATTLE is the incorporation of the latest system             This work introduced an expanded version of the RATTLE
+model parameters into the planning and control. Fig. 7 shows      information-aware motion planning algorithm. RATTLE’s
+the shrinking minimum robust positively invariant set, Z, as      capabilities include automatic assignment of information
+lower covariance mass estimates are used for its computa-         content based on parameter covariance levels, online update-
+tion, using Rakovic’s reachable set approximation method          able robust tube MPC to deal with current uncertainty levels
+[35]. This results in less restrictive control of the system—     during local plan execution, and connection with a real-time
+the reachable set decreases as uncertainty values decrease,       dynamics-aware global planer with replanning capabilities.
+reducing the input reserved for the ancillary controller’s        RATTLE was implemented on hardware for the Astrobee
+uanc computation, thus allowing for less conservative control     robotic free-flyers and its features were demonstrated in
+under better knowledge of the model parameters.                   simulation and in a space robotics microgravity guiding
+                                                                  example. Namely, its abilities to provide parametric uncer-
+C. Hardware Results
+                                                                  tainty reduction, online replanning, and online adjustable
+   1) Online Parameter Estimation: The microgravity study         robustness guarantees have been shown. This provides a
+of RATTLE aimed to demonstrate its capabilities of uncer-         template for using RATTLE in a variety of robotic systems
+tainty reduction through parameter estimation and real-time       operating under parametric and unstructured uncertainties,
+hardware operation of the entire algorithm. The experimental      and paves the way for autonomous robots to navigate their
+volume of the ISS was considered to have two large simu-          environments with greater precision and safety.
+Fig. 9: On-orbit parameter estimation results for the non-informative and informative runs. Note that the information-aware
+planning enables parameter estimation to continue for longer, resulting in more accurate and less uncertain inertia estimates.
+(Note that the parameter estimates shown here are replayed offline using localization data gathered from microgravity
+experiments, due to poor hardware tuning of EKF noise values.)
+
+
+
+
+Fig. 10: An on-orbit replan after an “astronaut” obstacle is introduced. Local plans track the revised global plan after
+recomputation. The figure at left shows the approximate position of Astrobee on-orbit at the time of the replan.
+
+
+                                                                   The results presented here have assumed linearity for the
+  Component        Replan Period [s]    Hardware Speed [s]      robust tube MPC online updating, leverage a set of four
+ Global Planner       as-needed              0.5 − 2            unknown parameters in the information-aware local planner,
+ Local Planner            12                   2−7              and use the translational dynamics for global planning.
+   Controller            0.2                0.05 − 0.2          A number of these assumptions are necessary to assure
+Fig. 11: Replan periods and approximate actual computa-         real-time computational speed; as processor and algorith-
+tional time taken for computation on Astrobee’s Snapdragon      mic enhancements powering these modules mature, various
+processors on-orbit.                                            components of RATTLE can be adjusted to tackle increas-
+                                                                ingly harder dynamics with greater numbers of unknown
+parameters in real-time. Nonetheless, RATTLE has been                          [14] D. J. Webb, K. L. Crandall, and J. Van Den Berg, “Online parameter
+demonstrated successfully on hardware for a challenging                             estimation via real-time replanning of continuous Gaussian POMDPs,”
+                                                                                    Proceedings - IEEE International Conference on Robotics and Au-
+nonlinear robotic system with parametric uncertainty and                            tomation, pp. 5998–6005, 2014.
+significant process noise. RATTLE in its latest form of-                       [15] K. Okamoto, M. Goldshtein, and P. Tsiotras, “Optimal Covariance
+fers wide applicability to robotic systems operating under                          Control for Stochastic Systems under Chance Constraints,” IEEE
+                                                                                    Control Systems Letters, vol. 2, no. 2, pp. 266–271, 2018.
+uncertainty—future work aims to bring information-theoretic                    [16] K. Okamoto and P. Tsiotras, “Optimal Stochastic Vehicle Path Plan-
+and robust planning techniques using RATTLE’s framework                             ning Using Covariance Steering,” IEEE Robotics and Automation
+to a greater set of uncertain robotic systems.1                                     Letters, vol. 4, no. 3, pp. 2276–2281, 2019.
+                                                                               [17] B. E. Tweddle, A. Saenz-Otero, J. J. Leonard, and D. W. Miller,
+                                                                                    “Factor graph modeling of rigid-body dynamics for localization,
+                       ACKNOWLEDGMENTS                                              mapping, and parameter estimation of a spinning object in space,”
+                                                                                    Journal of Field Robotics, vol. 32, no. 6, pp. 897–933, 2015.
+   Funding for this work was provided by the NASA                              [18] T. P. Setterfield, D. W. Miller, A. Saenz-Otero, E. Frazzoli, and J. J.
+Space Technology Mission Directorate through a NASA                                 Leonard, “Inertial properties estimation of a passive on-orbit object
+Space Technology Research Fellowship under grant                                    using polhode analysis,” Journal of Guidance, Control, and Dynamics,
+                                                                                    vol. 41, no. 10, pp. 2214–2231, 2018.
+80NSSC17K0077. This work was also supported by an                              [19] A. Albu-Schaffer, W. Bertleff, B. Rebele, B. Schafer, K. Landzettel,
+MIT Seed Project under the MIT Portugal Program. ISS                                and G. Hirzinger, “Rokviss-robotics component verification on iss cur-
+experiments were conducted under ISS National Lab                                   rent experimental results on parameter identification,” in Proceedings
+                                                                                    - IEEE ICRA., pp. 3879–3885, 2006.
+user agreement UA-2019-969 as part of the ReSWARM                              [20] M. Ekal, K. Albee, B. Coltin, R. Ventura, R. Linares, and D. W. Miller,
+investigation. The authors gratefully acknowledge the                               “Online information-aware motion planning with inertial parameter
+support that enabled this research. The authors would                               learning for robotic free-flyers,” in 2021 IEEE/RSJ International
+                                                                                    Conference on Intelligent Robots and Systems (IROS), pp. 8766–8773,
+especially like to thank Alvar Saenz-Otero, Marina Moreira,                         IEEE, 2021.
+Ruben Garcia Ruiz, Ryan Soussan, Jose Benavides, and the                       [21] T. Smith, J. Barlow, M. Bualat, T. Fong, C. Provencher, H. Sanchez,
+rest of the Astrobee team at NASA Ames for their help in                            and E. Smith, “Astrobee: A New Platform for Free-Flying Robotics
+                                                                                    on the ISS,” in iSAIRAS 2016, 2016.
+accomplishing ISS testing.                                                     [22] J. Reif, “Complexity of the Generalized Mover’s Problem,” tech. rep.,
+                                                                                    Harvard University, 1985.
+                             R EFERENCES                                       [23] S. M. LaValle, “RRT-progress and prospects,” in Algorithmic and
+                                                                                    Computational Robotics: New Directions, 2001.
+ [1] J. R. Brophy, L. Friedman, N. J. Strange, D. Landau, T. Jones,            [24] S. LaValle and J. Kuffner, “Randomized Kinodynamic Planning,” The
+     R. Schweickart, C. Lewicki, M. Elvis, and D. Manzella, “Synergies              International Journal of Robotics Research, 2001.
+     of Robotic Asteroid Redirection Technologies and Human Space              [25] Yi-King Choi, Jung-Woo Chang, Wenping Wang, Myung-Soo Kim,
+     Exploration,” in 65th International Astronautical Congress, 2014.              and G. Elber, “Continuous Collision Detection for Ellipsoids,” IEEE
+ [2] A. Flores-Abad, O. Ma, K. Pham, and S. Ulrich, “A review of space              Transactions on Visualization and Computer Graphics, vol. 15,
+     robotics technologies for on-orbit servicing,” Progress in Aerospace           pp. 311–325, Mar. 2009.
+     Sciences, vol. 68, pp. 1–26, 2014.                                        [26] R. A. Fisher, “Statistical methods and scientific inference.,” 1956.
+ [3] J. M. DiFrancesco and J. M. Olson, “The economics of microgravity         [27] D. Q. Mayne, E. C. Kerrigan, and P. Falugi, “Robust model predictive
+     research,” Nature Partner Journals - Microgravity, vol. 1, nov 2015.           control: Advantages and disadvantages of tube-based methods,” IFAC
+ [4] B. H. Wilcox, “ATHLETE: A Cargo-Handling Vehicle for Solar                     Proceedings Volumes (IFAC-PapersOnline), vol. 44, no. 1 PART 1,
+     System Exploration,” in IEEE Aerospace Conference, 2011.                       pp. 191–196, 2011.
+ [5] P. Roque and R. Ventura, “Space CoBot: modular design of an               [28] B. Wie and P. M. Barba, “Quaternion feedback for spacecraft large
+     holonomic aerial robot for indoor microgravity environments,” tech.            angle maneuvers,” Journal of Guidance, Control, and Dynamics,
+     rep.                                                                           vol. 8, no. 3, pp. 360–365, 1985.
+ [6] J. P. How and M. Tillerson, “Analysis of the impact of sensor noise       [29] L. Fluckiger, K. Browne, B. Coltin, J. Fusco, T. Morse, and
+     on formation flying control,” Proceedings of the American Control              A. Symington, “Astrobee robot software: A modern software system
+     Conference, vol. 5, pp. 3986–3991, 2001.                                       for space,” 2018.
+ [7] A. Majumdar and R. Tedrake, “Funnel libraries for real-time robust        [30] B. Houska, H. Ferreau, and M. Diehl, “ACADO Toolkit – An Open
+     feedback motion planning,” The International Journal of Robotics               Source Framework for Automatic Control and Dynamic Optimization,”
+     Research, vol. 36, no. 8, pp. 947–982, 2017.                                   Optimal Control Applications and Methods, vol. 32, no. 3, pp. 298–
+ [8] B. T. Lopez, J. P. Howl, and J.-J. E. Slotine, “Dynamic tube mpc               312, 2011.
+     for nonlinear systems,” in 2019 American Control Conference (ACC),        [31] J. A. E. Andersson, J. Gillis, G. Horn, J. B. Rawlings, and M. Diehl,
+     pp. 1655–1662, IEEE, 2019.                                                     “CasADi – A software framework for nonlinear optimization and
+ [9] M. Ono, M. Pavone, c. Y. Kuwata, c. J. Balaram, Y. Kuwata,                     optimal control,” Mathematical Programming Computation, vol. 11,
+     J. Balaram, and B. N. Gov, “Chance-constrained dynamic program-                no. 1, pp. 1–36, 2019.
+     ming with application to risk-aware robotic space exploration,” Au-       [32] E. Coumans, “Bullet physics simulation,” in ACM SIGGRAPH 2015
+     tonomous Robots, vol. 39, pp. 555–571, 2015.                                   Courses, (New York, NY, USA), ACM, 2015.
+[10] A. Bry and N. Roy, “Rapidly-exploring Random Belief Trees for             [33] D. Maclaurin, D. Duvenaud, and R. P. Adams, “Autograd: Effortless
+     Motion Planning Under Uncertainty,” 2011.                                      gradients in numpy,” in ICML 2015 AutoML Workshop, vol. 238, p. 5,
+[11] R. Lampariello and G. Hirzinger, “Modeling and experimental design             2015.
+     for the on-orbit inertial parameter identification of free-flying space   [34] K. Albee, M. Ekal, and C. Oestreich, “A brief guide to astrobee’s flight
+     robots,” in ASME 2005 IDETCCIE, pp. 881–890, 2005.                             software,” 2020.
+[12] K. Yoshida and S. Abiko, “Inertia parameter identification for a          [35] S. V. Rakovic, E. C. Kerrigan, K. I. Kouramas, and D. Q. Mayne,
+     free-flying space robot,” in AIAA Guidance, Navigation, and Control            “Invariant Approximations of the Minimal Robust Positively Invariant
+     Conference and Exhibit, p. 4568, 2002.                                         Set,” vol. 50, no. 3, pp. 406–410, 2005.
+[13] M. Ekal and R. Ventura, “On the accuracy of inertial parameter
+     estimation of a free-flying robot while grasping an object,” Journal
+     of Intelligent & Robotic Systems, vol. 98, no. 1, pp. 153–163, 2020.
+
+1 The authors intend to open source RATTLE’s ROS packages and Astrobee
+ testing interface.
+

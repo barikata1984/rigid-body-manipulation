@@ -1,0 +1,719 @@
+                                         SEE OFFICIAL VERSION AT HTTP://DX.DOI.ORG/10.1109/LRA.2017.2729659                                                                                     1
+
+
+
+
+                                         Linear Matrix Inequalities for Physically-Consistent
+                                            Inertial Parameter Identification: A Statistical
+                                                Perspective on the Mass Distribution
+                                                                         Patrick M. Wensing1 , Sangbae Kim2 , and Jean-Jacques E. Slotine2
+
+                                         Abstract—With the increased application of model-based whole-
+                                         body control in legged robots, there has been a resurgence of
+                                         research interest into methods for accurate system identification.
+arXiv:1701.04395v3 [cs.RO] 18 Sep 2017
+
+
+
+
+                                         An important class of methods focuses on the inertial parameters
+                                         of rigid-body systems. These parameters consist of the mass,
+                                         first mass moment (related to center of mass location), and
+                                         rotational inertia matrix of each link. The main contribution
+                                         of this paper is to formulate physical-consistency constraints on
+                                         these parameters as Linear Matrix Inequalities (LMIs). The use                                                      c
+                                         of these constraints in identification can accelerate convergence
+                                         and increase robustness to noisy data. It is critically observed                                                m, Ī C
+                                         that the proposed LMIs are expressed in terms of the covariance
+                                         of the mass distribution, rather than its rotational moments
+                                         of inertia. With this perspective, connections to the classical
+                                         problem of moments in mathematics are shown to yield new
+                                         bounding-volume constraints on the mass distribution of each                Fig. 1. Setup for system identification on the MIT Cheetah 3. This work
+                                                                                                                     provides new constraints to identify physically plausible masses m, center
+                                         link. While previous work ensured physical plausibility or used             of mass locations c, and rotational inertias I¯C through convex optimization.
+                                         convex optimization in identification, the LMIs here uniquely
+                                         enable both advantages. Constraints are applied to identification
+                                         of a leg for the MIT Cheetah 3 robot. Detailed properties of                legged locomotion community has focused on challenges
+                                         transmission components are identified alongside link inertias,             from the floating-base structure of legged robots [10], [11]
+                                         with parameter optimization carried out to global optimality                and the use of constrained optimization to limit the search
+                                         through semidefinite programming.                                           space to physically realistic parameters [12], [13], [14].
+                                            Index Terms—Dynamics, Calibration and Identification
+                                                                                                                        The floating-base structure of legged systems introduces
+                                                                   I. I NTRODUCTION                                  challenges and opportunities to system identification. Pucci
+                                                                                                                     et al. [10] addressed coupling between the limbs and body to
+                                               DVANCES in whole-body control of legged robots
+                                         A     [1], [2], [3], [4] have led to increased use of model-
+                                         based methods in experimental hardware [5], [6], [7], [8].
+                                                                                                                     extend methods of Slotine and Li [22] for underactuated adap-
+                                                                                                                     tive control. Other work has exploited the fact that the Newton
+                                                                                                                     and Euler equations of the entire robot are embedded in the
+                                         Commonly, state-of-the-art controllers perform optimization                 dynamics of the floating base. With this property, Ayusawa et
+                                         over actuator torques to generate desired motions in the robot.             al. [11], [23] demonstrated that full-body inertial parameters
+                                         Recent strides in torque-controlled actuation have provided                 can be estimated from contact forces and kinematics alone.
+                                         wide benefit to these techniques, and emerging actuator                     These advances open the door for application to systems
+                                         designs [9] suggest that performance will continue to improve.              where joint torque measurements are not available, such as
+                                         Despite these advances, the performance of whole-body con-                  for identifying inertial parameters in humans.
+                                         trol methods remains dependent on accurate dynamic models.                     Other recent work has concentrated on using constrained
+                                            Thus, recent trends in control have been accompanied by                  optimization in identification. Often, parameters are known a
+                                         many parallel developments in the area of system identifica-                priori to exist within some predefined set. Such restrictions
+                                         tion [10], [11], [12], [13], [14]. This recent work follows a               may come from considerations of physical plausibility, from
+                                         rich history of research into inertial parameter identification,            bounding volumes in CAD models, or from known symmetry
+                                         with seminal work in [15]. Classically, studies have focused                of a mechanism. Regardless of the source, prior knowledge
+                                         on challenges such as designing trajectories for optimal                    can be applied to increase robustness to noisy sensors, and to
+                                         identification [16], [17], limiting bias from structured noise              accelerate model convergence [24], [25]. Convex constraints,
+                                         [18], [19], and verifying robustness bounds on the identified               in particular, provide desirable structure that can be naturally
+                                         parameters [20], [21]. By comparison, recent work in the                    exploited in parameter identification and adaptive control
+                                           1 Patrick M. Wensing is with the Department of Aerospace and Mechanical   alike. For identification, Jovic et al. [12] formed bounding
+                                         Engineering, University of Notre Dame, Notre Dame, IN 46556 USA             constraints on the center of mass (CoM) of each link, and en-
+                                         pwensing@nd.edu                                                             forced symmetry of mirrored limbs. Sousa and Cortesão [13]
+                                          2 Sangbae Kim and Jean-Jacques E. Slotine are with the Depart-
+                                                                                                                     formulated LMIs to enforce positivity of the kinetic energy.
+                                         ment of Mechanical Engineering, MIT, Cambridge, MA 02139 USA
+                                         {sangbae,jjs}@mit.edu                                                       This constraint alone does not guarantee physical consistency.
+                                           Digital Object Identifier (DOI): see top of this page.                    Recently, Traversaro et al. [14] described tight conditions for
+2                                                                       SEE OFFICIAL VERSION AT HTTP://DX.DOI.ORG/10.1109/LRA.2017.2729659
+
+
+
+physical consistency of inertial parameters using a nonconvex                                        Physical                    Discrete   Uses
+parameterization. Optimization on manifolds was required to                                         Consistency    Convex        Approx.    LMIs
+                                                                           Sousa et al. [13]                         X             No        X
+enforce these conditions.                                                Traversaro et al. [14]         X                          No
+   A main contribution of this paper is to show how physical-             Ayusawa et al. [23]           X               X          Yes
+consistency constraints can be expressed as LMIs on the                       This Paper                X               X          No          X
+inertial parameters. It is shown that manifold constraints from                                          TABLE I
+[14] can be reformulated as convex constraints through LMIs.                                      F EATURE COMPARISON .
+The proposed LMIs uniquely enable globally-optimal least-
+                                                                      form x ∈ S can be enforced using semidefinite program-
+squares parameter identification while enforcing plausibility
+                                                                      ming [27]. Such techniques are mature, and admit guarantees
+of the result. From the form of the constraints, it is critically
+                                                                      of global optimality. We refer the interested reader to [28] for
+observed that physical consistency depends only on the co-
+                                                                      further background on LMIs and their applications.
+variance of the mass distribution.
+   This main observation stems from mathematical common-              Definition 2 (Moment of a Measure). Consider a positive
+ality between mass measures of rigid bodies and probability           Borel measure µ on Rn , α = [α1 , . . . , αn ]> ∈ Nn+ , and let
+measures of random variables. This is not to say that a rigid-        x α = xα 1       αn                              >   n
+                                                                              1 · · · xn for any x = [x1 , . . . , xn ] ∈ R . Then
+body has inherent stochasticity. But rather, that certifying                                        R
+the plausibility of moments falls to the same mathematics                                             Rn
+                                                                                                           xα dµ(x)
+in both domains. This connection enables results from the                                                                    n
+                                                                                                                             P
+classical problem of moments [26] to yield new bounding-              is called a moment of µ, of order |α| =                     αi   [26].
+                                                                                                                            i=1
+ellipsoid constraints on the mass distribution. Formulation of
+these constraints is a second main contribution of the work.          Any function f : Rn → R+ can be used to define a
+Although constraints are placed on the mass distribution, itself      measure through the association dµ(x) = f (x)dx, where dx
+an infinite dimensional mathematical object, LMIs enable this         represents a differential volume. The general concept of a
+restriction to be imposed directly on the 10 standard inertial        moment is applicable to both probability measures and mass
+parameters during system identification.                              measures. This commonality will be used for intuition into
+   The paper is laid out as follows. Section II provides mathe-       the LMIs that enforce plausibility of inertial parameters.
+matical preliminaries. Section III reviews [13] and [14], with        B. Rigid-Body Dynamics
+a high-level comparison in Table I. Section IV presents LMIs
+                                                                        The dynamics of a system of nb ∈ N+ rigid bodies follows
+for physical consistency, highlighting connections with prob-
+ability and statistics. Section V draws on these connections to                        H(q) ν̇ + C(q, ν) ν + g(q) = τ                              (1)
+introduce bounding-volume constraints. Section VI describes
+                                                                      where H ∈ Rnd ×nd the mass matrix, nd ∈ N+ the number
+application to identify a leg from the MIT Cheetah 3, shown
+                                                                      of degrees of freedom, q ∈ Q the configuration with Q the
+in Fig. 1. Section VII provides concluding remarks.
+                                                                      configuration manifold, ν ∈ Rnd the generalized velocity,
+                      II. P RELIMINARIES                              C ν ∈ Rnd and g ∈ Rnd the Coriolis and gravity forces, and
+A. Notation and Definitions                                           τ ∈ Rnd the generalized force [29]. For legged systems, the
+                                                                      generalized force τ has contributions from nj ∈ N+ joint
+   The set of real and natural numbers are denoted by R
+                                                                      actuator torques τ j ∈ Rnj and nc ∈ N external contact
+and N respectively. R+ represents the set of non-negative
+                                                                      wrenches {fck }nk=1
+                                                                                       c
+                                                                                          ⊂ R6 according to
+reals. Scalars are denoted with italics (a, b, . . .), vectors with
+                                                                                                                  nc
+bold characters (a, b, . . .), and matrices with bold capitals
+                                                                                             τ = S>                    J>
+                                                                                                                  P
+                                                                                                  j τj +                ck fck
+(A, B, . . .). The n × n identity is noted as 1n . The Special                                                 k=1
+Orthogonal group of rotations is denoted SO(3), with its Lie
+                                                                      where Sj ∈ Rnj ×nd is an actuated joint selector matrix and
+algebra, the set of 3 × 3 skew-symmetric matrices so(3). The
+                                                                      Jck ∈ R6×nd the 6D Jacobian for contact k.
+Special Euclidean group is denoted SE(3) with its Lie algebra
+                                                                         It is commonly known that (1) can be represented linearly
+se(3). The set of symmetric n × n matrices is represented as
+                                                                      in system inertial parameters π ∈ R10nb [15]
+Sn , the positive semidefinite cone Sn+ , and the positive definite
+cone Sn++ [27]. The shorthand A  B indicates A − B ∈ Sn+                      H(q) ν̇ + C(q, ν) ν + g(q) = Y(q, ν, ν̇) π                          (2)
+for some n ∈ N. A  B similarly indicates A − B ∈ Sn++ .
+                                                                      where Y is the regressor matrix. The parameters π have
+Definition 1 (LMI Representable). A convex set S ⊂ Rn is              contributions from each body such that π = [π >             > >
+                                                                                                                    i , . . . , π nb ] .
+called linear matrix inequality (LMI) representable if there                                              10
+                                                                      The body inertial parameters π i ∈ R are composed as
+exists m ∈ N and constant matrices {Ai }ni=0 ∈ Sm with
+                                                                         π i = [m, hx , hy , hz , Ixx , Ixy , Ixz , Iyy , Iyz , Izz ]> ∈ R10
+     S = {x ∈ Rn : A0 + x1 A1 + · · · + xn An  0}
+                                                                      with m the body mass, h = [hx , hy , hz ]> = mc the first mass
+A set is called strictly LMI representable when the inequality        moment with c ∈ R3 the vector to the CoM in a body-fixed
+can be tightened to hold strictly.                                    coordinate system, and
+As a main benefit, a convex set S being LMI representable
+                                                                                               I I I 
+                                                                                                 xx xy xz
+
+has favorable implications for optimization. Constraints of the                            I¯ = Ixy Iyy Iyz
+                                                                                                           Ixz Iyz Izz
+WENSING et al.: LINEAR MATRIX INEQUALITIES FOR PHYSICALLY-CONSISTENT INERTIAL PARAMETER IDENTIFICATION                             3
+
+
+
+the rotational inertia about the coordinate origin. These pa-      these constraints are not alone enough to ensure physical
+rameters also describe the 6D (spatial) body inertia [29]          consistency of the inertial parameters [14].
+               I¯i                      I¯i
+                                                   
+                        mi S(ci )               S(hi )             Definition 4 (Physical Semi-consistency). A vector of inertial
+    Ii =                           =                      (3)
+           mi S(ci )>     mi 13       S(hi )> mi 13                parameters π ∈ R10 is called physically semi-consistent if
+                                                                   m(π) > 0 and I¯C (π)  0. The set of physically semi-
+with S(x) ∈ so(3) such that S(x)y = x × y, ∀ x, y ∈ R3 .
+                                                                   consistent parameters is denoted P ⊂ R10 .
+   The regressor matrix provides a simple method to pursue
+inertial parameter identification. Given ns ∈ N+ samples, a        Theorem 1 (LMI Representation of P). [13] The set
+least-squares identification problem can be formulated [13]        of physically semi-consistent parameters P is strictly LMI
+                        ns                                         representable. Its LMI representation is given as P =
+                            kY(m) π − τ (m) k2
+                       P
+                min                                       (4)
+                                                                   
+                  π
+                                                                     π ∈ R10 : I (π)  0 .
+                      m=1
+
+This optimization problem is efficiently solvable to global op-      Extending the optimization (4) to include physical semi-
+timality. However, without including constraints, the optimal      consistency constraints results in a semidefinite programming
+parameters may not correspond to any physical system.              (SDP) problem. This problem can be solved to global opti-
+   Inertial parameters in any physical body are determined         mality with SDP solvers [27]
+by a distribution of density ρi (·) : R3 → R+ . The inertial                    min
+                                                                                      X
+                                                                                          kY(m) π − τ (m) k2
+components for each body i are a functional of ρi (·) [14]                          π
+                                                                                          m
+                   Z
+                                                                                    s.t. I (π i )  0   ∀i ∈ {1, . . . , nb }
+            mi =       ρi (x) dx                            (5)
+                   ZR3
+                                                                   B. (Full) Physical Consistency: Manifold Parameterization
+            hi =       x ρi (x) dx                          (6)
+                     3
+                  Z R  y2 +z2 −xy −xz                            Definition 5 (Physical Consistency). A vector of inertial
+                                                                   parameters π ∈ R10 is called physically consistent if m(π) >
+            I¯i =        −xy x2 +z 2 −yz      ρi (x) dx     (7)
+                   R3    −xz    −yz x2 +y 2                        0 and I (π) is density realizable. The set of physically-
+                      |          {z         }                      consistent parameters is denoted P ∗ .
+                            S(x)S(x)>
+
+The moments of inertia within I¯i are not moments of ρ(·) in          In comparison to P, the set of physically consistent inertial
+the sense of Definition 2. While I¯i is convenient to describe     parameters P ∗ ⊂ P has been shown to result from only three
+dynamics, the physical plausibility of inertial parameters will    additional conditions on I¯C [14]. These additional constraints
+be more directly addressed with moments as in Definition 2.        arise from considerations regarding the principal moments
+                                                                   of inertia. Suppose R ∈ SO(3) and J = diag(J1 , J2 , J3 ),
+Definition 3 (Density Realizable). Given a set X ⊆ R3 , a 6D       J1 , ..., J3 > 0 such that I¯C = RJR> . Then, the rotational
+inertia I is called X -density realizable if ∃ρ(·) : R3 → R+       inertia I¯C is density realizable iff
+such that ρ(x) = 0 when x ∈    / X , and the components of I ,
+(m, h, I¯), satisfy (5)-(7). When X is not specified, X = R3              J1 + J2 ≥ J3 , J2 + J3 ≥ J1 , and J1 + J3 ≥ J2        (9)
+is assumed.                                                        Definition 6 (Triangle Inequalities). A matrix in S3 is said
+Remark 1. Given any X ⊆ R3 , the set PX∗ defined by PX∗ =          to satisfy the triangle inequalities if its eigenvalues {Ji }3i=1
+{π ∈ R10 : m(π) > 0, I (π) is X −density realizable}               satisfy (9).
+is a convex cone. Previous work [23] provided a discrete           Theorem 2 (Manifold Parameterization of P ∗ ). [14] A 6D
+approximation to this cone. Without discretization, the work       inertia I is physically consistent if and only if there exists
+here provides cases wherein the cone is LMI representable.         m > 0, R ∈ SO(3), J = diag(J1 , J2 , J3 )  0 that satisfies
+                                                                   the triangle inequalities, and c ∈ R3 such that
+                  III. P REVIOUS R ESULTS                                          
+                                                                                    RJR> + mS(c)S(c)> mS(c)
+                                                                                                                     
+                                                                              I =
+   This section focuses on physical consistency for a single                                mS(c)>             m13
+rigid body. As such, body indices will be dropped. Attempts to
+                                                                      Even for a single rigid body, optimization with this param-
+enforce physical consistency focus on the rotational inertia I¯C
+                                                                   eterization of P ∗ results in a nonlinear optimization problem
+about the CoM. The parallel axis theorem in 3D establishes
+                                                                   over a manifold
+a correspondence between I¯C and I¯, the rotational inertia                   X
+about a body-fixed coordinate origin, through                          min        kY(m) π(R, J, c, m) − τ (m) k2
+                                                                     R,J,c,m
+                                                                                m
+                   I¯ = I¯C + mS(c)S(c)>                     (8)
+                                                                          s.t. R ∈ SO(3)
+                                                                               m > 0, Ji > 0, i = 1, 2, 3
+A. Physical Semi-consistency: An LMI Parameterization
+                                                                               J1 + J2 ≥ J3 , J2 + J3 ≥ J1 , and J1 + J3 ≥ J2
+   Positive definite constraints on I¯C (π) have been com-
+monly enforced on the inertial parameters π [13], [30]. In         Solution of this problem is possible using nonlinear opti-
+a rigid-body system, when each mi > 0 and I¯Ci  0,                mization on manifolds [14]. However, this approach requires
+it can be shown that H(q)  0 ∀q ∈ Q [30]. However,                custom solvers and does not guarantee global optimality.
+4                                                                      SEE OFFICIAL VERSION AT HTTP://DX.DOI.ORG/10.1109/LRA.2017.2729659
+
+
+
+      IV. C ONTRIBUTION : A N LMI FOR P HYSICALLY
+             C ONSISTENT I NERTIAL PARAMETERS
+                                                                                                                    ⌃C = diag(2, 5, 1)
+   This section takes a closer look at conditions for physical
+                                                                                                                    I C = diag(6, 3, 7)
+consistency. It is shown that the triangle inequalities can be
+expressed as an LMI over π, without a manifold parametriza-               (a)
+tion. First, Section IV-A describes a matrix inequality for the
+triangle inequalities on I¯C . Intuition into this result is given                    ẑ
+                                                                                           ŷ
+in Section IV-B through introduction of the density-weighted                        x̂
+                                                                                                                    ⌃C = diag(2, 5, 0)
+covariance of a rigid body and its covariance ellipsoid. With
+                                                                                                                    I C = diag(5, 2, 7)
+this interpretation, Section IV-C develops an LMI over π for
+physical consistency. As a key benefit, this LMI enables the              (b)
+use of convex optimization to identify plausible parameters.
+                                                                     Fig. 2. Graphical representation of ΣC . Point-mass distribution examples
+A. A matrix inequality for triangle inequalities on I¯C              with (a) ΣC  0 for a distribution in 3D (all triangle inequalities hold
+                                                                     strictly) (b) ΣC  0 for a distribution on an infinitely thin plate. Since
+   Suppose R and J as before such that I¯C = RJR> . The              distribution (b) is degenerate, ΣC has one zero eigenvalue, and thus one
+triangle inequalities on I¯C (9) can be rewritten as                 triangle inequality is tight. The blue ellipsoid shown is the covariance
+                                                                     ellipsoid Eπ , and captures the shape of the distribution to second order.
+              J1 + J2 + J3 ≥ 2Ji           i = 1, ..., 3     (10)
+Since Ji are the eigenvalues of I¯C , (10) is equivalent to             Moreover, from (16), it can be seen that ΣC and I¯C share
+                     1    ¯             ¯                            a set of eigenvectors. That is, the principal axes of I¯C are
+                     2 Tr(I C ) ≥ λmax (I C )                (11)
+                                                                     also the eigenvectors of ΣC . It can further be verified that if
+where Tr(·) is the trace operator, and λmax (·) provides             µ1 , µ2 , µ3 are the eigenvalues of ΣC , then
+the maximum eigenvalue of its argument. Separately, the
+                                                                           J1 = µ2 + µ3 , J2 = µ1 + µ3 , J3 = µ1 + µ2                     (18)
+eigenvalue inequality λmax (I¯C ) x> x ≥ x> I¯C x implies
+                         λmax (I¯C )13  I¯C                 (12)    are the eigenvalues of I¯C . Intuitively, µ1 /m gives the average
+                                                                     squared distance to the CoM along the direction of the first
+Thus, through the use of (12), (11) is equivalent to                 principal axis. In comparison, J1 /m gives the average squared
+                        1    ¯          ¯                            distance to the CoM orthogonal to the first principal axis.
+                        2 Tr(I C ) 13 − I C  0              (13)
+                                                                     The eigenvalue relationships (18) show that there is a double
+Although (13) is mathematically equivalent to the triangle           counting of sorts when it comes to tallying the rotational
+inequalities on I¯C , its intuitive meaning is hardly clear in       moments of inertia. It is this double counting that is the source
+this form. The next section builds towards this intuition.           of the triangle inequalities.
+                                                                        To help visualize ΣC , when ΣC  0, we define
+B. The Density-Weighted Covariance of a Rigid Body
+                                                                                                                    −1
+  It will be shown that the mathematical condition (13) can                Eπ = {x ∈ R3 : (x − c)> (ΣC/m)                (x − c) ≤ 1}
+be interpreted as requiring a positive semidefinite covariance
+of the rigid-body mass distribution. Towards this insight, I¯C       More generally, when ΣC  0 we let
+can be expanded algebraically to verify                              Eπ = {x ∈ R3 : ∃y, (ΣC/m)y = (x − c), (x − c)> y ≤ 1}
+               R
+          I¯C = R S(xc )S(xc )> ρ(x) dx
+                    3                                                The set Eπ is named the covariance ellipsoid. Mass normal-
+                                                                     ization ΣC/m in this definition allows Eπ to capture the shape
+               R
+                         Tr(xc x>           >
+                                        
+              =                 c )13 − xc xc ρ(x) dx        (14)
+                  R3                                                 of the distribution to second order while being invariant to
+where xc = x − c. To simplify this expression, the density-          uniform scaling in mass. The ellipsoid has semi-axes whose
+                                                                                                                 ¯
+weighted covariance of a rigid body is introduced as                 directions match the principal p axes of I C . However, the
+                             R                                       lengths of the semi-axes are µi /m, the root-mean-square
+                   ΣC =        R3
+                                    xc x>
+                                        c ρ(x) dx            (15)    distance to the CoM along each principal axis.
+Note that c is the mean position of the rigid body, in a                The covariance ellipsoid Eπ is shown in Figure 2 for two
+density-weighted sense. Thus, when m = 1, the definition             example point-mass distributions. For simplicity of presen-
+(15) matches that of covariance in probability and statistics.       tation, both distributions have principal axes that are axially
+   The covariance ΣC and rotational inertia I¯C are related          aligned. When ΣC has a zero eigenvalue, as in Fig. 2(b), the
+through a rich set of properties. Algebraically, from (14),          mass distribution is degenerate. For this infinitely thin plate,
+                                                                     the mean-squared distance to the CoM along the ẑ direction
+                    I¯C = Tr(ΣC )13 − ΣC                     (16)
+                                                                     is zero. Thus, ΣC has a zero eigenvalue corresponding to
+Taking the trace of both sides provides that Tr(I¯C ) =              the ẑ principal axis. The corresponding eigenvalue in I¯C
+2 Tr(ΣC ). From (16), this property can be used to show              is non-zero, and measures the 2D rotational inertia of the
+                                                                     plate about ẑ. Due to the degeneracy, however, one of the
+                   ΣC = 12 Tr(I¯C )13 − I¯C                  (17)
+                                                                     triangle inequalities holds with equality. More precisely, the
+which matches the form of the matrix inequality (13).                eigenvalue relationships (18) verify the following.
+WENSING et al.: LINEAR MATRIX INEQUALITIES FOR PHYSICALLY-CONSISTENT INERTIAL PARAMETER IDENTIFICATION                             5
+
+
+
+Proposition 1 (Covariance Interpretation of Triangle Ineqs.).          Suppose some density ρ(·) with pseudo inertia J . The
+Suppose I¯, Σ ∈ S3 , Σ = 12 Tr(I¯)13 − I¯. Then Σ  0 if            entries of J are then given by definitions in (5), (6), and
+and only if I¯  0 and I¯ satisfies the triangle inequalities. An   (19). These entries of J include all moments of ρ(·), in the
+analogous statement holds with all inequalities strict.             sense of Definition 2, up to second order. Additionally, given
+                                                                    inertial parameters π ∈ R10 , J (π) is verified linear in π.
+Corollary 1 (Parameterization of P ∗ with an LMI on ΣC ).
+π ∈ P ∗ if and only if m(π) > 0 and ΣC (π)  0.                     Theorem 3 (LMI Representation of P ∗ ). The set of
+                                                                    physically-consistent parameters P ∗ for a single rigid body
+   Stating Corollary 1 plainly, physical consistency is equiv-
+                                                                    is strictly LMI representable. Its LMI representation is
+alent to the mass being positive and the density-weighted
+                                                                                    P ∗ = π ∈ R10 : J (π)  0
+                                                                                          
+covariance being positive semidefinite. Note that since any
+physical rigid body is non-degenerate, physical consistency
+can alternately be considered requiring the density-weighted        Proof. By the Schur complement lemma [27, Section A.5.5],
+covariance to be positive definite. We close this subsection        J (π)  0 if and only if m(π) > 0 and Σ − m    1
+                                                                                                                     hh>  0. By
+with a few remarks for context.                                     application of the parallel axis theorem for second moment
+                                                                    matrices (20), and using h = mc, this is equivalent to
+Remark 2. A result similar to Proposition 1 can be found            ΣC  0. From Proposition 1, this is equivalent to I¯C  0
+within [31], however, the connection to the density-weighted        and I¯C satisfies the triangle inequalities. Finally, from the
+covariance provided here is new.                                    main result of [14], this is equivalent to π ∈ P ∗ .
+ Remark 3. Corollary 1 could have applicability to inertia          Remark 5. Again, taking a statistical perspective on the mass
+ identification and adaptive methods for attitude control of        distribution, the results of Thm. 3 can be seen to follow from
+ aerial vehicles (e.g. [32], [33]). The triangle inequalities on    a condition on the first and second moments in probability
+I¯C are only treated in a small subset of the literature on this    and statistics [35, Thm. 16.1.2]. Suppose µ ∈ R3 and E ∈
+ topic (e.g. [34]). Corollary 1 could be used to address the        S3 , then there exists a random variable X ∈ R3 such that
+ triangle inequalities in this domain.                              µ = E[X] and E = E[XX> ] if and only if
+Remark 4. Corollary 1 can also be understood within                                          
+                                                                                               E    µ
+                                                                                                      
+the context of probability and statistics. Suppose     a den-                                           0
+                                               R                                               µ> 1
+sity function ρ(·) and mass m > 0 with ρ = m. We
+can identify the density with a random variable X ∈ R3              In comparison, the constraint J (π)  0 in Thm. 3 is scaled
+through probability density p(·) = ρ(·)/m. This association         by mass and enforces non-degeneracy of the distribution.
+is well posed,R since ρ(·) non-negative implies p(·) non-              The moment matrix J (π) was found commonly in early
+negative, and p = 1. Let E[·] the expectation operation             robot dynamics literature (e.g. [36], [37]). It has been em-
+and Σ(X) = E[(X − E[X])(X − E[X])> ]. Up to scaling                 ployed in 4 × 4 matrix forms of the dynamics for a rigid
+by mass, Corollary 1 is equivalent to the following. Suppose        body [38], [39]. Using these 4 × 4 equations, a parameter
+E ∈ S3 , then there exists a random variable X ∈ R3 such that       identification approach for a single rigid body was proposed
+E = Σ(X) iff E  0. Noting that Σ(X) is the covariance              in [39]. The pseudo inertia was used to provide a left-invariant
+of X, our conditions on density realizability for rigid bodies      Riemannian metric over SE(3) [31] and appears in robotics
+may be unsurprising in hindsight.                                   books (e.g. [40]). Despite its importance here, the pseudo
+                                                                    inertia is notably lacking from current mainstream literature
+C. An LMI Representation of Physical Consistency                    on robot dynamics.
+  While (13) and its covariance interpretation provide a               It is interesting to note how the pseudo inertia J (π)
+matrix inequality for the physical consistency of I¯C , this        compares to the standard spatial inertia I (π) in terms of the
+condition is not linear in the inertial parameters π. Towards       kinetic energy metric each provides. Suppose
+an LMI over π, a matrix of second moments is defined as                           
+                                                                                  ω
+                                                                                                       
+                                                                                                        S(ω) v
+                                                                                                                  
+                                                                                          6
+                             Z  x2 xy xz                                  v=        ∈ R , and V =                 ∈ se(3)
+                                                                                  v                        0    0
+         Z
+   Σ=        xx> ρ(x) dx=          xy y 2 yz ρ(x) dx     (19)
+           R3                  R3   xz yz   z2                      It can be verified that the kinetic energy satisfies [40]
+Through expansion of (15) and using (5) and (6), an analog                         1 >             1              >
+                                                                                                                    
+to the parallel axis theorem can be verified as:                                   2 v I (π)v = 2 Tr V J (π)V
+
+                                                                    Thus, while physical semi-consistency ensures that the as-
+                      Σ = ΣC + mcc>                         (20)
+                                                                    sociated kinetic energy metric is positive definite, additional
+As a key feature, using the relationship Σ = 12 Tr(I¯)13 − I¯       constraints from the triangle inequalities enforce added struc-
+from (17), Σ is verified linear in the inertial parameters π.       ture on the metric. As has been shown for the first time
+                                                                    here, the triangle inequalities are precisely what represent
+Definition 7 (Pseudo-Inertia Matrix). The pseudo-inertia
+                                                                    the difference between I (π)  0 and J (π)  0. The
+matrix J ∈ R4×4 of a rigid body is defined by
+                                                                    pseudo inertia is also of a lower dimension (4 × 4) than the
+                            Σ     h                                 spatial inertia (6 × 6). This provides computational benefits
+                                   
+                     J =                                            to enforcing LMIs on J (π) in comparison to I (π).
+                            h> m
+6                                                                              SEE OFFICIAL VERSION AT HTTP://DX.DOI.ORG/10.1109/LRA.2017.2729659
+
+
+
+    V. C ONTRIBUTION : LMI C ONSTRAINTS FOR I NERTIAL                                    S Density Representible                   Not S Density Representible
+        PARAMETER R EALIZABILITY ON E LLIPSOIDS
+   It has been shown that physical consistency of the inertial
+
+
+
+
+                                                                   E⇡ ⇢ S
+parameters can be enforced with an LMI over all moments
+up to second order. The resultant LMIs have been explained
+through connections to the existence of probability measures.                                              tr(J (⇡) Q) = 0.52                      tr(J (⇡) Q) =   0.04
+Even beyond mechanics and probability, however, the re-
+alizability of moment sequences represents a more general
+
+
+
+
+                                                                   c(⇡) 2 S, E⇡ 6⇢ S
+problem in mathematics. Namely, it represents the classical
+problem of moments (see e.g. [26], [41]). With this insight,
+results are translated here to provide new conditions on                                   ẑ
+density realizability with bounding-volume constraints.                                          ŷ
+   Recent work has shown the benefits of including prior                                        x̂         tr(J (⇡) Q) = 0.07                      tr(J (⇡) Q) =   0.28
+knowledge on the shape of each rigid body within parameter
+identification. Work by Jovic et al. [12] for instance, enforced   Fig. 3. Cases illustrating the role of the center and shape of the covariance
+the CoM to reside within a bounding box estimated from             ellipsoid Eπ on S-density √ realizability
+                                                                                                  √          of π. In each case, the ellipsoid S
+                                                                   has semi-axes
+                                                                         √     √ of length
+                                                                                     √         5, 2, 1 in the x̂, ŷ, ẑ directions. Eπ has semi-
+CAD. New constraints are provided here that address second         axes 0.9, 0.2, 0.2 with principle axes colored accordingly in the figure.
+moments.                                                           When a mass distribution on S exists, a distribution by four point masses is
+   To begin, suppose a rigid body is known to reside within        shown, as guaranteed to exist through Thm. 4.
+an ellipsoid S ⊂ R3 described by:                                  Corollary 2 (Density Realizability on the Union of El-
+       S = {x ∈ R3 | (x − xs )> Q−1                                lipsoids). Suppose a rigid body is known to reside within
+                                 s (x − xs ) ≤ 1}          (21)
+                                                                   the union of n` ellipsoids S = ∪nj=1    `
+                                                                                                             Sj . Then, its inertial
+Before considering constraints on the second moments, it is        parameters π are S-density realizable if and   P only if there
+noted that the CoM constraint, c(π) ∈ S, can be formulated         exist parameters {π j }nj=1
+                                                                                             `
+                                                                                                 such that π =      j π j and each
+as an LMI over π. When m(π) > 0, c(π) ∈ S iff                      π j is Sj -density realizable as verified by Thm. 4.
+            "                                  #
+                m(π)            h(π)> − m(π)x>
+                                             s                     Remark 6. LMIs for the nested sets PS∗ ⊂ PR∗3 ⊂ P have
+     C(π) =                                      0         (22)
+            h(π) − m(π)xs           m(π)Qs                         applicability for other problems. Tightened convex constraints
+                                                                   can only increase the rate of convergence for online parame-
+Again, equivalence is due to the Schur complement lemma.
+                                                                   ter estimation [24], or more generally provide faster decrease
+   Yet, as the CoM approaches the edge of S, large second
+                                                                   of Lyapunov-like functions in adaptive control [25]. For a sys-
+moments would imply the existence of mass outside the ellip-
+                                                                   tem of bodies, the relative volume of the set PS∗1 × · · · × PS∗n
+soid. In fact, as the CoM of a rigid body approaches the edge                                                                        b
+                                                                   versus PR∗3 × · · · × PR∗3 decreases exponentially with nb due
+of a bounding ellipsoid, the rigid body necessarily degenerates
+                                                                   to its product structure. Thus, it is expected that these benefits
+to a point mass. Thus, constraints that c(π) ∈ S alone are
+                                                                   will increase for higher-DoF robots.
+not sufficient for π to be S-density realizable. Drawing on
+the classical problem of moments, Theorem 4.7(b) from [26]                       VI. E XPERIMENTAL VALIDATION
+can be translated as follows.
+                                                                      The proposed constraints were applied to identify a leg of
+Theorem 4 (Density Realizability on an Ellipsoid). Suppose         the MIT Cheetah 3 robot. The robot, shown in Fig. 1, has
+a bounding ellipsoid S ⊂ R3 . Let Q ∈ R4×4 such that               four 3-DoF legs where each DoF is driven by a propriocep-
+                 n
+                                  >
+                                            o                      tive actuator [9]. Each actuator includes a high-inertia rotor
+            S = x ∈ R3 : [ x1 ] Q [ x1 ] ≥ 0
+                                                                   coupled to the joint by a 10.6 : 1 gearbox. To address actuator
+Then, π is S-density realizable if and only if                     effects, the leg was treated as a system of nb = 6 bodies (3
+                                                                   links and 3 rotors). Joint rates at the gearbox output were
+                J (π)  0 and Tr (J (π) Q) ≥ 0 .           (23)    used for ν ∈ R3 . To account for transmission losses, (2)
+Further, any π is S-density realizable iff it can be represented   was modified via diagonal matrices of viscous and Coulomb
+by four point masses mk at positions xk ∈ S.                       friction coefficients B ∈ R3×3 and Bc ∈ R3×3
+Proof. See [26, Theorem 4.7(b)].                                                                      τ − B ν − Bc sign(ν) = Y(q, ν, ν̇) π                         (24)
+
+   Note that by taking into account second moments, the            Using Theorem 4, physically realistic inertial parameters can
+condition Tr(J (π) Q) ≥ 0 in (23) is a 1D linear inequality        be identified alongside transmission effects.
+constraint. The looser condition (22) is a 4 × 4 LMI. Thus,                                1 X
+                                                                         min                    kY(m) π + B ν (m) + Bc sign(ν (m) ) − τ (m) k2
+the new conditions are both tighter, and computationally           π,Bc ,B                 ns m
+more efficient to enforce. Figure 3 shows a number of cases,                                     + wπ kπ − π̂k2                                                    (25)
+illustrating both the role of the CoM location and the shape
+                                                                                       s.t. C i (π i )  0
+of the covariance ellipsoid Eπ on S-density realizability.
+The following corollary is provided to accommodate more                                         J (π i )  0
+complex bounding shapes.                                                                   Tr(J (π i ) Qi ) ≥ 0            ∀i ∈ {1, . . . , nb }
+WENSING et al.: LINEAR MATRIX INEQUALITIES FOR PHYSICALLY-CONSISTENT INERTIAL PARAMETER IDENTIFICATION                                                                                                                                                   7
+
+
+
+
+        Ab/Ad Angle (rad)
+
+
+
+
+                                                                                                                                                                      Knee Angle (rad)
+                                                                           Hip Angle (rad)
+                                    0.2                                                                                                                                                   -0.5
+                                                                                              1
+                                         0                                                                                                                                                     -1
+                                                                                             0.5
+                              -0.2
+                                                                                                                                                                                          -1.5
+                              -0.4                                                            0
+                                  12          14   16      18   20   22                        12   14   16      18                                        20   22                              12   14        16      18       20         22
+                                                    Time (s)                                              Time (s)                                                                                              Time (s)
+
+                                        10                                                                                                                                                    10
+                    Ab/Ad Torque (Nm)
+
+
+
+
+                                                                                                                                                                           Knee Torque (Nm)
+                                                                          Hip Torque (Nm)
+                                                                                             10                                                                                                5
+                                         5
+                                                                                                                                                                                               0
+                                         0                                                    0
+                                                                                                                                                                                               -5
+                                        -5
+                                                                                             -10                                                                                              -10
+                                         12   14   16      18   20   22                        12   14   16      18                                        20   22                              12   14        16      18       20         22
+                                                    Time (s)                                              Time (s)                                                                                              Time (s)
+
+Fig. 4. Regression errors after identification of a leg for the MIT Cheetah 3. The data shown is distinct from that used in training. Motor torques are predicted
+with an overall RMS error of 1.46 Nm. For comparison, the Coulomb friction was identified as Bc = diag(3.12, 1.25, 0.95) Nm.
+
+
+A small regularizing term wπ kπ − π̂k2 was added where
+
+
+
+
+                                                                                                                Torque (Nm) Torque (Nm) Torque (Nm)
+                                                                                                                                                      4
+π̂ ∈ R10nb is a set of estimated inertial parameters from CAD
+
+
+
+
+                                                                                                                                         Ab/Ad
+                                                                                                                                                      0
+or other sources. Such regularization is common practice [13].                                                                                    -4
+Bounding-ellipsoid parameters for the CoM and body, in C i
+                                                                                                                                                      5
+and Qi respectively, were set using geometry from CAD.
+
+                                                                                                                                Hip
+                                                                                                                                                      0
+   Data was gathered from a leg swinging experiment shown
+                                                                                                                                                      -5                                                        Links
+in the supplementary video. The leg was placed in a Cartesian                                                                                                                                                   Rotors
+impedance control mode, and the foot endpoint was com-                                                                                                5                                                         Friction
+                                                                                                                   Knee
+
+
+manded to move on a virtual ellipsoidal shell. The target point                                                                                       0
+on the shell was set through spherical angles (φ, θ), using                                                                                           -5
+rates φ̇ = Aφ sin(ωφ t) and θ̇ = Aθ sin(ωθ t) with Aφ = 12                                                                                              12           14                              16              18               20               22
+rad/s, Aθ = 3.4 rad/s, ωφ = 1.63 rad/s, and ωθ = 0.265 rad/s.                                                                                                                                             Time (s)
+Data was sampled at 1 kHz. Joint actuator torques τ j were es-                                                 Fig. 5. Identified contributions of the effects from link inertias, rotor inertias,
+timated from the torques commanded to motor drivers [9]. At                                                    and friction. Data is from the same experiment as Figure 4.
+each data point, a modified version of the Recursive-Newton-                                                                                                                                                         No Physical Consistency Constraints
+                                                                                                               RMS Validation
+
+
+
+
+                                                                                                                                                       2
+Euler Algorithm [29] was used to compute each column of                                                                                       10                                                                     Physical Semi-Consistency
+                                                                                                                Error (Nm)
+
+
+
+
+                                                                                                                                                                                                                     Density Realizability on an Ellipsoid
+Y. Following this computation, the problem (25) was solved
+                                                                                                                                              101
+with 10,000 samples using MOSEK [42] in M ATLAB. The
+problem took 1.67s to solve to global optimality on a 2011                                                                                    10
+                                                                                                                                                       0
+                                                                                                                                                           0                                               1                                     2
+                                                                                                                                                       10                                               10                                      10
+Intel Core i5 MacBook Pro. Regularization of wπ = 10−6 was                                                                                                                                            Samples
+used. It was verified that all physical-consistency constraints                                                Fig. 6. Validation error (after identification) versus training sample size.
+were satisfied. Numeric values for the identified parameters
+are provided in the supplementary material.                                                                       Figure 6 shows the validation error with different training
+   After identification, the RMS errors from (24) with the next                                                sample sizes ns and different constraints. As in Remark 6,
+10,000 samples in the dataset were 1.48, 1.69, and 1.16 Nm                                                     tighter constraints empirically result in an accurate model
+on the ab/ad, hip, and knee respectively. For comparison,                                                      more rapidly as samples are added. Lower validation error
+Coulomb friction was found as Bc = diag(3.12, 1.25, 0.95)                                                      for tighter constraints further demonstrates reduced overfit-
+Nm. Figure 4 shows validation results. The measured τ ,                                                        ting. These benefits are in addition to the fact that tighter
+used as input to the algorithm, shows high-frequency noise.                                                    constraints result in physically realistic model parameters.
+This noise is from finite-differenced encoder signals used in                                                  Remark 7. Although these results have only addressed a
+online feedback. In contrast, the estimated data used non-                                                     3-DoF leg, physical-consistency constraints are equally ap-
+causally filtered signals to compute Y offline. This results in                                                plicable to more complex rigid-body systems. Previous work
+a comparatively smoother identified estimate. The estimation                                                   demonstrated the scalability of least-squares identification to
+is notably poor on the ab/ad joint at 17.5s. However, this                                                     high-DoF platforms [11], [12]. The 4 × 4 LMIs proposed
+occurs at a time when the joint is not moving, and the sign                                                    would present minor added overhead to the solution of these
+of the Coulomb friction torque cannot be reliably predicted.                                                   problems. As in Remark 6, benefits from our tightened con-
+   Figure 5 shows an accounting of friction and inertial effects                                               straints are expected to increase with the number of bodies.
+on the identified model. Effects that dominate the required
+torques are shown to be dependent on both the motion as                                                                                                                                       VII. C ONCLUSIONS
+well as the joint. This demonstrates the need to identify all                                                     This paper has introduced LMIs to rigorously characterize
+model components treated here. It is important to note that                                                    physical consistency of rigid-body inertial parameters. Rather
+these effects will be robot and transmission specific.                                                         than focusing on the moments of inertia, physical plausibility
+8                                                                                    SEE OFFICIAL VERSION AT HTTP://DX.DOI.ORG/10.1109/LRA.2017.2729659
+
+
+
+is directly assessed using the types of moments encountered                       [15] C. G. Atkeson, C. H. An, and J. M. Hollerbach, “Estimation of inertial
+in probability and statistics. With this observation, LMIs                             parameters of manipulator loads and links,” The International Journal
+                                                                                       of Robotics Research, vol. 5, no. 3, pp. 101–119, 1986.
+involving a pseudo-inertia matrix and its density-weighted                        [16] M. Gautier and W. Khalil, “Exciting trajectories for the identification
+covariance have been shown to tightly characterize physical                            of base inertial parameters of robots,” in Proceedings of the 30th IEEE
+consistency. LMI constraints for density realizability on an                           Conference on Decision and Control, Dec 1991, pp. 494–499 vol.1.
+                                                                                  [17] J. Swevers, C. Ganseman, D. B. Tukel, J. de Schutter, and H. V. Brussel,
+ellipsoid were also proposed through connections to the                                “Optimal robot excitation and identification,” IEEE Transactions on
+classical problem of moments in mathematics.                                           Robotics and Automation, vol. 13, no. 5, pp. 730–740, Oct 1997.
+   In closing, recall that while intuition was borrowed from                      [18] J. Ting, M. Mistry, J. Peters, S. Schaal, and J. Nakanishi, “A bayesian
+                                                                                       approach to nonlinear parameter identification for rigid body dynamics,”
+probability and statistics, there is nothing stochastic about                          in in Proceedings of Robotics: Science and Systems, 2006.
+our results. Given a bounding ellipsoid for a rigid body,                         [19] A. Janot, P. O. Vandanjon, and M. Gautier, “A generic instrumental
+the new constraints characterize a cone where its inertial                             variable approach for industrial robot identification,” IEEE Trans. on
+                                                                                       Control Systems Technology, vol. 22, no. 1, pp. 132–145, Jan 2014.
+parameters must reside with certainty. Beyond least-squares                       [20] G. Calafiore and M. Indri, “Robust calibration and control of robotic
+considerations, a quantified treatment of stochasticity can                            manipulators,” in American Control Conf., 2000, pp. 2003–2007.
+play an important role in inferring models from uncertain                         [21] N. Ramdani and P. Poignet, “Robust dynamic experimental identifica-
+                                                                                       tion of robots with set membership uncertainty,” IEEE/ASME Trans. on
+measurements, with a rich literature on the topic (e.g. [17],                          Mechatronics, vol. 10, no. 2, pp. 253–256, April 2005.
+[18], [19], [20], [21]). The incorporation of rigorous physical-                  [22] J.-J. E. Slotine and W. Li, “On the adaptive control of robot manipu-
+consistency considerations into this inference represents an                           lators,” Int. J. of Robotics Research, vol. 6, no. 3, pp. 49–59, 1987.
+                                                                                  [23] K. Ayusawa, G. Venture, and Y. Nakamura, “Real-time implementation
+interesting next step for inertial parameter identification.                           of physically consistent identification of human body segments,” in
+                                                                                       IEEE Inf. Conf. on Rob. and Auto., May 2011, pp. 6282–6287.
+                                                                                  [24] P. A. Ioannou and J. Sun, Robust adaptive control. Courier, 2012.
+                              R EFERENCES                                         [25] J.-J. E. Slotine and J. A. Coetsee, “Adaptive sliding controller synthesis
+                                                                                       for non-linear systems,” International Journal of Control, vol. 43, no. 6,
+ [1] Y. Abe, M. da Silva, and J. Popović, “Multiobjective control with                pp. 1631–1651, 1986.
+     frictional contacts,” in 2007 ACM SIGGRAPH/Eurographics Symp. on             [26] L. Fialkow and J. Nie, “Positivity of riesz functionals and solutions
+     Computer Animation, Aire-la-Ville, Switzerland, 2007, pp. 249–258.                of quadratic and quartic moment problems,” Journal of Functional
+ [2] J. Park, J. Haan, and F. Park, “Convex optimization algorithms for                Analysis, vol. 258, no. 1, pp. 328 – 356, 2010.
+     active balancing of humanoid robots,” IEEE Transactions on Robotics,         [27] S. Boyd and L. Vandenberghe, Convex Optimization. Cambridge, U.K.:
+     vol. 23, no. 4, pp. 817–822, Aug. 2007.                                           Cambridge Univ. Press, 2004.
+ [3] L. Sentis, J. Park, and O. Khatib, “Compliant control of multicontact        [28] S. Boyd, L. E. Ghaoui, E. Feron, and V. Balakrishnan, Linear Matrix
+     and center-of-mass behaviors in humanoid robots,” IEEE Trans. on                  Inequalities in System and Control Theory, ser. Studies in Applied and
+     Robotics, vol. 26, no. 3, pp. 483–501, June 2010.                                 Numerical Mathematics. SIAM, 1994.
+ [4] P. M. Wensing and D. E. Orin, “Generation of dynamic humanoid                [29] R. Featherstone, Rigid Body Dynamics Algorithms. Springer, 2008.
+     behaviors through task-space control with conic optimization,” in IEEE       [30] W. Li and J.-J. E. Slotine, “An indirect adaptive robot controller,”
+     Int. Conf. on Rob. and Automation, May 2013, pp. 3103–3109.                       Systems & Control Letters, vol. 12, no. 3, pp. 259–266, 1989.
+ [5] M. Hutter, H. Sommer, C. Gehring, M. Hoepflinger, M. Bloesch, and            [31] C. Belta and V. Kumar, “An SVD-based projection method for inter-
+     R. Siegwart, “Quadrupedal locomotion using hierarchical operational               polation on SE(3),” IEEE Transactions on Robotics and Automation,
+     space control,” IJRR, vol. 33, no. 8, pp. 1047–1062, 2014.                        vol. 18, no. 3, pp. 334–345, Jun 2002.
+ [6] J. Koenemann, A. D. Prete, Y. Tassa, E. Todorov, O. Stasse, M. Ben-          [32] N. A. Chaturvedi, D. S. Bernstein, J. Ahmed, F. Bacconi, and N. H.
+     newitz, and N. Mansard, “Whole-body model-predictive control applied              McClamroch, “Globally convergent adaptive tracking of angular veloc-
+     to the HRP-2 humanoid,” in IEEE/RSJ International Conference on                   ity and inertia identification for a 3-dof rigid body,” IEEE Trans. on
+     Intelligent Robots and Systems, Sept 2015, pp. 3346–3351.                         Control Sys. Technology, vol. 14, no. 5, pp. 841–853, Sept 2006.
+ [7] S. Kuindersma, R. Deits, M. Fallon, A. Valenzuela, H. Dai, F. Per-           [33] D. Thakur, S. Srikant, and M. R. Akella, “Adaptive attitude-tracking
+     menter, T. Koolen, P. Marion, and R. Tedrake, “Optimization-based                 control of spacecraft with uncertain time-varying inertia parameters,”
+     locomotion planning, estimation, and control design for the atlas                 J. Guidance, Control, and Dynamics, vol. 38, no. 1, pp. 41–52, 2014.
+     humanoid robot,” Autonomous Robots, pp. 1–27, 2015.                          [34] Z. Manchester and M. Peck, “Recursive inertia estimation with semidef-
+ [8] A. Herzog, N. Rotella, S. Mason, F. Grimminger, S. Schaal, and                    inite programming,” in AIAA Guidance, Navigation, and Control Con-
+     L. Righetti, “Momentum control with hierarchical inverse dynamics                 ference, 2017.
+     on a torque-controlled humanoid,” Autonomous Robots, vol. 40, no. 3,         [35] D. Bertsimas and J. Sethuraman, “Moment problems and semidef-
+     pp. 473–491, 2016.                                                                inite optimization,” in Handbook of Semidefinite Programming, ser.
+ [9] P. M. Wensing, A. Wang, S. Seok, D. Otten, J. Lang, and S. Kim,                   International Series in Operations Research & Management Science,
+     “Proprioceptive actuator design in the MIT Cheetah: Impact mitigation             H. Wolkowicz, R. Saigal, and L. Vandenberghe, Eds. Springer US,
+     and high-bandwidth physical interaction for dynamic legged robots,”               2000, vol. 27, pp. 469–509.
+     IEEE Transactions on Robotics, vol. 33, no. 3, pp. 509–522, 2017.            [36] A. K. Bejczy, “Robot arm dynamics and control,” JPL Technical
+[10] D. Pucci, F. Romano, and F. Nori, “Collocated adaptive control of                 Memorandum 33-669, Tech. Rep., 1974.
+     underactuated mechanical systems,” IEEE Transactions on Robotics,            [37] J. J. Uicker, Jr., “Dynamic force analysis of spatial linkages,” Journal
+     vol. 31, no. 6, pp. 1527–1536, Dec 2015.                                          of Applied Mechanics, vol. 34, no. 2, pp. 418–424, June 1967.
+[11] K. Ayusawa, G. Venture, and Y. Nakamura, “Identifiability and identifi-      [38] G. Legnani, F. Casolo, P. Righettini, and B. Zappa, “A homogeneous
+     cation of inertial parameters using the underactuated base-link dynamics          matrix approach to 3D kinematics and dynamics—I. Theory,” Mecha-
+     for legged multibody systems,” Int. J. of Robotics Research, vol. 33,             nism and Machine Theory, vol. 31, no. 5, pp. 573–587, 1996.
+     no. 3, pp. 446–468, 2014.                                                    [39] E. Atchonouglo, C. Vallée, T. Monnet, and D. Fortuné, “Identification
+[12] J. Jovic, A. Escande, K. Ayusawa, E. Yoshida, A. Kheddar, and G. Ven-             of the ten inertia parameters of a rigid body,” Journal of Applied
+     ture, “Humanoid and human inertia parameter identification using                  Mathematics and Mechanics, vol. 72, no. 1, pp. 22–25, 2008.
+     hierarchical optimization,” IEEE Transactions on Robotics, vol. 32,          [40] T. Yoshikawa, Dynamics. MIT Press, 2003, pp. 81–126.
+     no. 3, pp. 726–735, June 2016.                                               [41] J. B. Lasserre, “A semidefinite programming approach to the general-
+[13] C. D. Sousa and R. Cortesão, “Physical feasibility of robot base inertial        ized problem of moments,” Mathematical Programming, vol. 112, no. 1,
+     parameter identification: A linear matrix inequality approach,” Int. J. of        pp. 65–92, 2008.
+     Robotics Research, vol. 33, no. 6, pp. 931–944, 2014.                        [42] E. D. Andersen, C. Roos, and T. Terlaky, “On implementing a primal-
+[14] S. Traversaro, S. Brossette, A. Escande, and F. Nori, “Identification             dual interior-point method for conic quadratic optimization,” Mathe-
+     of fully physical consistent inertial parameters using optimization on            matical Programming, vol. 95, no. 1, pp. 249–277, 2003.
+     manifolds,” in IEEE/RSJ Int. Conf. on Intelligent Rob. and Sys., Oct
+     2016, pp. 5446–5451.
+

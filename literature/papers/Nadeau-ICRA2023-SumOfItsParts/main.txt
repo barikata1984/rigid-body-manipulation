@@ -1,0 +1,490 @@
+                                                          The Sum of Its Parts: Visual Part Segmentation for
+                                                        Inertial Parameter Identification of Manipulated Objects
+                                                                             Philippe Nadeau, Matthew Giamou, and Jonathan Kelly‡
+
+
+                                           Abstract— To operate safely and efficiently alongside hu-
+                                        man workers, collaborative robots (cobots) require the ability
+                                        to quickly understand the dynamics of manipulated objects.
+                                        However, traditional methods for estimating the full set of
+                                        inertial parameters rely on motions that are necessarily fast
+                                        and unsafe (to achieve a sufficient signal-to-noise ratio). In
+arXiv:2302.06685v2 [cs.RO] 6 Jul 2023
+
+
+
+
+                                        this work, we take an alternative approach: by combining
+                                        visual and force-torque measurements, we develop an inertial
+                                        parameter identification algorithm that requires slow or “stop-
+                                        and-go” motions only, and hence is ideally tailored for use
+                                        around humans. Our technique, called Homogeneous Part
+                                        Segmentation (HPS), leverages the observation that man-made
+                                        objects are often composed of distinct, homogeneous parts.
+                                        We combine a surface-based point clustering method with a
+                                        volumetric shape segmentation algorithm to quickly produce a
+                                        part-level segmentation of a manipulated object; the segmented
+                                        representation is then used by HPS to accurately estimate
+                                        the object’s inertial parameters. To benchmark our algorithm,
+                                        we create and utilize a novel dataset consisting of realistic
+                                        meshes, segmented point clouds, and inertial parameters for
+                                        20 common workshop tools. Finally, we demonstrate the real-
+                                        world performance and accuracy of HPS by performing an
+                                        intricate ‘hammer balancing act’ autonomously and online with
+                                        a low-cost collaborative robotic arm. Our code and dataset are
+                                                                                                                        Fig. 1: The shape of a manipulated object is segmented into
+                                        open source and freely available.
+                                                                                                                        parts that are assumed to be homogeneous. By identifying
+                                                                                                                        the mass of each part, the full set of inertial parameters can
+                                                                  I. I NTRODUCTION                                      be estimated from safer “stop-and-go” motions.
+                                           In order to operate effectively and safely, robots require
+                                        an understanding of the dynamics of their interactions with                     can nonetheless determine the complete set of inertial pa-
+                                        the environment. For collaborative robots (cobots) that are                     rameters, under some mild assumptions.
+                                        designed to work alongside people, the ability to infer the                       Humans are able to easily infer inertial properties through
+                                        inertial parameters of manipulated objects is particularly                      dynamic touch [5] and cobots would benefit from a similar
+                                        important. An object’s inertial parameters include its mass,                    capability [6], [7]. Additionally, humans combine propri-
+                                        centre of mass (COM), and moments of inertia, all of which                      oception with vision, suggesting that complementary per-
+                                        are used to perform dynamic manipulation [1]. Force-torque                      ceptual modalities can speed up the identification process.
+                                        sensors (FT) located in the joints or at the wrist of a robot                   Our technique uses information obtained from an RGB-
+                                        arm can be used to determine the inertial parameters of a                       D camera to improve the speed and accuracy of inertial
+                                        manipulated object. However, sensor noise limits parame-                        parameter identification. We make the key observation that
+                                        ter identification accuracy, especially for cobots that must                    man-made objects are usually built from a few parts having
+                                        (should) move within the safe velocity limits defined by                        approximately homogeneous densities.
+                                        ISO standards 10218 [2] and 15066 [3]. These slow motions                       Assumption 1 (Homogeneous Density of Parts). An object is
+                                        lead to lower signal-to-noise ratios in force-torque data, pro-                 made of N parts {r1 , . . . , rN }, each with a shape Vj ⊂ R3 .
+                                        hibiting the use of inertial parameter estimation techniques                    The mass density is such that ∀ p ∈ Vj , ρ(p) = ρj where
+                                        appropriate for large, fast-moving industrial robots [4]. In                    ρj > 0 is part rj ’s constant density.
+                                        this paper, we propose an alternative identification method
+                                        that relaxes the need for accurate kinematics estimates but                     Critically, Assumption 1 can be used to simplify the identi-
+                                                                                                                        fication problem by exploiting measurements of the shape
+                                          All authors are with the STARS Laboratory at the University of                of a manipulated object. This is accomplished by noting
+                                        Toronto Institute for Aerospace Studies, Toronto, Ontario, Canada.              that, once a cobot has determined the shape of an object,
+                                        <firstname>.<lastname>@robotics.utias.utoronto.ca
+                                          ‡ Jonathan Kelly is a Vector Institute Faculty Affiliate. This research was   the object’s inertial parameters depend solely on the mass
+                                        supported in part by the Canada Research Chairs program.                        of each of its homogeneous parts. We refer to our overall
+approach as Homogeneous Part Segmentation (HPS).1 Our               object with point masses [18], [4]. Fixed-sized voxels can
+main contributions are:                                             also be used to achieve the same effect [19].
+   • a formulation of inertial parameter identification that           Finally, the authors of [20] augment the traditional force-
+     incorporates Assumption 1;                                     torque sensing system with tactile sensors to estimate the in-
+   • a method combining the algorithms proposed in [8] and          ertial parameters and the friction coefficient of a manipulated
+     [9] to improve part segmentation speed;                        object. Our contribution similarly makes use of an additional
+   • a dataset of models of 20 common workshop tools                sensing modality in the form of a camera.
+     with 3D meshes, point clouds, ground truth inertial
+     parameters, and ground truth part-level segmentation for       B. Part-Level Object Segmentation
+     each object; and                                                  Although there is no formal definition of a “part” of
+   • experiments highlighting the benefits of HPS when              a manipulated item, humans tend to follow the so-called
+     compared to two benchmark algorithms.                          minima rule: the decomposition of objects into approxi-
+We undertake a series of simulation studies with our novel          mately convex contiguous parts bounded by negative cur-
+dataset and carry out a real-world experiment to assess the         vature minima [21]. This rule has provided inspiration for
+performance of the proposed algorithm on a real cobot. We           many part segmentation methods reviewed in [22], which
+show that, under noisy conditions, our approach produces            benchmarks several techniques on the Princeton dataset [23]
+more accurate inertial parameter estimates than competing           and divides approaches into surface-based, volume-based,
+algorithms that do not utilize shape information.                   and skeleton-based algorithms. Surface-based and volume-
+                                                                    based mesh segmentation algorithms are reviewed in [24],
+                                                                    highlighting a tradeoff between segmentation quality and
+                     II. R ELATED W ORK
+                                                                    the number of parts produced by the algorithm. Skeleton-
+   This section provides a brief overview of work related           based segmentation methods for 3D shapes, which capture
+to the two main algorithmic components of our system:               structural information as a lower-dimensional graph (i.e., the
+inertial parameter or load identification and part-level object     shape’s skeleton), are reviewed in [25]. The approach in [26],
+segmentation. A more thorough survey of inertial parameter          which is based on the medial axis transform [27], exploits
+identification for manipulation is provided by Golluccio et         prior knowledge of an object’s skeleton to produce a top-
+al. in [10].                                                        down segmentation about 10 times faster than bottom-up
+                                                                    methods that use local information only.
+A. Load Identification                                                 The method of Kaick et al. [28] also segments incomplete
+   In [11], a least squares method is applied to determine the      point clouds into approximately convex shapes, but is pro-
+inertial parameters of a load manipulated by a robot arm.           hibitively slow for manipulation tasks, with an average com-
+The authors of [11] underline that poor performance can be          putation time of 127 seconds on the Princeton benchmark
+caused by the low signal-to-noise ratios in the data used           [23] as reported in [26]. In contrast, learning-based methods
+for the regression. A recursive total least squares (RTLS)          for part segmentation can struggle to generalize to out-of-
+approach is proposed in [12] to account for noise in the            distribution shapes but are usually faster than geometric
+regressor matrix. However, an experimental evaluation in            techniques [29], [30], [22]. Our approach to segmentation
+[13] of RTLS on multiple datasets reports large estimation          does not apply any learned components but is fast enough
+errors, demonstrating that RTLS has limited utility with noisy      for real-time use by a collaborative robot.
+sensors. In this work, we also minimize a least squares cost,          A hierarchical volume-based segmentation technique
+but we employ a unique formulation that is well-suited to           (HTC) proposed in [8], enabled by fast tetrahedralization
+data gathered by a slower-moving cobot, for example.                [31] and quick convex hull computation [32], can perform
+   Without appropriate constraints on regression variables,         well if a watertight mesh can be reconstructed from the input
+many identification algorithms find unphysical solutions [14],      point cloud. This technique, which we describe in detail in
+[15]. Sufficient conditions for the physical consistency of the     Section IV, is an important element of our part segmenta-
+identified parameters are stated in [15], where a constrained       tion pipeline. Another key component of our approach is
+optimization problem is formulated that guarantees the valid-       the surface-based algorithm proposed in [9], which uses a
+ity of the solution. Similarly, physical consistency is enforced    dissimilarity metric to iteratively merge nearby mesh patches,
+through linear matrix inequalities as part of the method            taking special care to preserve part boundaries.
+proposed in [16]. Geodesic distance approximations from a
+prior solution are used in [17] to regularize the optimization       III. I NERTIAL PARAMETERS OF H OMOGENEOUS PARTS
+problem without introducing very long runtimes. In this                 In this section, we describe our inertial parameter iden-
+work, we implicitly enforce the physical consistency of             tification technique, which assumes that an object has been
+estimated inertial parameters by discretizing the manipulated       segmented into its constituent parts. By determining the mass
+  1 We provide code, our complete simulation dataset, and a video
+                                                                    of each segment, we are able to identify the full set of
+showcasing our algorithm at https://papers.starslab.ca/             inertial parameters, or to provide an approximate solution
+part-segmentation-for-inertial-identification/.                     when Assumption 1 is not respected.
+A. Notation                                                       are identifiable [4]. Nonetheless, a stop-and-go trajectory
+   Reference frames →  F b and → F s are attached to the ob-      greatly reduces noise in the data matrix, because accurate
+                       −        −                                 estimates of the end-effector kinematics are not needed [4].
+ject and to the force-torque (FT) sensor, respectively. The
+reference frame →  F w is fixed to the base of the robot and      Assuming that the manipulated object is built from up to four
+                   −                                              homogeneous parts2 , finding the mass of each part enables
+is assumed to be an inertial frame, such that the gravity
+vector expressed in the sensor frame is given by gs =             the identification of the complete set of inertial parameters
+s w
+ R [0, 0, −9.81]T . The orientation of → F b relative to →
+                                                         F s is   even when stop-and-go trajectories are performed. This iden-
+                                         −               −        tification requires measuring the wrench bj at time step j
+given by sRb and the origin of → F
+                                 −b  relative to F
+                                                 −s
+                                                 →  , expressed
+                      s b
+                                                                  and relating the wrench to the masses m via
+   F
+in →
+   −  w , is given by  tw . The skew-symmetric    operator [·]×                                                          
+transforms a vector u ∈ R3 into a R3×3 matrix such that                                                          m r1
+[u]× v = u × v.                                                         fs          gs [1         1    1     1]    mr2 , (6)
+                                                                                                                          
+                                                                            =
+                                                                       τs       −[gs ]× [ stsr1 stsr2 stsr3 stsr4 ] mr3 
+B. Formulation of the Optimization Problem                            | {z } |                  {z                 } m
+                                                                                                                       r4
+                                                                        bj                      Aej                 | {z }
+  For a part rj , under Assumption 1, the k-th moment of a                                                                     m
+mass distribution discretized into n point masses is given by
+                                                                  stacking K matrices such that A = [A    e T , ..., A
+                                                                                                                     e T ]T and b =
+              Z                       n                                                                     1          K
+                                   mX                             [bT          T T
+                   pk ρj (p)dVj ≈        (pi )k ,         (1)        1 , ..., bK ] . Minimizing the Euclidean norm leads to the
+               Vj                  n  i
+                                                                  convex optimization problem
+                                                      F b is
+where the position of the i-th point mass relative to →                            min      ||Am − b||2                                  (7)
+                                                      −                           m∈R4
+given by pi . For a homogeneous mass density, the centre of
+mass corresponds to the centroid                                                     s.t. mrj ≥ 0 ∀j ∈ {1, . . . , 4},
+
+                             1
+                                    n                             which can be efficiently solved with standard methods.
+                       b rj
+                                    X
+                        tb =            pi .                (2)
+                                n   i
+                                                                                 IV. V ISUAL PART S EGMENTATION
+                                                      F b is
+The inertia tensor of the i-th point mass relative to →               In this section, we combine a part segmentation method
+                                                      −           that uses local information (e.g., surface normals) with a
+        J(pi ) = −mi [pi ]× [pi ]×                          (3)   second method that relies on structural information (e.g.,
+                     2                                           shape convexity). The Python implementation of our part
+                     y + z2
+                                                    
+                                    −xy         −xz               segmentation algorithm, which is described by Algorithm 1,
+               = mi   −yx         x2 + z 2     −yz  ,     (4)   includes an open-source version of [8] as well as our variant
+                       −zx          −zy        x + y2
+                                                2
+                                                                  of [9] that makes use of colour information.
+where pT                                                              Defining the shape of an object from a point cloud involves
+        i = [x, y, z] and mi is the mass of the point.
+   The part’s inertial parameters with respect to the sensor      reconstructing the object surface (i.e., shape reconstruction).
+      F s are
+frame →                                                           In this work, the ball-pivoting algorithm [34] is used owing
+      −                                                           to its speed and relative effectiveness on point clouds of low
+                       s rj T
+s
+    ϕrj = m,   s rj
+                          
+                c ,     J       =                          (5)    density. Shape reconstruction can be challenging for objects
+                                                                with very thin parts (e.g., a saw) and a thickening of the
+                     1                                            object through voxelization is performed beforehand.
+                    s rj
+m                   t
+                           b s  s rj   s rj   ,
+                      s
+                                                  
+                                                                     As stated by (1), the moments of a mass distribution are
+        s b 1 Pn
+  vech R n i −[pi ]×[pi ]× R − ts × ts ×                          computed by integrating over the shape of the distribution.
+                                                    s r
+                                                                  Hence, volumetric part segmentation is sufficient for iden-
+where sRb is the rotation that aligns → −      F s , tsj is the
+                                        F b to →
+                                               −                  tification of the true inertial parameters of an object. To
+                                              F s , and vech(·)
+translation that brings the centroid of rj to →
+                                              −                   obtain such a representation of the object from its surface
+is the vector-half operator defined in [33] that extracts the     mesh, tetrahedralization is performed via TetGen [31] and
+elements on and above the main diagonal.                          the resulting tetrahedral mesh is supplied as an input to the
+   By keeping pi fixed and by measuring stsb and sRb with         part segmentation algorithm.
+the robot’s perception system, it becomes clear that only             Our method makes use of the Hierarchical Tetrahedra
+                                                        s r
+the part’s mass m needs to be inferred in (5) as tsj =            Clustering (HTC) algorithm [8], which iteratively merges
+s b b rj    s b
+ R tb + ts . Hence, assuming that the robot’s perception          clusters of tetrahedra such that the result is as convex
+system can provide pi and that stsb and sRb are either known      as possible while also prioritizing smaller clusters. HTC
+or measured, the inertial parameters of a homogeneous part        maintains a graph with nodes representing clusters and edges
+depend solely on its mass. Similarly, the inertial parameters     representing adjacency, and with an edge cost based on the
+of a rigid object can be expressed as a function of the masses
+                                                                     2 For stop-and-go trajectories, the rank of the data matrix is four when
+of its constituent parts.
+                                                                  using non-degenerate poses as described in the appendix of [4]. Dynamic
+   For “stop-and-go” motions, where force measurements are        trajectories can increase the rank of A to 10, enabling mass identification
+taken while the robot is immobile, only the mass and COM          of up to 10 unique homogeneous parts.
+concavity and size of the connected nodes. The concavity             Algorithm 1: HTC (2) with initial clustering (1)
+of a cluster is computed by subtracting its volume from its           input : A point cloud
+convex hull and an edge cost is defined by                            output: A segmented tetrahedral mesh
+                                                                    1 Initialize similarity threshold β as done in [9]
+           cij = CVXHULL (Ci ∪ Cj ) − VOL(Ci ∪ Cj )                   Initialize each point as a cluster
+                 (
+                  cij + 1,        if cij > 0                          while number of clusters > desired number do
+    Cost(i, j) = |Ci |2 +|Cj |2              ,      (8)                    foreach existing cluster Ci do
+                       N2       , otherwise
+                                                                               foreach neighboring cluster Cj do
+where |Ci | is the number of elements in cluster Ci and N is                       if D(Ci , Cj ) < β then
+the total number of elements. The edge associated with the                             Merge Cj into Ci
+lowest cost is selected iteratively and the connected nodes
+                                                                            β ← 2β
+are merged into a single cluster, resulting in the hierarchical
+segmentation.                                                           foreach point p at the border of two clusters do
+   To make part segmentation faster, we perform an initial                  Merge p into the most similar cluster
+clustering such that HTC requires fewer convex hull com-            2   Perform surface reconstruction and tetrahedralization
+putations, which is by far the most expensive operation.                Associate each tet. to its nearest cluster
+The initial clustering is provided through a bottom-up point            Initialize a node in the graph for each cluster
+cloud segmentation algorithm [9] that clusters points together          foreach node do
+based on heuristic features and chooses a representative point               if two tet. from two nodes share a face then
+for each cluster. Two adjacent clusters are merged if the                        Create an edge between the nodes and
+dissimilarity between their representative points is lower than                   compute edge-cost with (8)
+some threshold β (n.b. the λ symbol is used in [9]). The                while number of edges > 0 do
+value of β increases with each iteration; the process halts                Find edge with lowest cost and merge its nodes
+when the desired number of clusters is obtained. In our                    Create a parent node that contains merged nodes
+implementation, the dissimilarity metric is defined as:
+                                                                        Label each tet. with its associated cluster number
+D(Ci , Cj ) = λp pi − pj +λl ∥li − lj ∥+λn (1 − |ni · nj |)
+                                                              (9)   grasped. This dataset of realistic objects enables the evalua-
+where each λ is a tunable weight, pi is the position of             tion of shape reconstruction, part segmentation, and inertial
+the representative point of cluster Ci , li ∈ N3 is the RGB         parameter identification.
+representation of its colour, and ni is its local surface normal.
+                                                                    A. Experiments on Objects from Our Dataset
+   To enable accurate part segmentation, the initial clustering
+should not cross the boundaries of the parts that will subse-          The quality of a shape reconstructed from point cloud data
+quently be defined by the HTC algorithm. Therefore, initial         is evaluated by computing the Hausdorff distance between
+clustering is stopped when the number of clusters (e.g., 50         the ground truth mesh and the reconstructed mesh, both
+in our case) is much larger than the desired number of parts.       scaled such that the diagonal of their respective bounding
+The desired number of clusters does not need to be tuned on         box is one metre in length. Part segmentation performed
+a per-object basis as long as it is large enough.                   with our proposed variation of HTC is evaluated via the
+                                                                    undersegmentation error (USE) [35], and with the global
+                      V. E XPERIMENTS                               consistency error (GCE) [36], [23], with results summarized
+                                                                    in Table II. The USE measures the proportion of points that
+   In this section, each component of the proposed method is        are crossing segmentation boundaries, or bleeding out from
+evaluated on 20 objects with standard metrics, and our entire       one segment to another. The GCE measures the discrepancy
+identification pipeline is benchmarked in 80 scenarios. The         between two segmentations, taking into account the fact that
+practicality of the proposed approach is also demonstrated          one segmentation can be more refined than the other. Both
+through a real ‘hammer balancing act’ experiment using              evaluation metrics represent dimensionless error ratios and
+relatively inexpensive robot hardware (see Fig. 4).                 are insensitive to over-segmentation, as discussed in Section
+   To conduct simulation experiments with realistic objects         VI.
+and evaluate the performance of part segmentation and                  Table I summarizes the runtime performance obtained by
+identification, a dataset with ground truth inertial parameters     augmenting HTC with the initial clustering in Algorithm 1.
+and segments is needed. To the best of the authors’ knowl-          While the average segmentation error is almost identical in
+edge, no such dataset is freely available. From CAD files           both cases, Algorithm 1 executes in about a third of the time,
+contributed by the community, we built a dataset containing         owing to the smaller number of convex hull computations
+20 commonly-used workshop tools. For each object, our               performed. The reconstruction and part segmentation can
+dataset contains a watertight mesh, a coloured surface point        also be qualitatively evaluated on point clouds obtained from
+cloud with labelled parts, the object’s inertial parameters,        RGB-D images taken by a Realsense D435 camera at the
+and a reference frame specifying where the object is usually        wrist of the manipulator. To complete a shape that is partly
+TABLE I: Average computation time and segmentation error                       TABLE III: Standard deviations of the zero-mean Gaussian
+per object from our dataset with standard deviations in paren-                 noise added to accelerations and force signals in simulation.
+theses. Initial clustering significantly reduces the runtime
+                                                                                       Scenario      Ang. Acc.   Lin. Acc.   Force   Torque
+with little impact on the part segmentation.
+                                                                                     Low Noise         0.25       0.025      0.05    0.0025
+         Algorithm                   USE           GCE           Time (s)           Moderate Noise     0.5        0.05       0.1     0.005
+                                                                                     High Noise          1         0.1       0.33    0.0067
+           HTC                  0.1 (0.13)      0.05 (0.10)     9.73 (5.56)
+ HTC with Initial Clustering    0.1 (0.11)      0.07 (0.11)     3.48 (1.00)
+
+TABLE II: Evaluation of part segmentation (USE and GCE)
+and shape reconstruction (Hausdorff). As expected, objects
+with a single part do not have GCE and USE errors while
+objects with many parts have larger segmentation errors.
+       Object          USE      GCE          Hausdorff   Mass         #Parts
+                                              (mm)        (g)
+     Allen Key           0        0             8.2       128          1       Fig. 3: Kinematics of the identification trajectory performed
+    Box Wrench           0        0            10.9       206          1
+  Measuring Tape         0        0            11.4       136          1       with the Rubber Mallet. The norm of the velocity (black)
+       Ruler             0        0            14.8         9          1       goes slightly above the standard maximum speed for a cobot.
+    Screwdriver        0.013    0.001          12.1        30          2
+  Nut Screwdriver      0.002    0.002           16         81          2       number [37] of the scaled regressor matrix for all simulated
+   Rubber Mallet       0.011    0.009          15.8       237          2
+  Bent Jaw Pliers      0.176     0.01          16.5       255          3       trajectories is 74, 92, and 99 for the low, moderate, and high
+ Machinist Hammer      0.018    0.012          13.6       133          2       noise scenarios, respectively. These relatively low condition
+       Pliers          0.123    0.041          10.7       633          3       numbers confirm that our identification trajectory is non-
+     C Clamp           0.103    0.077           9.6       598          5
+ Adjustable Wrench     0.117    0.098          14.2       719          4       degenerate.
+      Hammer            0.08    0.098          14.7       690          3          The performance of our proposed algorithm (HPS) is com-
+        File           0.057    0.102          17.9        20          3       pared against the classical algorithm proposed in [11] (OLS)
+  Socket Wrench        0.141    0.123           7.4       356          5
+     Hacksaw           0.129    0.128          11.1       658          7       and to the more modern algorithm proposed in [17] (GEO).
+       Clamp           0.259    0.181          17.6       340          7       The latter was provided with a prior solution consisting
+     Vise Grip         0.158    0.287          17.2       387          8       of the true mass of the object, and the COM and inertia
+ Electronic Caliper     0.42    0.316           9.1       174          14
+    Vise Clamp         0.296    0.373          15.1       225           9      tensor resulting from a homogeneous mass distribution for
+                                                                               the object (α = 10−5 was used). HPS only uses measurement
+occluded by the support table, the point cloud is projected                    data when both the linear and angular accelerations are below
+onto the table plane, producing a flat bottom that might not                   1 unit/s2 , corresponding to the stalled timesteps of the stop-
+correspond to the true shape of the object. For instance, the                  and-go motion, whereas OLS and GEO use all data available.
+left side of the rotated screwdriver point cloud in Fig. 2 is                     The accuracy of inertial parameter identification
+the result of such a projection.                                               is measured
+                                                                                       q P via          the Riemannian geodesic distance
+                                                                                            1
+                                                                                                  
+   The proposed identification algorithm is tested in simula-                  eRie =       2   λ [38], where λ is the vector of eigenvalues
+tion under four noise scenarios where zero-mean Gaussian                       for P (s ϕ1 )−1 P (s ϕ2 ) and P (ϕ) is the pseudoinertia matrix
+noise is added to the signals. The standard deviations of the                  that is required to be symmetric positive-definite (SPD)
+noise values are based on the specifications of the Robotiq                    [16]. The metric eRie is the distance between the estimated
+FT-300 sensor as described in Table III. The identification                    and ground truth inertial parameters in the space of SPD
+trajectory used to generate the regressor matrix A in (7)                      matrices. To assist interpretation of the identification error,
+has the robot lift the object and successively orient it such                  we also compute the size-based error metrics proposed in
+that gravity is aligned with each axis of →    F b , stopping
+                                               −                               [4], which use the bounding box and mass of the object
+for a moment at each pose and moving relatively quickly                        to produce average percentage errors ēm , ēC , and ēJ
+between poses, as shown in Fig. 3. The average condition                       associated, respectively, with the mass, centre of mass, and
+                                                                               inertia tensor estimates. Table IV reports the mean of the
+                                                                               entries of the error vector ē for each quantity of interest.
+                                                                               B. Demonstration in Real Settings
+                                                                                 To test our proposed method in a realistic setting, we used
+                                                                               a uFactory xArm 7 manipulator equipped with a RealSense
+       (a)                     (b)                              (c)            D435 camera and a Robotiq FT-300 force-torque sensor, as
+                                                                               shown in Fig. 1. First, the hammer in Fig. 2 was scanned
+Fig. 2: Pictures of objects scanned by the RGB-D camera on                     with the camera, producing 127 RGB-D images of the scene
+the manipulator, next to their segmented meshes; points are                    in about 30 seconds. The object was then picked up at
+located at the tetrahedra’s centroids (screwdriver is rotated).                a predetermined grasping pose where the Robotiq 2F-85
+TABLE IV: Comparison between HPS (ours), OLS, and                       identification as for a given part, (1) can be decomposed into
+GEO with various levels of noise, indicating the percentage              Z                     Z                    Z
+of solutions that were physically consistent (Cons).                            k
+                                                                              p ρ1 (p)dV1 +         k
+                                                                                                   p ρ2 (p)dV2 =       pk ρ(p)dV, (10)
+                                                                          V1                   V2                  V
+  Noise     Algo.     Cons. (%)   ēm (%)   ēC (%)   ēJ (%)    eRie
+                                                                        which is true since V = V1 ∪ V2 and ρ1 (p) = ρ2 (p).
+   No           OLS     100        <0.1     <0.1       0.09      0.03
+                GEO     100        <0.1      1.35     53.22      1.14   Similarly, if two conceptually distinct parts with the same
+                HPS     100        0.27       0.1     10.28      0.72   mass density are erroneously combined into one, the result
+   Low          OLS      14        0.19     2.13      >500       N/A    of the identification will remain unaffected. However, if parts
+                GEO     100        0.18     1.34      52.79      1.14
+                HPS     100        0.40     0.32      11.12      0.74   with different mass densities are considered to be a single
+  Mod.          OLS     4.5        0.36     5.33      >500       N/A    part by the algorithm, the identification will fail since (10)
+                GEO     100        0.35     1.37      51.73      1.14   does not hold when ρ1 (p) ̸= ρ2 (p).
+                HPS     100        0.74     0.48      11.81      0.77
+  High          OLS       2        0.69     10.11     >500       N/A       The comparison in Table IV suggests that OLS outper-
+                GEO     100        0.64     1.58      48.49      1.13   forms other algorithms in the noiseless scenario, which is
+                HPS     100        2.79     1.07      15.00      0.87   expected since it is not biased by any prior information.
+                                                                        However, OLS nearly always converges to physically incon-
+                                                                        sistent solutions and becomes inaccurate in the presence of
+                                                                        even a small amount of sensor noise. The GEO algorithm
+                                                                        performs similarly across noise levels, possibly due to the
+                                                                        very good prior solution (i.e., correct mass, homogeneous
+                                                                        density) provided, corresponding to the exact solution for
+                                                                        objects that have a single part. On average, HPS outperforms
+          (a)                     (b)                      (c)          OLS and GEO for the identification of COM and J when
+Fig. 4: The hammer is (a) scanned, (b) picked up for inertial           the signals are noisy. The slightly higher ēm for HPS may
+identification, and (c) balanced onto the small green target.           be caused by the approximation made when using stalling
+                                                                        motions [4].
+                                                                           Experiments with objects from our dataset do not reveal
+gripper could fit into plastic holders attached to the object           any obvious trends relating the quality of the shape recon-
+(enabling a stable grasp of the handle). A short trajectory             struction (measured via the Hausdorff distance), the quality
+that took about 10 seconds to execute was performed while               of the part segmentation (measured via USE and GCE), and
+the dynamics of the object were recorded at approximately               the quality of the inertial parameter identification (measured
+100 Hz. Point cloud stitching, mesh reconstruction, and part            via eRie ). This can be explained by the fact that an object’s
+segmentation can be performed concurrently while the robot              mass and shape largely determine the signal-to-noise ratios
+executes the trajectory, since these operations take 2.87, 0.24,        that any identification algorithm has to deal with.
+and 2.82 seconds, respectively. Finally, our proposed method               As demonstrated by experiments with objects that are
+identified the inertial parameters in about 0.5 seconds with            mostly symmetrical (e.g., the screwdriver), if the shape of
+MOSEK [39]. Using only its estimate of the COM, the robot               the object is such that the parts’ centroids are coplanar, the
+autonomously balanced the hammer on a cylindrical target                optimizer will ‘lazily’ zero out the mass of some parts since
+with a radius of 17.5 mm. The entire process is shown in                they are not required to minimize (7). An improved version
+our accompanying video, with summary snapshots provided                 of HPS could use the hierarchy from HTC to intelligently
+in Fig. 4. In contrast, both OLS and GEO returned inaccurate            define segments whose centroids are not coplanar.
+parameter estimates, causing hammer balancing to fail.
+                                                                                             VII. C ONCLUSION
+                          VI. D ISCUSSION                                  In this paper, we leveraged the observation that man-made
+                                                                        objects are often built from a few parts with homogeneous
+   This work exploits object shape information to produce               densities. We proposed a method to quickly perform part
+fast and accurate inertial parameter estimates. The object re-          segmentation and inertial parameter identification. We ran
+constructions used by our method to determine object shape              80 simulations in which our approach outperformed two
+are often already computed as components of planning and                benchmark methods, and we demonstrated real-world appli-
+manipulation algorithms, limiting the computational burden              cability by autonomously balancing a hammer on a small
+introduced by our approach. The decomposition of objects                target. On average, our proposed algorithm performs well
+into parts also enables fast inertial parameter identification          in noisy conditions and can estimate the full set of inertial
+of bodies that have joints (e.g., hedge scissors), since the            parameters from‘stop-and-go’ trajectories that can be safely
+parameters can be trivially updated following a change in               executed by collaborative robots. Promising lines of future
+object configuration.                                                   work include formulating the optimization problem as a
+   Wrong or inaccurate part segmentation may lead to erron-             mixed-integer program where mass densities are chosen from
+eous parameter estimates. However, if Assumption 1 holds,               a list of known materials, and improving the segmentation
+over-segmenting an object does not affect the result of the             algorithm such that parts’ centroids are never coplanar.
+                              R EFERENCES                                         [20] B. Sundaralingam and T. Hermans, “In-Hand Object-Dynamics In-
+                                                                                       ference Using Tactile Fingertips,” IEEE Transactions on Robotics,
+ [1] M. T. Mason and K. M. Lynch, “Dynamic manipulation,” in 1993                      vol. 37, no. 4, pp. 1115–1126, 2021.
+     IEEE/RSJ International Conference on Intelligent Robots and Systems,         [21] D. D. Hoffman and W. A. Richards, “Parts of recognition,” Cognition,
+     vol. 1, pp. 152–159, 1993.                                                        vol. 18, no. 1-3, pp. 65–96, 1984.
+ [2] “Robots and robotic devices - Safety requirements for industrial robots      [22] R. S. Rodrigues, J. F. Morgado, and A. J. Gomes, “Part-based
+     - Part 1: Robots,” Tech. Rep. ISO 10218-1:2011, ISO, Geneva (2011).               mesh segmentation: a survey,” in Computer Graphics Forum, vol. 37,
+ [3] “Robots and robotic devices - Collaborative robots,” Tech. Rep.                   pp. 235–274, 2018.
+     ISO/TS 15066:2016, ISO, Geneva (2016).                                       [23] X. Chen, A. Golovinskiy, and T. Funkhouser, “A benchmark for 3D
+ [4] P. Nadeau, M. Giamou, and J. Kelly, “Fast Object Inertial Parameter               mesh segmentation,” ACM Transactions on Graphics, vol. 28, no. 3,
+     Identification for Collaborative Robots,” in IEEE International Con-              pp. 1–12, 2009.
+     ference on Robotics and Automation, May 2022.                                [24] A. Shamir, “A survey on mesh segmentation techniques,” in Computer
+ [5] C. C. Pagano and M. Turvey, “Eigenvectors of the inertia tensor and               Graphics Forum, vol. 27, pp. 1539–1556, 2008.
+     perceiving the orientation of a hand-held object by dynamic touch,”          [25] A. Tagliasacchi, T. Delame, M. Spagnuolo, N. Amenta, and A. Telea,
+     Perception & psychophysics, vol. 52, no. 6, pp. 617–624, 1992.                    “3d skeletons: A state-of-the-art report,” in Computer Graphics Forum,
+ [6] J. Lukos, C. Ansuini, and M. Santello, “Choice of contact points during           vol. 35, pp. 573–597, 2016.
+     multidigit grasping: Effect of predictability of object center of mass       [26] C. Lin, L. Liu, C. Li, L. Kobbelt, B. Wang, S. Xin, and W. Wang,
+     location,” Journal of Neuroscience, vol. 27, no. 14, pp. 3894–3903,               “Seg-mat: 3d shape segmentation using medial axis transform,” IEEE
+     2007.                                                                             Transactions on Visualization and Computer Graphics, 2020.
+ [7] J. B. Hamrick, P. W. Battaglia, T. L. Griffiths, and J. B. Tenenbaum,        [27] P. Li, B. Wang, F. Sun, X. Guo, C. Zhang, and W. Wang, “Q-mat:
+     “Inferring mass in complex scenes by mental simulation,” Cognition,               Computing medial axis transform by quadratic error minimization,”
+     vol. 157, pp. 61–76, 2016.                                                        ACM Transactions on Graphics, vol. 35, no. 1, pp. 1–16, 2015.
+ [8] M. Attene, M. Mortara, M. Spagnuolo, and B. Falcidieno, “Hierarchi-          [28] O. V. Kaick, N. Fish, Y. Kleiman, S. Asafi, and D. Cohen-Or, “Shape
+     cal convex approximation of 3D shapes for fast region selection,” in              segmentation by approximate convexity analysis,” ACM Transactions
+     Computer Graphics Forum, vol. 27, pp. 1323–1332, 2008.                            on Graphics, vol. 34, no. 1, pp. 1–11, 2014.
+ [9] Y. Lin, C. Wang, D. Zhai, W. Li, and J. Li, “Toward better bound-            [29] Z. Dou, C. Lin, R. Xu, L. Yang, S. Xin, T. Komura, and W. Wang,
+     ary preserved supervoxel segmentation for 3D point clouds,” ISPRS                 “Coverage axis: Inner point selection for 3d shape skeletonization,”
+     Journal of Photogrammetry and Remote Sensing, vol. 143, pp. 39–47,                vol. 41, no. 2, pp. 419–432, 2022.
+     2018.                                                                        [30] C. Lin, C. Li, Y. Liu, N. Chen, Y.-K. Choi, and W. Wang,
+[10] G. Golluccio, G. Gillini, A. Marino, and G. Antonelli, “Robot dynam-              “Point2Skeleton: Learning Skeletal Representations from Point
+     ics identification: a reproducible comparison with experiments on the             Clouds,” in IEEE/CVF Conference on Computer Vision and Pattern
+     kinova jaco2,” IEEE Robotics and Automation Magazine, 2020.                       Recognition, pp. 4277–4286, 2021.
+[11] C. G. Atkeson, C. H. An, and J. M. Hollerbach, “Estimation of inertial       [31] H. Si, “TetGen, a Delaunay-based quality tetrahedral mesh generator,”
+     parameters of manipulator loads and links,” The International Journal             ACM Transactions on Mathematical Software, vol. 41, no. 2, pp. 1–36,
+     of Robotics Research, vol. 5, no. 3, pp. 101–119, 1986.                           2015.
+[12] D. Kubus, T. Kroger, and F. M. Wahl, “On-line estimation of inertial         [32] C. B. Barber, D. P. Dobkin, and H. Huhdanpaa, “The quickhull
+     parameters using a recursive total least-squares approach,” in 2008               algorithm for convex hulls,” ACM Transactions on Mathematical
+     IEEE/RSJ International Conference on Intelligent Robots and Systems,              Software, vol. 22, no. 4, pp. 469–483, 1996.
+     pp. 3845–3852, 2008.                                                         [33] H. V. Henderson and S. Searle, “Vec and vech operators for matrices,
+[13] S. Farsoni, C. T. Landi, F. Ferraguti, C. Secchi, and M. Bonfè, “Real-           with some uses in Jacobians and multivariate statistics,” Canadian
+     time identification of robot payload using a multirate quaternion-                Journal of Statistics, vol. 7, no. 1, pp. 65–81, 1979.
+     based kalman filter and recursive total least-squares,” in 2018 IEEE         [34] F. Bernardini, J. Mittleman, H. Rushmeier, C. Silva, and G. Taubin,
+     International Conference on Robotics and Automation, pp. 2103–2109,               “The ball-pivoting algorithm for surface reconstruction,” IEEE Trans-
+     2018.                                                                             actions on Visualization and Computer Graphics, vol. 5, no. 4,
+[14] C. D. Sousa and R. Cortesao, “Physical feasibility of robot base inertial         pp. 349–359, 1999.
+     parameter identification: A linear matrix inequality approach,” The          [35] A. Levinshtein, A. Stere, K. N. Kutulakos, D. J. Fleet, S. J. Dickinson,
+     International Journal of Robotics Research, vol. 33, no. 6, pp. 931–              and K. Siddiqi, “Turbopixels: Fast superpixels using geometric flows,”
+     944, 2014.                                                                        IEEE Transactions on Pattern Analysis and Machine Intelligence,
+[15] S. Traversaro, S. Brossette, A. Escande, and F. Nori, “Identification             vol. 31, no. 12, pp. 2290–2297, 2009.
+     of fully physical consistent inertial parameters using optimization on       [36] D. Martin, C. Fowlkes, D. Tal, and J. Malik, “A database of human
+     manifolds,” in 2016 IEEE/RSJ International Conference on Intelligent              segmented natural images and its application to evaluating segmen-
+     Robots and Systems, pp. 5446–5451, 2016.                                          tation algorithms and measuring ecological statistics,” in 2001 IEEE
+[16] P. M. Wensing, S. Kim, and J.-J. E. Slotine, “Linear matrix inequalities          International Conference on Computer Vision, vol. 2, pp. 416–423,
+     for physically consistent inertial parameter identification: A statistical        2001.
+     perspective on the mass distribution,” IEEE Robotics and Automation          [37] M. Gautier and W. Khalil, “Exciting trajectories for the identification
+     Letters, vol. 3, no. 1, pp. 60–67, 2017.                                          of base inertial parameters of robots,” The International Journal of
+[17] T. Lee, P. M. Wensing, and F. C. Park, “Geometric robot dynamic                   Robotics Research, vol. 11, no. 4, pp. 362–375, 1992.
+     identification: A convex programming approach,” IEEE Transactions            [38] S. Lang, Fundamentals of Differential Geometry, vol. 1. Springer
+     on Robotics, vol. 36, no. 2, pp. 348–365, 2019.                                   Science and Media, 1999.
+[18] K. Ayusawa and Y. Nakamura, “Identification of standard inertial             [39] E. D. Andersen and K. D. Andersen, “The mosek interior point opti-
+     parameters for large-DoF robots considering physical consistency,” in             mizer for linear programming: An implementation of the homogeneous
+     2010 IEEE/RSJ International Conference on Intelligent Robots and                  algorithm,” in High performance optimization, pp. 197–232, 2000.
+     Systems, pp. 6194–6201, 2010.
+[19] C. Song and A. Boularias, “A probabilistic model for planar sliding
+     of objects with unknown material properties: Identification and robust
+     planning,” in 2020 IEEE/RSJ International Conference on Intelligent
+     Robots and Systems, pp. 5311–5318, October 2020.
+

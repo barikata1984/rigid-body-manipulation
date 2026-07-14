@@ -1,0 +1,642 @@
+                                                                                Fast Object Inertial Parameter
+                                                                             Identification for Collaborative Robots
+                                                                           Philippe Nadeau∗ , Matthew Giamou† , and Jonathan Kelly‡
+
+
+                                           Abstract— Collaborative robots (cobots) are machines de-
+                                        signed to work safely alongside people in human-centric en-
+                                        vironments. Providing cobots with the ability to quickly infer
+                                        the inertial parameters of manipulated objects will improve
+                                        their flexibility and enable greater usage in manufacturing and
+                                        other areas. To ensure safety, cobots are subject to kinematic
+arXiv:2203.00830v3 [cs.RO] 6 Jul 2023
+
+
+
+
+                                        limits that result in low signal-to-noise ratios (SNR) for veloc-
+                                        ity, acceleration, and force-torque data. This renders existing
+                                        inertial parameter identification algorithms prohibitively slow
+                                        and inaccurate. Motivated by the desire for faster model
+                                        acquisition, we investigate the use of an approximation of rigid
+                                        body dynamics to improve the SNR. Additionally, we introduce
+                                        a mass discretization method that can make use of shape
+                                        information to quickly identify plausible inertial parameters for
+                                        a manipulated object. We present extensive simulation studies
+                                        and real-world experiments demonstrating that our approach
+                                        complements existing inertial parameter identification methods
+                                        by specifically targeting the typical cobot operating regime.
+                                                                                                                         Fig. 1: The shape of an object (black) is discretized and point
+                                                                  I. I NTRODUCTION                                       masses are assigned at positions (red) that are fixed relative
+                                           The mass, centre of mass (COM), and moments of inertia                        to the body frame →F b . The object moves in the inertial frame
+                                                                                                                                            −
+                                        of an object constitute its inertial parameters and determine                    F
+                                                                                                                         −w
+                                                                                                                         →    , while a sensor in frame →F s measures forces.
+                                                                                                                                                         −
+                                        how the object behaves when it is manipulated [1]. Humans
+                                        are able to predict where an object’s centre of mass (COM) is                       Our second contribution is a method to quickly identify
+                                        located [2] and reason about the object’s mass [3]. Humans                       all of the inertial parameters by combining the approxi-
+                                        also leverage a haptic perceptual capability called dynamic                      mate model of the dynamics with the full model through
+                                        touch to instinctively infer the moments of inertia of a manip-                  a weighting scheme.1 We propose to leverage knowledge
+                                        ulated object [4]. In order for collaborative robots (cobots) to                 of the shape of the manipulated object; shape information
+                                        work safely alongside human workers, the machines should                         could be captured through the cobot’s vision system or from
+                                        be given a similar perceptual capacity.                                          another source. We base our weighting scheme on a heuristic
+                                           In this paper, we study the problem of inertial parame-                       measure of the ‘magnitude’ of the cobot’s motion. Our
+                                        ter identification in the context of object manipulation by                      method identifies physically consistent values of the inertial
+                                        collaborative robots. Our first contribution is an analysis                      parameters and has only a single scalar hyperparameter that
+                                        of the dynamics of safe cobot operation, which typically                         can be tuned on a per-robot basis.
+                                        hampers identification algorithms due to the low signal-to-                                              II. R ELATED W ORK
+                                        noise ratios (SNR) of the velocity, acceleration, and force-
+                                        torque data. We investigate an approximation of rigid body                          Unlike quasi-static or kinematic manipulation tasks [5],
+                                        dynamics aimed at increasing the SNR and improving the                           dynamic manipulation requires explicit consideration of the
+                                        accuracy and convergence rate of parameter identification.                       forces applied to the manipulated object [1]. In this section,
+                                        This approximation can easily be integrated into a variety                       we briefly survey inertial parameter identification methods
+                                        of existing identification algorithms. However, by using this                    that are most relevant to collaborative robotic manipulation.
+                                        approximation alone, we show that the identifiability of the                     For a recent review of inertial parameter identification for
+                                        full inertia tensor is lost.                                                     robotic systems and for manipulated objects, we direct our
+                                                                                                                         readers to [6] and [7], respectively.
+                                           All authors are with the STARS Laboratory at the University of                   The classic work of Atkeson, An, and Hollerbach [8] uses
+                                        Toronto Institute for Aerospace Studies, Toronto, Ontario, Canada.               a least squares approach to determine the inertial parameters
+                                        <firstname>.<lastname>@robotics.utias.utoronto.ca
+                                           ∗ Philippe Nadeau was supported in part by the Vector Institute Scholar-      of an object manipulated by a robot arm. Unfortunately, the
+                                        ship in Artificial Intelligence.
+                                           † Matthew Giamou is a Vector Institute Postgraduate Affiliate.                  1 We provide code, models of our test objects, a video showcasing our al-
+                                           ‡ Jonathan Kelly is a Vector Institute Faculty Affiliate. This research was   gorithm, and supplementary material at https://papers.starslab.
+                                        supported in part by the Canada Research Chairs program.                         ca/fast-inertial-identification/.
+low SNR of the force-torque measurements and acceleration          an inertial model of the manipulated object to augment the
+signals lead to poor performance. Kubus, Kroger, and Wahl          dynamics of the robot arm and compute the effort required
+[9] propose to mitigate the effects of noisy and inaccurate        to move the object along a specified trajectory.
+acceleration and velocity data, to some extent, by leverage a
+recursive total least squares formulation (RTLS) and singular                           III. BACKGROUND
+value decomposition (SVD). Farsoni et al. [10] test the RTLS         The inertial parameters of a three-dimensional rigid body
+method on a real robotic manipulation task, comparing its          can be grouped as
+performance on acceleration data from multiple different                  
+sources. Unfortunately, [10] reports large estimation errors         ϕ = m mcx mcy mcz
+                                                                                                               T
+and a slow convergence time, suggesting that the perfor-                        Jxx Jxy Jxz Jyy Jyz Jzz ∈ R10 , (1)
+mance of RTLS is limited in noisy, real-world contexts.
+                                                                   where m ∈ R+ is the mass, c = [cx , cy , cz ]T ∈ R3 is the
+   The authors of [11] and [12] make the critical observa-                                             3
+                                                                   location of the COM, and J ∈ S++         (i.e., the set of 3×3
+tion that inertial parameter identification has been ill-posed
+                                                                   symmetric positive definite matrices) is the inertia tensor. For
+traditionally, and that many algorithms converge toward
+                                                                   more details on rigid body dynamics, we refer the reader to
+inertial parameters that are unphysical. Traversaro et al.
+                                                                   [22, Ch. 8]. The moments of inertia of an object cannot be
+[12] build upon [11] by stating sufficient conditions for
+                                                                   directly measured and must be inferred through the Newton-
+physical consistency and by using manifold optimization to
+                                                                   Euler equations
+constrain the feasible set to physically-consistent solutions.
+                                                                                  I3×3 −[c]× a             m[ω]× [ω]× c
+                                                                                                                   
+In [13], a set of linear matrix inequalities (LMIs) that enforce        f
+                                                                            =m                        +                     , (2)
+physical consistency without relying on the evaluation of               τ         [c]×     Js     α          [ω]× Js ω
+computationally expensive nonlinear functions is proposed.
+                                                                   which relate forces f ∈ R3 and torques τ ∈ R3 to the
+Leveraging these LMIs, the work in [14] regularizes the
+                                                                   mass m ∈ R+ , COM c ∈ R3 , inertia tensor J ∈ S++    3
+                                                                                                                           ,
+problem with weighted distance metrics that approximate the
+                                                                   linear acceleration a ∈ R , angular acceleration α ∈ R3 ,
+                                                                                             3
+geodesic distance between an initial guess and the solution.
+                                                                   and angular velocity ω ∈ R3 . The skew-symmetric operator
+   In contrast to classical methods, the authors of [18]
+                                                                   [·]× transforms a vector u ∈ R3 into a R3×3 matrix such
+propose a change of paradigm by segmenting a body into
+                                                                   that [u]× v = u × v.
+points and estimating the mass of each point instead of
+                                                                      The Newton-Euler equations can be expressed in matrix
+directly identifying the inertial parameters. The work in [18]
+                                                                   form with Aϕ ∈ R6×10 built from the accelerations and
+demonstrates that full physical consistency is guaranteed
+                                                                   velocities,
+if the point masses are all located in the convex hull of                              
+                                                                                       f
+the body, providing a strong theoretical foundation for the                               = Aϕ (a, ω, α)ϕ.               (3)
+                                                                                       τ
+approach. While we also apply discretization, our work
+does not assume prior knowledge of the inertial parameters         By observing f , τ , a, ω, and α, a least squares algorithm can
+or accurate knowledge of the dynamics, and instead uses            be used to infer values for the vector of inertial parameters
+information from visual or other perception sources.               ϕ, even when noise is present in the measured forces and
+   Song and Boularias [19] similarly discretize an object          torques [8]. In practice, the following problems arise [23]:
+using fixed-size voxels and perform quasi-static exploratory          • the signals from the force-torque sensors located at the
+planar manipulation. Since disentangling the effects of inertia          end-effector are very noisy, with an unknown bias that
+and friction on quasi-static motions is difficult, a probability         drifts over time; and
+distribution of the mass and friction coefficient for each            • the amplitudes of the acceleration and velocity signals
+voxel is tracked. Data from tactile and force-torque sensors             are small, resulting in low SNRs.
+is used in [20] to estimate the inertial parameters and            The root-mean-squared amplitude of a signal S with additive
+friction coefficient of a manipulated object, and compare          noise N can be used to compute the SNR = S 2 /N 2 . For the
+the performance of [8] with methods considering physical           specific case of a signal with additive Gaussian noise, the
+consistency and geodesic distance from an initial guess.           SNR is computed as the mean-squared signal divided by the
+   Machine learning is often useful to build models from           variance of the noise.
+information-rich sensor data that are hard to interpret. Lever-       In the absence of knowledge about the noise character-
+aging the GelSight tactile sensor [15], Wang et al. [16] pro-      istics, the amplitude of the signals multiplying the inertial
+pose an algorithm that learns a physical feature embedding         parameters in (2) can quantify the dynamism ν of the
+from tactile data during exploratory motion, allowing it to        motion—this is heuristic measure of the magnitude of the
+accurately swing an unknown object to a desired orientation.       cumulative SNR:
+A learned model is combined with a physics-based model in                                                      2
+                                                                                          ||a||2 ||α||2 ||ω||2
+[17] to achieve impressive performance in a pick-and-throw                        ν=            ,       ,            .         (4)
+dynamic manipulation task with arbitrary objects grabbed                                    n1     n2      n3      2
+from a cluttered bin.                                              If prior knowledge about the noise is available, each element
+   Having an inertial model for a manipulated object can           of the vector in (4) can be divided by the corresponding
+guide motion and grasp planning. Mavrakis et al. [21] use          squared noise amplitude. In this work, we do not assume
+TABLE I: Statistics related to human manipulation during          B. Discretization of the Object Shape and Mass
+activities of daily living (ADL).
+                                                                     The mass distribution of a rigid body can be approximated
+                            Symbol   Mean    Median   Unit        through the use of a large number of point masses, each with
+     Linear velocity          v      0.206   0.128      m/s       position pi and mass mi . By doing so, the integral over the
+     Angular velocity         ω       1.08   0.703     rad/s      volume V of an object of density ρ used to define the kth
+     Linear acceleration      a       1.45    1.20     m/s2       moment of the mass distribution is approximated by a sum
+     Angular acceleration     α      11.34    8.38    rad/s2
+     Object mass              m      0.257   0.110      kg        over the n point masses:
+     Object radius            r      0.081   0.068       m                     Z                     Xn
+     Duration                 d        6       2.3       s                             k                      k
+                                                                                  ∥p∥ ρ(p) dV ≈          ∥pi ∥ mi .        (5)
+                                                                                 V                        i
+
+access to such prior knowledge and set n1 = n2 = 1 and            Like force and torque, mass and inertia are additive, meaning
+n3 = 0.5.                                                         that the inertia of a body can be computed as the sum of
+   An extensive dataset of annotated motions and grasps           the inertia of all its constituent point masses. By combining
+performed by 13 human subjects during a variety of activities     the approximations of Section III-A with (5), the measured
+of daily living (ADL) is available [24] and quantifies the        torque can be approximated as
+average velocities and accelerations at which objects are                                     n
+                                                                                              X
+usually wielded (see Table I). Similar average velocities (0.16                        τ ≈−         mi [pi ]× g ,             (6)
+m/s) can be obtained from the Daily Interactive Manipulation                                    i
+Dataset [25], which focuses on cooking tasks. The ISO             which we expect to be accurate at slow speeds that are
+standards 10218 [26] and 15066 [27] define safety bounds for      representative of manipulation tasks in ADL.
+the operation of collaborative robots, including a maximum
+linear tool centre-point (TCP) speed of 0.25 m/s.                     IV. T HE P OINT M ASS D ISCRETIZATION P ROBLEM
+   Velocity and acceleration signals can be very noisy if            In this section, we introduce our point mass discretization
+they are obtained through time-differentiation of robot joint     (PMD) formulation of inertial parameter estimation. Con-
+positions. As shown in [10], equipping the robot end-             sider, as in Fig. 1, a rigid body attached to reference frame
+effector with accelerometers does not necessarily yield better    F b and manipulated by a robot whose end-effector pose is
+                                                                  →
+                                                                  −
+measurements, since these sensors can also be inaccurate,         described in the inertial reference frame → F w . This body is
+                                                                                                              −
+especially if they are not properly calibrated.                   discretized into n point masses, each with constant position
+                                                                  b
+                                                                    pi ∈ R3 relative to → F b , and constant mass mi > 0. The
+                                                                                          −
+A. Gravity as a Dominating Force                                  position b pi is determined using a sampling algorithm that
+                                                                  ensures every point mass is contained within the shape of
+   Performing an analysis of objects from the Yale-CMU-           the object. While manipulating the object, the robot uses a
+Berkeley dataset [28], which categorizes 77 items typically       force-torque sensor attached to reference frame →   F s to take
+used for ADL, allows us to estimate the average mass m of                                                             −
+                                                                  K measurements. Since forces and torques are additive, at
+the manipulated objects and the average distance ||r|| from       a particular time step j, the sum of the effects of gravity
+the COM to the edge of the object. Excluding from the             on each point mass should be equal to the jth torque
+analysis any object that is flexible, has a mass less than 10     measurement. Using the approximation in (6), the reduced
+grams, or is clearly intended to be used with both hands, the     model A e at timestep j is written in F w as:
+remaining 63 objects have an average mass of m = 0.257                                                   →
+                                                                                                         −
+                                                                         w
+                                                                                     w ×           w    ×
+                                                                                                            
+kilograms and an ||r|| = 0.081 metres.                                     τ sj = − [ p1 ] g · · · [ pn ] g m ≜ A   e j m , (7)
+
+                                                                  where w pi = w Rbj b pi + w tbj , w Rbj and w tbj are the
+   Given the values in Table I, we can compare the effect of
+                                                                                              F b relative to →
+                                                                  rotation and translation of →
+                                                                                              −               F w for the jth
+                                                                                                              −
+gravity to the effect of other forces by computing the ratios
+                                                                  measurement, and m ∈ Rn+ is a vector containing all masses.
+of the magnitudes of non-gravitational forces and torques to
+                                                                  The optimization problem underlying PMD is defined as
+the magnitudes of the total forces and torques applied during
+                                                                  follows:
+manipulation. These ratios indicate that gravity dominates
+over other forces by a factor of about five during ADL            Problem 1 (Point Mass Discretization).
+performed by human subjects.
+                                                                   min                                                        (8)
+   In turn, we can approximate the mass of the object by the       m∈Rn
+norm of the measured forces divided by the gravitational             ||(1 − w)T (Am
+                                                                                 e − b)||2 + ||wT (Am − b)||2 + λ||m||2
+                      ||f ||2
+acceleration (m ≈ ||g||     2
+                              ). Similarly, we can approximate       s.t.   mi ≥ 0 ∀i ∈ {1, . . . , n}.
+the measured torques τ ≈ −m[c]× g as fully explained
+by gravity acting on the mass distribution of the object. In      where Ae and A are in R6K×n and are formed by stacking K
+Section IV, we leverage these approximations to attenuate the     measured reduced and full model submatrices respectively,
+impact of the noise associated with the manipulator velocity      which are in R6×n . Wrench vector b ∈ R6K is formed by
+and acceleration signals.                                         stacking K wrench measurements [w τ sj ,w f sj ]T , w ∈ R6K
+is a weight vector formed by stacking K vectors wj defined
+below, and λ ∈ R+ is a regularization factor encouraging
+homogeneity and ensuring that a unique solution exists.
+   At timestep k, the weight vector wk is formed by stacking
+six identical weight values w that are computed according
+to                              
+                                  3ν
+                      w = tanh         ,                 (9)
+                                  c1
+where ν ∈ R+ is the dynamism defined in (4). The scalar
+factor s = 3 multiplying ν makes it easier to tune the
+hyperparameter c1 ∈ R+ and defines the level of dynamism
+required for the full model to account for 100 · tanh(s)         Fig. 2: Rendering of the modular test object in the Hammer
+percent of the objective function (i.e., 99.5% if s = 3). In     configuration with black steel and white ABS weights.
+this work, the regularization factor λ was set to 0.1.
+   Since the objective function is the norm of an affine             Steel Weight         ABS Weight               No Weight (Air)
+expression and the constraints are all linear, Problem 1 is a
+convex optimization problem and can therefore be efficiently
+solved with general-purpose methods [29].
+
+                     V. E XPERIMENTS
+   In this section, we test PMD in a variety of experiments
+that highlight the impact of the hyperparameters on its
+performance. We compare the PMD algorithm with three             (a) Hammer         (b) Barbell          (c) Tee         (d) Uniform
+benchmarks: the ordinary least-squares algorithm (OLS), the
+recursive total least-squares algorithm [9] (RTLS), and the
+algorithm using the entropic distance metric defined in [14]
+(GEO). Data from simulations are leveraged to compare the
+performance of identification algorithms under varying levels
+of synthetic noise and at multiple TCP velocities. In cases
+where an identification algorithm requires an initial guess,
+                                                                 (e) Corners         (f) Rod        (g) Half-N-Half      (h) Empty
+a homogeneous distribution is assumed. Finally, these algo-
+rithms are compared on data obtained through manipulation        Fig. 3: Eight weight configurations used to benchmark the
+trajectories performed by a real robot arm on a variety of       identification algorithms. The COM (red point) and TCP
+test objects. Our findings demonstrate that PMD outperforms      location (blue point) are shown. The steel and ABS weights
+benchmark algorithms in scenarios commonly encountered           are 101 and 17 grams each, respectively.
+by collaborative robots.
+
+A. Experimental Setup                                            commanding the three robot joints proximal to the end-
+   We built a modular test object (shown in Fig. 2) consisting   effector follow sinusoidal trajectories. Each trial used the
+of a 3D-printed PLA structure with holes allowing the            same 35-second motion trajectory obtained by joints follow-
+placement of weights or bolts. Various configurations (shown     ing αn + 45◦ sin (2πfn t/240) where αn is the n-th joint’s
+in Fig. 3) can be obtained by choosing the locations of the      initial position, fn is [0, 0, 0, 0.1, 0.13, 0.16] for joints 1 to 6
+weights, and precise values of the inertial parameters can       respectively, and t is the time elapsed in seconds.
+easily be computed for any configuration.
+                                                                 B. Error Metrics
+   To ensure a fair comparison, algorithms are compared
+on data obtained with the same motion trajectory. Inspired          To compare the performance of the algorithms, an ad-
+by [9], the motion of the end-effector is determined by          equate error metric needs to be selected. In the system
+                                                                 identification literature, some authors use the standard rel-
+                                                                 ative error to put the absolute estimation error in perspective
+TABLE II: Standard deviations of zero-mean Gaussian dis-         [9], [10]. Although simple and straightforward, this metric
+tributions used to generate noise for simulation experiments.    breaks when the reference value approaches zero, which
+                                                                 occurs frequently with inertial parameters. Other studies have
+                    Ang. Accel.   Lin. Accel.   Force   Torque
+                                                                 expressed the error in terms of the distance between the
+    Low Noise          0.25         0.025       0.05    0.0025   identified inertial parameters and the true parameters by
+   Moderate Noise      0.5          0.05        0.1     0.005    leveraging knowledge of the underlying manifold [12], [14].
+    High Noise           1           0.1        0.33    0.0067
+                                                                 This unitless distance (and metric) is useful for comparing
+                                                                                                                                                                 After 1 sec.                                            After 5 sec.                                           After 10 sec.
+                        1.5                                                         1.5                                                               35                                                    35                                                     35
+                                                                                                   30 points
+Average COM Error (%)
+
+                                                                                                   140 points                                         30                                                    30                                                     30
+
+
+
+
+                                                                 Compute Time (s)
+                                                                                                   500 points
+                          1                                                           1
+                                                                                                                                                      25                                                    25                                                     25
+
+
+
+
+                                                                                                                                  Inertia Error (%)
+
+
+
+
+                                                                                                                                                                                        Inertia Error (%)
+
+
+
+
+                                                                                                                                                                                                                                               Inertia Error (%)
+                                                                                                                                                      20                                                    20                                                     20
+                        0.5                                                         0.5
+                                                                                                                                                      15                                                    15                                                     15
+
+                          0                                                           0                                                               10            c 1 = 100                               10                                                     10
+                              0.02   0.03   0.04   0.05   0.09                         10     50    100    150   200   250                                          c 1 = 200
+                              Point per Cubic Centimetre                                    Number of Measurements                                     5            c 1 = 300                                5                                                      5
+                                                                                                                                                                    c 1 = 400
+Fig. 4: Left: Accuracy improves, to some extent, with a                                                                                                0
+                                                                                                                                                           0         0.27       0.54
+                                                                                                                                                                                                             0
+                                                                                                                                                                                                                 0           0.27       0.54
+                                                                                                                                                                                                                                                                    0
+                                                                                                                                                                                                                                                                        0            0.27       0.54
+greater point mass density. Right: Impact of the number of                                                                                                     Avg. Speed (m/s)                                      Avg. Speed (m/s)                                       Avg. Speed (m/s)
+point masses on the compute time as more data is gathered.                                                                    Fig. 5: PMD accuracy over time as a function of average
+                                                                                                                              TCP speed for different values of the c1 parameter.
+methods or training learning algorithms, but can be difficult
+to interpret in practice.
+   In this work, we propose error metrics (eqs. (10) to (12))                                                                 based on optimization problems (i.e., PMD, OLS, GEO) used
+that are: (i) scale-invariant with respect to the mass and size                                                               the MOSEK [30] solver on the same machine for a fair
+of the manipulated object, and (ii) work for all physically                                                                   comparison. The specifications of the Robotiq FT-300 sensor
+plausible scenarios. The length a(i) of the bounding box of                                                                   were used to select the standard deviations of the zero-mean
+the object along axis i is used to take its size into account.                                                                Gaussian noise that was added to the signals as described
+The Kronecker delta δi,j is used to produce a different                                                                       in Table II. For each experiment, the average error of the
+formula for diagonal (i = j → δi,j = 1) and off-diagonal                                                                      inertia tensor as computed with (12) was used to quantify
+terms (i ̸= j → δi,j = 0) of the inertia tensor. The x̂(i) and                                                                the identification performance. Fig. 6 and Fig. 7 summarize
+x̂(i,j) symbols respectively designate the estimation of the ith                                                              results from the experiments where noise was added to the
+element of a vector and of the (i, j)th element of a matrix.                                                                  signals.
+                                                                                                                                  In a realistic manipulation scenario, only a very short
+                                x̂ − x
+                              em =        · 100%                                                                       (10)   amount of time can be devoted to inertial parameter iden-
+                                   m                                                                                          tification. Indeed, the median duration of manipulation tasks
+                                x̂(i) − x(i)                                                                                  during ADL is 2.3 seconds (see Table I). Assuming a stan-
+                        eCOMi =                · 100%                                                                  (11)
+                                     a(i)                                                                                     dard force-torque sensing frequency of 100 Hz and taking
+                                                      (x̂(i,j) − x(i,j) ) · 100%                                              into account the duration of the optimization procedure,
+                              eJij =        m           (i)2 + a(j)2 + a(k)2 − a(i) a(j)
+                                                                                                                            approximately 150 observations can be gathered before the
+                                            12 · δi,j a                                                                       algorithm needs to generate its solution. The average con-
+                                                                                         (12)                                 dition number of the scaled regressor matrix A according
+A scalar average error associated with the COM can be                                                                         to [31] is 147, 68.4, and 58.0 for velocities of 1.0, 1.5,
+obtained by averaging the errors along the three axes. Since                                                                  and 2.0 m/s respectively. These moderately low condition
+J is symmetric, the scalar average error is computed by                                                                       numbers suggest that A is relatively well-conditioned in
+averaging the six errors on and above the main diagonal.                                                                      our experiments. Table III shows the average accuracy of
+                                                                                                                              each algorithm (with PMD using c1 = 300) for motion
+C. Simulation Experiments
+                                                                                                                              trajectories performed at three velocities with moderate noise
+   PMD has a number of hyperparameters that can be tuned                                                                      added to the forces and torques, and with velocity and
+to affect accuracy and the compute time required to converge                                                                  acceleration signals estimated through Kalman filtering as
+to a solution. Simulations were performed for eight different                                                                 described in [32]. In this setting, PMD and GEO always
+objects (shown in Fig. 3) that were voxelized to produce                                                                      produced physically consistent solutions while OLS and
+a variety of point mass densities (shown in Fig. 4), and                                                                      RTLS produced implausible solutions most of the time.
+with a number of different values for c1 in Problem 1.                                                                            As a sanity check, we tested PMD in the scenario where
+As a result, 328 simulations provide us with an overview                                                                      stop-and-go motions are performed (i.e., zero velocity and
+of each parameter’s impact on identification accuracy and
+compute time (Fig. 4 and Fig. 5). A point mass density of                                                                                                        Low Noise                                               Mod. Noise                                               High Noise
+                                                                                                                                               200                                                          200                                                    200
+0.04 points/cm3 (56 points with our object) and c1 = 300                                                                                                                                                                                                                                        GEO
+                                                                                                                                                                                                                                                                                                OLS
+                                                                                                                              Inertia Error
+
+
+
+
+                                                                                                                                                                                       Inertia Error
+
+
+
+
+                                                                                                                                                                                                                                                 Inertia Error
+
+
+
+
+were used for these experiments.                                                                                                               100                                                          100                                                    100
+                                                                                                                                                                                                                                                                                                RTLS
+                                                                                                                                                                                                                                                                                                PMD
+   To ensure a fair comparison of the identification algo-
+rithms, experiments are conducted with the wielded object                                                                                              0                                                         0                                                      0
+                                                                                                                                                           0         0.27       0.54                                 0       0.27       0.54                                0         0.27       0.54
+attaining average angular velocities of 1, 1.5, 2, 3, and 4                                                                                                Avg. Speed (m/s)                                          Avg. Speed (m/s)                                       Avg. Speed (m/s)
+rad/s, and average linear velocities of 0.14, 0.2, 0.27, 0.41,
+and 0.54 m/s. For each object in Fig. 3 and for each velocity,                                                                Fig. 6: Average performance after 10 sec. for three noise
+simulated experiments were performed under four different                                                                     levels and five velocities. The vertical line is ISO 10218-1
+noise levels for a total of 640 experiments. All algorithms                                                                   max. TCP velocity and the the bold dashed line is the SNR.
+                    200
+                              After 1 sec.
+                                                                        200
+                                                                                  After 5 sec.
+                                                                                                                            200
+                                                                                                                                      After 10 sec.          TABLE IV: Average identification errors with the xArm 7
+                                                                                                                                                  GEO
+                                                                                                                                                             robotic arm and the FT-300 force-torque sensor.
+Inertia Error (%)
+
+
+
+
+                                                    Inertia Error (%)
+
+
+
+
+                                                                                                        Inertia Error (%)
+                                                                                                                                                  OLS
+                                                                                                                                                  RTLS
+                    100                                                 100                                                 100                   PMD
+                                                                                                                                                                                                  Mass (%)         COM (%)    Inertia Tensor (%)
+                                                                                                                                                                              OLS                   3.18            24.9            >500
+                      0                                                   0                                                   0                                               RTLS                  11.7            >500            >500
+                          0       0.27       0.54                             0       0.27       0.54                             0        0.27       0.54
+                          Avg. Speed (m/s)                                    Avg. Speed (m/s)                                    Avg. Speed (m/s)                            GEO                   3.75            30.3            >500
+                                                                                                                                                                              PMD-5K                4.51            8.12            36.75
+Fig. 7: Average performance of each algorithm over time for                                                                                                                   PMD-25K               4.45            4.50            29.11
+the moderate noise level and at five end-effector velocities.
+The dotted line is ISO 10218-1 maximal TCP velocity.
+                                                                                                                                                             points/cm3 was not significantly better than when using a
+                                                                                                                                                             density of 0.04 points/cm3 , suggesting that the latter density
+acceleration while recording data). In this setting, the errors                                                                                              is a good compromise between accuracy and compute time.
+for the mass and COM were both lower than 0.1%.                                                                                                              We note that all of the algorithms benchmarked in this work
+D. Robot Experiments                                                                                                                                         are complementary and that each is suitable in a specific
+                                                                                                                                                             context:
+    In order to verify that the PMD algorithm performs well
+in real settings, we built a physical version of the modular                                                                                                      • OLS [8] is the simplest algorithm and performs well
+test object to enable verification against ground truth. Experi-                                                                                                    with high-speed manoeuvres, but does not guarantee
+ments were carried out using a Robotiq FT-300 force-torque                                                                                                          physical consistency;
+sensor that was attached to the end-effector of a uFactory                                                                                                        • RTLS [9] has the lowest asymptotic error for trajectories
+
+xArm 7 robotic arm. The test object was secured to the flange                                                                                                       with large signal-to-noise ratios, but converges more
+of the sensor (Fig. 1) after weights were placed in one of the                                                                                                      slowly and does not guarantee physical consistency;
+eight configurations shown in Fig. 3. For each configuration,                                                                                                     • GEO [14] performs better than RTLS under high noise
+
+the robot performed an oscillating motion in which the three                                                                                                        and guarantee physical consistency, but requires a good
+robot joints proximal to the end-effector followed sinusoidal                                                                                                       initial guess and a well-tuned regularization factor;
+trajectories (similar to those in the simulation experiments).                                                                                                    • PMD is fast, more robust for small signal-to-noise
+
+The average angular velocity of the test object was 1.1 rad/s.                                                                                                      ratios, and guarantees physical consistency, but requires
+    Akin to the simulation experiments, each identification                                                                                                         knowledge of the shape and pose of the object.
+algorithm was used on data gathered with each object con-
+figuration, but the trajectory was limited to 1.5 seconds such                                                                                                                                      VI. C ONCLUSION
+that the identification process was faster than the median
+manipulation duration. PMD was tested with c1 = 5 · 103                                                                                                         In this paper, we proposed an inertial parameter estimation
+(PMD-5K) and c1 = 25 · 103 (PMD-25K), and observations                                                                                                       method well suited to the velocity regime of cobots during
+were used after the uncertainty estimates from the Kalman                                                                                                    object manipulation. Our algorithm uses a weighting scheme
+filters had stabilized. For this experiment, the condition                                                                                                   based on the dynamism of the motion; the estimator applies a
+number of A is 178—larger than in the simulations but                                                                                                        reduced dynamics model when appropriate to yield a solution
+still reasonably small. The estimated inertial parameters can                                                                                                quickly. We rely on a discretization of the object shape,
+be used to predict the effort required to move an object                                                                                                     where the requisite information is known or is captured via
+along a given trajectory (see Fig. 8 for an example with                                                                                                     the cobot’s perception system,Predictedto guarantee physical con-
+                                                                                                                                                                                                     Force
+PMD-5K) with reasonable accuracy, enabling effort-based                                                                                                      sistency
+                                                                                                                                                                   10 of the inertial parameters. Our proposed algorithm
+motion planning as done in [21]. The average error across                                                                                                    performs    well in real-world experiments representative of
+                                                                                                                                                                     5
+                                                                                                                                                                 Force (N)
+
+
+
+
+all studied configurations was computed for each algorithm                                                                                                   practical  manipulation    tasks. Promising lines of future work
+                                                                                                                                                                     0
+and is shown in Table IV.                                                                                                                                    include   taking  into account   uncertainty in the object shape,
+                                                                                                                                                                    -5
+E. Discussion                                                                                                                                                pose, and inertial
+                                                                                                                                                                            Fx
+                                                                                                                                                                                   parameters
+                                                                                                                                                                                     Fy      Fz
+                                                                                                                                                                                                 in order to guide the cobot’s
+                                                                                                                                                                  -10
+                                                                                                                                                             motion during the identification process.
+   As expected, a greater density of point masses leads                                                                                                                             0       0.5            1         1.5       2         2.5       3
+                                                                                                                                                                                                                 Time (s)
+to a longer compute time. Interestingly, the accuracy of
+                                                                                                                                                                                                           Predicted Torque
+the estimate of the COM when using a density of 0.09
+                                                                                                                                                                             0.2
+                                                                                                                                                              Torque (Nm)
+
+
+
+
+TABLE III: Inertial parameter accuracy comparison after a                                                                                                                       0
+
+limited number of observations have been made (i.e., ∼150).                                                                                                                  -0.2
+
+                              Mass Error (%)                             COM Error (%)                  Inertia Tensor Error (%)                                             -0.4       x            y         z
+      rad/s                   1.0 1.5 2.0                                1.0 1.5 2.0                     1.0       1.5      2.0
+                                                                                                                                                                                    0       0.5            1         1.5       2         2.5       3
+      OLS                     1.36 2.88 3.22                             34.4 44.0 36.1                 >500                           >500       >500                                                             Time (s)
+      RTLS                    1.84 1.77 2.41                             97.5 37.7 38.2                 >500                           >500       >500
+      GEO                     1.45 2.65 4.09                             33.0 33.1 32.6                 >500                           252         109       Fig. 8: Torques predicted using the true (solid) and estimated
+      PMD                     1.34 2.15 1.91                             9.83 15.5 16.4                 44.1                           43.5       43.6       (dashed) parameters for the real Tee object and for PMD-5K.
+                              R EFERENCES                                         [17] A. Zeng, S. Song, J. Lee, A. Rodriguez, and T. Funkhouser, “Tossing-
+                                                                                       bot: Learning to throw arbitrary objects with residual physics,” Proc.
+ [1] M. T. Mason and K. M. Lynch, “Dynamic manipulation,” in Proc.                     Robotics: Science and Systems (RSS), 2019.
+     1993 IEEE/RSJ Int. Conf. on Intelligent Robots and Systems, vol. 1,          [18] K. Ayusawa and Y. Nakamura, “Identification of standard inertial
+     pp. 152–159, 1993.                                                                parameters for large-DoF robots considering physical consistency,” in
+ [2] J. Lukos, C. Ansuini, and M. Santello, “Choice of contact points during           Proc. 2010 IEEE/RSJ Int. Conf. on Intelligent Robots and Systems,
+     multidigit grasping: Effect of predictability of object center of mass            pp. 6194–6201, IEEE, 2010.
+     location,” J. Neuroscience, vol. 27, no. 14, pp. 3894–3903, 2007.            [19] C. Song and A. Boularias, “A probabilistic model for planar sliding of
+ [3] J. B. Hamrick, P. W. Battaglia, T. L. Griffiths, and J. B. Tenenbaum,             objects with unknown material properties,” in Proc. 2020 IEEE/RSJ
+     “Inferring mass in complex scenes by mental simulation,” Cognition,               Int. Conf. on Intelligent Robots and Systems, Oct. 2020.
+     vol. 157, pp. 61–76, 2016.                                                   [20] B. Sundaralingam and T. Hermans, “In-hand object-dynamics infer-
+ [4] C. C. Pagano and M. Turvey, “Eigenvectors of the inertia tensor and               ence using tactile fingertips,” IEEE Trans. Robotics, vol. 37, no. 4,
+     perceiving the orientation of a hand-held object by dynamic touch,”               pp. 1115–1126, 2021.
+     Perception & Psychophysics, vol. 52, no. 6, pp. 617–624, 1992.               [21] N. Mavrakis, R. Stolkin, L. Baronti, M. Kopicki, M. Castellani, and
+ [5] M. T. Mason, “Toward robotic manipulation,” Annual Review of                      others, “Analysis of the inertia and dynamics of grasped objects,
+     Control, Robotics, and Autonomous Systems, vol. 1, pp. 1–28, 2018.                for choosing optimal grasps to enable torque-efficient post-grasp
+ [6] G. Golluccio, G. Gillini, A. Marino, and G. Antonelli, “Robot dynam-              manipulations,” in Proc. 2016 IEEE/RAS 16th Int. Conf. on Humanoid
+     ics identification: A reproducible comparison with experiments on the             Robots, pp. 171–178, 2016.
+     kinova Jaco2,” IEEE Robotics & Automation Magazine, 2020.                    [22] K. M. Lynch and F. C. Park, Modern Robotics: Mechanics, Planning,
+ [7] N. Mavrakis and R. Stolkin, “Estimation and exploitation of objects’              and Control. Cambridge University Press, 2017.
+     inertial parameters in robotic grasping and manipulation: A survey,”         [23] T. Kroger, D. Kubus, and F. M. Wahl, “12D force and acceleration
+     Robotics and Autonomous Systems, vol. 124, p. 103374, 2020.                       sensing: A helpful experience report on sensor characteristics,” in
+ [8] C. G. Atkeson, C. H. An, and J. M. Hollerbach, “Estimation of                     Proc. 2008 IEEE Int. Conf. on Robotics and Automation, pp. 3455–
+     inertial parameters of manipulator loads and links,” The Int. J. Robotics         3462, 2008.
+     Research, vol. 5, no. 3, pp. 101–119, 1986.                                  [24] A. Saudabayev, Z. Rysbek, R. Khassenova, and H. A. Varol, “Human
+ [9] D. Kubus, T. Kroger, and F. M. Wahl, “On-line estimation of inertial              grasping database for activities of daily living with depth, color and
+     parameters using a recursive total least-squares approach,” in Proc.              kinematic data streams,” Scientific data, vol. 5, no. 1, pp. 1–13, 2018.
+     2008 IEEE/RSJ Int. Conf. on Intelligent Robots and Systems, pp. 3845–        [25] Y. Huang and Y. Sun, “A dataset of daily interactive manipulation,”
+     3852, 2008.                                                                       The Int. J. Robotics Research, vol. 38, no. 8, pp. 879–886, 2019.
+[10] S. Farsoni, C. T. Landi, F. Ferraguti, C. Secchi, and M. Bonfè, “Real-      [26] “Robots and robotic devices - Safety requirements for industrial robots
+     time identification of robot payload using a multirate quaternion-based           - Part 1: Robots,” Tech. Rep. ISO 10218-1:2011, ISO, Geneva (2011).
+     Kalman filter and recursive total least-squares,” in Proc. 2018 IEEE         [27] “Robots and robotic devices - Collaborative robots,” Tech. Rep.
+     Int. Conf. on Robotics and Automation, pp. 2103–2109, 2018.                       ISO/TS 15066:2016, ISO, Geneva (2016).
+[11] C. D. Sousa and R. Cortesao, “Physical feasibility of robot base inertial    [28] B. Calli, A. Walsman, A. Singh, S. Srinivasa, P. Abbeel, and A. M.
+     parameter identification: A linear matrix inequality approach,” The Int.          Dollar, “Benchmarking in manipulation research: Using the Yale-
+     J. Robotics Research, vol. 33, no. 6, pp. 931–944, 2014.                          CMU-Berkeley object and model set,” IEEE Robotics & Automation
+[12] S. Traversaro, S. Brossette, A. Escande, and F. Nori, “Identification             Magazine, vol. 22, no. 3, pp. 36–52, 2015.
+     of fully physical consistent inertial parameters using optimization on       [29] S. Boyd and L. Vandenberghe, Convex optimization. Cambridge
+     manifolds,” in Proc. 2016 IEEE/RSJ Int. Conf. on Intelligent Robots               University Press, 2004.
+     and Systems, pp. 5446–5451, 2016.                                            [30] E. D. Andersen and K. D. Andersen, “The mosek interior point opti-
+[13] P. M. Wensing, S. Kim, and J.-J. E. Slotine, “Linear matrix inequalities          mizer for linear programming: An implementation of the homogeneous
+     for physically consistent inertial parameter identification: A statistical        algorithm,” in High performance optimization, pp. 197–232, 2000.
+     perspective on the mass distribution,” IEEE Robotics and Automation          [31] M. Gautier and W. Khalil, “Exciting trajectories for the identification
+     Letters, vol. 3, no. 1, pp. 60–67, 2017.                                          of base inertial parameters of robots,” The Int. J. Robotics Research,
+[14] T. Lee, P. M. Wensing, and F. C. Park, “Geometric robot dynamic iden-             vol. 11, no. 4, pp. 362–375, 1992.
+     tification: A convex programming approach,” IEEE Trans. Robotics,            [32] S. Farsoni, C. T. Landi, F. Ferraguti, C. Secchi, and M. Bonfe,
+     vol. 36, no. 2, pp. 348–365, 2019.                                                “Compensation of load dynamics for admittance controlled interac-
+[15] W. Yuan, S. Dong, and E. H. Adelson, “Gelsight: High-resolution robot             tive industrial robots using a quaternion-based kalman filter,” IEEE
+     tactile sensors for estimating geometry and force,” Sensors, vol. 17,             Robotics and Automation Letters, vol. 2, no. 2, pp. 672–679, 2017.
+     no. 12, p. 2762, 2017.
+[16] C. Wang, S. Wang, B. Romero, F. Veiga, and E. Adelson, “Swing-
+     bot: Learning physical features from in-hand tactile exploration for
+     dynamic swing-up manipulation,” in Proc. 2020 IEEE/RSJ Int. Conf.
+     on Intelligent Robots and Systems, (Las Vegas, USA), Oct. 2020.
+                     A PPENDIX I                                            Therefore, the “unobservable subspace” defined by the kernel
+  O BSERVABILITY A NALYSIS OF THE R EDUCED M ODEL                           of data matrix A
+                                                                                           e contains precisely those changes to the true
+   In this section, we establish that only m and c are uniquely             mass vector m which do not modify the total mass or the
+identifiable in Problem 1 when w = 0, which stems from the                  weighted COM mc.
+independence of the approximation in (6) with respect to the                   In order to simplify our analysis of the uniqueness of
+inertia tensor J. We begin by proving that rank(A) e ≤ 4. We                solutions to the reduced model of Problem 1, note that the
+once again assume that the points are not coplanar (i.e., the               quadratic program (QP) obtained by squaring the objective
+rank of P̃ is four). Noting the skew-symmetry of the cross                  function has the same global optima as the unsquared case.
+product, we write the jth measurement’s data matrix in (3)                  This QP has a unique solution when the cost is strictly
+as                                                                          convex, or equivalently, its Hessian ∇2 f = Ae TAe is positive
+                                                                            definite [29]. Since, in general, rank(A)e ≤ 4 ≤ n, the
+      e j = [g]× [w Rb b p1 + w tb · · · w Rb b pn + w tb ]
+      A               j           j          j           j
+                                                                            Hessian A e TA
+                                                                                         e is only positive semidefinite, and Problem 1
+          = [g]×w Rbj [b p1 · · · b pn ] + 1T
+                                            n ⊗ ([g]
+                                                    ×w
+                                                       tbj )        (13)    does not have a unique solution. Adding a regularizing term
+                 ×w                                                                2
+          = [g]       Rbj P + Tj ,                                          λ ∥m∥ to the QP’s objective function modifies the Hessian
+                                                                                 T
+where ⊗ is the Kronecker product. (13) reveals that each                    to Ae Ae + λI, which is positive definite for all λ > 0.
+A
+e j is simply an affine transformation of P. Therefore, the
+complete data matrix is simply the affine transformation
+                            A
+                            e = GP + T,                             (14)
+where
+                                     T
+        G = [g]×w Rb1 · · · [g]×w RbK ∈ R3K×3 ,
+           
+                                                                    (15)
+and
+               ×w
+ T = 1T
+      n ⊗ [([g]   tb1 )T · · · ([g]×w tbK )T ]T ∈ R3K×n . (16)
+Since rank(P) = 3, the linear part of (14) has
+                       rank(GP) = rank(G),                          (17)
+and rank(T) = 1 since its columns are identical. By the sub-
+additive property of matrix rank, we have that rank(A)  e ≤4
+as desired. Note that for torque measurements taken in a set
+of non-degenerate poses, the maximum rank of 4 is attained,
+as rank(G) = 3, and the repeated column of T is not in the
+range of GP.2
+   Assuming that rank(A) e = 4, we can show that the kernel
+of A
+   e does not include changes to m and the COM c, and that
+these quantities are therefore identifiable. Since the range of
+GP and the range of T only intersect at the origin,
+                       Aδm
+                       e   = (GP + T)δm = 0
+                  ⇐⇒ GPδm = 0 and Tδm = 0,                          (18)
+where δm ̸= 0 ∈ Rn is a “perturbation” of the mass vector.
+Since each row of T is the same value repeated, the sum
+of the elements of δm is zero, and the perturbation δm
+therefore conserves the total mass. Similarly, since G has
+linearly independent columns, GPδm = 0 =⇒ Pδm = 0,
+meaning the COM is invariant to perturbations in the kernel
+of A:
+    e
+         X n
+             (mi + δmi )b pi = mb c + Pδm = mb c.      (19)
+           i=1
+
+ 2 If we assume that there exist 1 ≤ i < j ≤ K such that w R
+                                                                  bi and
+wR
+    bj are not rotations about the same axis, then it is easy to see that
+rank(G) = 3. Additionally, if sampled randomly, the repeated column of
+T is almost surely not in the range of GP and can be selected to ensure
+that this is not the case.
+

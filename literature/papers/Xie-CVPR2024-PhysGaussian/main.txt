@@ -1,0 +1,767 @@
+                                              PhysGaussian: Physics-Integrated 3D Gaussians for Generative Dynamics
+
+                                                                        Tianyi Xie1∗ Zeshun Zong1∗ Yuxing Qiu1∗ Xuan Li1∗
+                                                                              Yutao Feng2,3 Yin Yang3 Chenfanfu Jiang1
+                                                                           1
+                                                                             UCLA, 2 Zhejiang University, 3 University of Utah
+arXiv:2311.12198v3 [cs.GR] 15 Apr 2024
+
+
+
+
+                                                                                                                                            What You See
+
+
+
+
+                                                                                                                                                           What You Simulate
+                                                                                                                                        t
+
+                                                  Figure 1. PhysGaussian is a unified simulation-rendering pipeline based on 3D Gaussians and continuum mechanics.
+
+                                                                      Abstract                               1. Introduction
+                                                                                                             Recent strides in Neural Radiance Fields (NeRFs) have
+                                          We introduce PhysGaussian, a new method that seamlessly            showcased significant advancements in 3D graphics and
+                                         integrates physically grounded Newtonian dynamics within            vision [24]. Such gains have been further augmented by
+                                         3D Gaussians to achieve high-quality novel motion synthe-           the cutting-edge 3D Gaussian Splatting (GS) framework
+                                         sis. Employing a custom Material Point Method (MPM),                [16]. Despite many achievements, a noticeable gap re-
+                                         our approach enriches 3D Gaussian kernels with physically           mains in the application towards generating novel dynam-
+                                         meaningful kinematic deformation and mechanical stress              ics. While there exist endeavors that generate new poses for
+                                         attributes, all evolved in line with continuum mechanics            NeRFs, they typically cater to quasi-static geometry shape
+                                         principles. A defining characteristic of our method is the          editing tasks and often require meshing or embedding vi-
+                                         seamless integration between physical simulation and vi-            sual geometry in coarse proxy meshes such as tetrahedra
+                                         sual rendering: both components utilize the same 3D Gaus-           [12, 28, 47, 51].
+                                         sian kernels as their discrete representations. This negates           Meanwhile, the traditional physics-based visual content
+                                         the necessity for triangle/tetrahedron meshing, marching            generation pipeline has been a tedious multi-stage process:
+                                         cubes, “cage meshes,” or any other geometry embedding,              constructing the geometry, making it simulation-ready (of-
+                                         highlighting the principle of “what you see is what you sim-        ten through techniques like tetrahedralization), simulating
+                                         ulate (WS2 ).” Our method demonstrates exceptional ver-             it with physics, and finally rendering the scene. This se-
+                                         satility across a wide variety of materials–including elastic       quence, while effective, introduces intermediary stages that
+                                         entities, plastic metals, non-Newtonian fluids, and granular        can lead to discrepancies between simulation and final vi-
+                                         materials–showcasing its strong capabilities in creating di-        sualization. Even within the NeRF paradigm, a similar
+                                         verse visual content with novel viewpoints and movements.           trend is observed, as the rendering geometry is embedded
+                                         Our project page is at: https://xpandora.github.                    into a simulation geometry. This division, in essence, con-
+                                         io/PhysGaussian/.                                                   trasts with the natural world, where the physical behavior
+                                                                                                             and visual appearance of materials are intrinsically inter-
+                                                                                                             twined. Our overarching philosophy seeks to align these
+                                                                                                             two facets by advocating for a unified representation of a
+                                            * indicates equal contributions.                                 material substance, employed for both simulation and ren-
+
+
+                                                                                                         1
+dering. In essence, our approach champions the principle of         lized in image generation through volume rendering tech-
+“what you see is what you simulate” (WS2 ) [25], aiming for         niques. Building upon the achievements of NeRF, further
+a more coherent integration of simulation, capturing, and           studies have focused on enhancing reconstruction quality
+rendering.                                                          and improving training speeds [1, 7, 20, 26, 40, 46]. On the
+    Building towards this goal, we introduce PhysGaussian:          other hand, researchers have also investigated differentiable
+physics-integrated 3D Gaussians for generative dynamics.            point-based methods for real-time rendering of unbounded
+This novel approach empowers 3D Gaussians to encapsu-               scenes. Among the current investigations, the state-of-the-
+late physically sound Newtonian dynamics, including real-           art results are achieved by the recently published 3D Gaus-
+istic behaviors and inertia effects inherent in solid materi-       sian Splatting framework [16]. Contrary to prior implicit
+als. More specifically, we impart physics to 3D Gaussian            neural representations, GS employs an explicit and unstruc-
+kernels, endowing them with kinematic attributes such as            tured representation of one scene, offering the advantage
+velocity and strain, along with mechanical properties like          of straightforward extension to post-manipulation. More-
+elastic energy, stress, and plasticity. Notably, through con-       over, its fast visibility-aware rendering algorithm also en-
+tinuum mechanics principles and a custom Material Point             ables real-world dynamics generations.
+Method (MPM), PhysGaussian ensures that both physical
+simulation and visual rendering are driven by 3D Gaus-              Dynamic Neural Radiance Field. An inherent evolution
+sians. This eradicates the necessity for any embedding              of the NeRF framework entails the integration of a tem-
+mechanisms, thus eliminating any disparity or resolution            poral dimension to facilitate the representation of dynamic
+mismatch between the simulated and the rendered.                    scenes. For example, both Pumarola et al. [30] and Park
+    We present PhysGaussian’s versatile adeptness in syn-           et al. [27] decompose time-dependent neural fields into
+thesizing generative dynamics across various materials,             an inverse displacement field and canonical time-invariant
+such as elastic objects, metals, non-Newtonian viscoplastic         neural fields. In this context, the trajectory of query rays
+substances (e.g. foam or gel), and granular mediums (e.g.           is altered by the inverse displacement field and then po-
+sand or soil). To summarize, our contributions include              sitioned within the canonical space. Subsequent stud-
+• Continuum Mechanics for 3D Gaussian Kinematics:                   ies have adhered to the aforementioned design when ex-
+   We introduce a continuum mechanics-based strategy tai-           ploring applications related to NeRF deformations, such
+   lored for evolving 3D Gaussian kernels and their associ-         as static scene editing and dynamic scene reconstruction
+   ated spherical harmonics in physical Partial Differential        [5, 19, 21, 28, 31, 32, 51]. Additionally, Liu et al. [21], Qiao
+   Equation (PDE)-driven displacement fields.                       et al. [31], Yuan et al. [51] have contributed to the incorpo-
+• Unified Simulation-Rendering Pipeline: We present an              ration of physics-based deformations into the NeRF frame-
+   efficient simulation and rendering pipeline with a unified       work. However, the effectiveness of these methodologies
+   3D Gaussian representation. Eliminating the extra effort         relies on the usage of exported meshes derived from NeRFs.
+   for explicit object meshing, the motion generation process       To circumvent this restriction, explicit geometric represen-
+   is significantly simplified.                                     tations have been explored for forward displacement mod-
+• Versatile Benchmarking and Experiments: We con-                   eling [16, 46]. In particular, Chen et al. [6], Luiten et al.
+   duct a comprehensive suite of benchmarks and experi-             [22], Wu et al. [45], Yang et al. [48, 49] directly manipulate
+   ments across various materials. Enhanced by real-time            NeRF fields. Li et al. [18] extends this approach by includ-
+   GS rendering and efficient MPM simulations, we achieve           ing physical simulators to achieve more dynamic behaviors.
+   real-time performance for scenes with simple dynamics.           In this study, we leverage the explicit 3D Gaussian Splat-
+                                                                    ting ellipsoids as a unified representation for both physics
+2. Related Work                                                     and graphics. In contrast to previous dynamic GS frame-
+Radiance Fields Rendering for View Synthesis. Radi-                 works, which either maintain the shapes of Gaussian kernels
+ance field methods have gained considerable interest in re-         or learn to modify them, our approach uniquely leverages
+cent years due to their extraordinary ability to generate           the first-order information from the displacement map (de-
+novel-view scenes and their great potential in 3D recon-            formation gradient) to assist dynamic simulations. In this
+struction. The adoption of deep learning techniques has             way, we are able to deform the Gaussian kernels and seam-
+led to the prominence of neural rendering and point-based           lessly integrate the simulation within the GS framework.
+rendering methods, both of which have inspired a multi-
+tude of subsequent works. On the one hand, the NeRF                 Material Point Method. The Material Point Method
+framework employs a fully-connected network to model                (MPM) is a widely used simulation framework for a broad
+one scene [24]. The network takes spatial position and              range of multi-physics phenomena [10]. The inherent capa-
+viewing direction as inputs and produces the volume den-            bility of the MPM system allows for topology changes and
+sity and radiance color. These outputs are subsequently uti-        frictional interactions, making it suitable for simulating var-
+
+                                                                2
+         Input Images             Optimization       Gaussian Ellipsoids           Physics Integration                                                                                 Physics-grounded
+        + Camera Info                                  as Continuum                                                                                                                      Novel Motion
+                                   3D Gaussian                                             Kinematics
+                                    Splatting                                          Gaussian Evolution
+
+                                                                                     Harmonics Transform
+                                     Anisotropic
+                                     Loss Term
+                                                                                            Dynamics
+                                                                                     Continuum Mechanics
+
+                               3D Gaussian                                               Time Integration
+                               Kernel Filling
+
+
+
+                                  Optional Step
+                                                                                                                                                                            Multiple-Viewpoint Renderer
+
+
+Figure 2. Method Overview. PhysGaussian is a unified simulation-rendering pipeline that incorporates 3D Gaussian splatting representa-
+tion and continuum mechanics to generate physics-based dynamics and photo-realistic renderings simultaneously and seamlessly.
+
+
+ious materials, including but not limited to elastic objects,         of each pixel is computed as
+fluids, sand, and snow [13, 17, 39]. MPM can also be ex-
+panded to simulate objects that possess codimensional char-                                   \bm C = \sum _{k\in \mathcal {P}} \alpha _k \text {SH}(\bm d_k; \mathcal {C}_k) \prod _{j=1}^{k-1} (1-\alpha _j).    (1)
+acteristics [15]. In addition, the efficacy of utilizing GPU(s)
+to accelerate MPM implementations has also been demon-
+strated in [8, 11, 33, 44]. Owing to its well-documented ad-          Here αk represents the z-depth ordered effective opacities,
+vantages, we employ the MPM to support the latent phys-               i.e., products of the 2D Gaussian weights and their over-
+ical dynamics. This choice allows us to efficiently import            all opacities σk ; dk stands for the view direction from the
+dynamics into various scenarios with a shared particle rep-           camera to xk . Per-view optimizations are performed us-
+resentation alongside the Gaussian Splatting framework.               ing L1 loss and SSIM loss. This explicit representation of
+                                                                      the scene not only significantly accelerates training and ren-
+                                                                      dering speeds, but also enables direct manipulation of the
+3. Method Overview                                                    NeRF scene. The data-driven dynamics are supported by
+                                                                      making xp , Ap time-dependent [45] and minimizing ren-
+We propose PhysGaussian (Fig. 2), a unified simulation-               dering losses over videos. In Sec. 3.1, we show that this
+rendering framework for generative dynamics based on con-             time-dependent evolution can be given by the continuum
+tinuum mechanics and 3D GS. Adopted from Kerbl et al.                 deformation map.
+[16], we first reconstruct a GS representation of a static            3.2. Continuum Mechanics
+scene, with an optional anisotropic loss term to regularize
+over-skinny kernels. These Gaussians are viewed as the dis-           Continuum mechanics describes motions by a time-
+cretization of the scene to be simulated. Under our novel             dependent continuous deformation map x = ϕ(X, t)
+kinematics, we directly splat the deformed Gaussians for              between the undeformed material space Ω0 and the de-
+photo-realistic renderings. For better physics compliance,            formed world space Ωt at time t. The deformation gradient
+we also optionally fill the internal regions of objects. We           F (X, t) = ∇X ϕ(X, t) encodes local transformations in-
+detail these in this section.                                         cluding stretch, rotation, and shear [2]. The evolution of the
+                                                                      deformation ϕ is governed by the conservation of mass and
+                                                                      momentum. Conservation of mass ensures that the mass
+3.1. 3D Gaussian Splatting                                            within any infinitesimal region Bϵ0 ∈ Ω0 remains constant
+                                                                      over time:
+3D Gaussian Splatting method [16] reparameterizes NeRF                              \int _{B_{\epsilon }^t} \rho (\bm x,t) \equiv \int _{B_{\epsilon }^0} \rho (\bm \phi ^{-1}(\bm x,t), 0), 
+[24] using a set of unstructured 3D Gaussian kernels                                                                                                                                          (2)
+{xp , σp , Ap , Cp }p∈P , where xp , σp , Ap , and Cp represent
+the centers, opacities, covariance matrices, and spherical
+                                                                      where Bϵt = ϕ(Bϵ0 , t) and ρ(x, t) is the density field char-
+harmonic coefficients of the Gaussians, respectively. To
+                                                                      acterizing material distribution. Denoting the velocity field
+render a view, GS projects these 3D Gaussians onto the im-
+                                                                      with v(x, t), the conservation of momentum is given by
+age plane as 2D Gaussians, differing from traditional NeRF
+techniques that emit rays from the camera. The final color                                      \rho (\bm x,t) \dot {\bm v}(\bm x,t) = \nabla \cdot \bm \sigma (\bm x,t) + \bm f^{\text {ext}},                    (3)
+
+
+                                                                  3
+                                    \resizebox {.9\linewidth }{!}{ $\frac {m_i}{\Delta t} (\bm v^{n+1}_i - \bm v^{n}_i) = -\sum _p V_p^0 \frac {\partial \Psi }{\partial \bm F}(\bm F^{E, n}_p) {\bm F^{E, n}_p}^T \nabla w_{ip}^n + \bm f^{ext}_i$. } \label {eq:mpm_discretization} 
+
+
+
+
+                 1    ∂Ψ     E   E                                                             T
+where σ = det(F     ) ∂F (F )F       is the Cauchy stress ten-                                                                                                                                                                    is not necessarily Gaussian in the world space, which vio-
+sor associated with a hyperelastic energy density Ψ(F ), and                                                                                                                                                                      lates the requirements of the splatting process. Fortunately,
+f ext is the external force per unit volume [2, 14]. Here the                                                                                                                                                                     if we assume particles undergo local affine transformations
+total deformation gradient can be decomposed into an elas-                                                                                                                                                                        characterized by the first-order approximation
+tic part and a plastic part F = F E F P to support permanent                                                                                                                                                                                                                                           \tilde {\phi }_p(\bm X, t)= \bm x_p + \bm F_p (\bm X - \bm X_p), 
+rest shape changes caused by plasticity. The evolution of                                                                                                                                                                                                                                                                                                                        (6)
+F E follows some specific plastic flow such that it is always                                                                                                                                                                     the deformed kernel becomes Gaussian as desired:
+constrained within a predefined elastic region [2].
+                                                                                                                                                                                                                                                                         G_p(\bm x, t) = e^{-\frac 12 (\bm x - \bm x_p)^T (\bm F_p\bm A_p\bm F_p^{T})^{-1}(\bm x - \bm x_p)}.    (7)
+3.3. Material Point Method
+                                                                                                                                                                                                                                  This transformation naturally
+Material Point Method (MPM) solves the above governing
+                                                                                                                                                                                                                                  provides a time-dependent
+equations by combining the strengths of both Lagrangian
+                                                                                                                                                                                                                                  version of xp and Ap for the
+particles and Eulerian grids [14, 39]. The continuum is
+                                                                                                                                                                                                                                  3D GS framework:
+discretized by a collection of particles, each representing
+a small material region. These particles track several time-                                                                                                                                                                              \small \begin {split} &\bm x_p(t) = \bm \phi (\bm X_p, t), \\ &\bm a_p(t) = \bm F_p(t)\bm A_p\bm F_p(t)^{T}. \end {split} 
+varying Lagrangian quantities such as position xp , veloc-                                                                                                                                                                                                                                                                                                             (8)
+ity vp , and deformation gradient Fp . The mass conserva-
+tion in Lagrangian particles ensures the constancy of total                                                                                                                                                                       In summary, given the 3D GS of a static scene
+mass during movement. Conversely, momentum conserva-                                                                                                                                                                              {Xp , Ap , σp , Cp }, we use simulation to dynamize the scene
+tion is more natural in Eulerian representation, which avoids                                                                                                                                                                     by evolving these Gaussians to produce dynamic Gaussians
+mesh construction. We follow Stomakhin et al. [39] to in-                                                                                                                                                                         {xp (t), ap (t), σp , Cp }. Here we assume that the opacity and
+tegrate these representations using C 1 continuous B-spline                                                                                                                                                                       the coefficients of spherical harmonics are invariant over
+kernels for two-way transfer. From time step tn to tn+1 , the                                                                                                                                                                     time, but the harmonics will be rotated as discussed in the
+momentum conservation, discretized by the forward Euler                                                                                                                                                                           next section. We also initialize other physical quantities in
+scheme, is represented as                                                                                                                                                                                                         Eq. (4): the representing volume of each particle Vp0 is ini-
+                                                                                                                                                                                                                                  tialized as background cell volume divided by the number
+                                                                                                                                                                                                (4)                               of contained particles; the mass mp is then inferred from
+                                                                                                                                                                                                                                  user-specified density ρp as mp = ρp Vp0 . To render these
+Here i and p represent the fields on the Eulerian grid and                                                                                                                                                                        deformed Gaussian kernels, we use the splatting from the
+                                           n
+the Lagrangian particles respectively; wip    is the B-spline                                                                                                                                                                     original GS framework [16]. It should be highlighted that
+kernel defined on i-th grid evaluated at xnp ; Vp0 is the                                                                                                                                                                         the integration of physics into 3D Gaussians is seamless:
+initial representing volume, and ∆t is the time step size.                                                                                                                                                                        on the one hand, the Gaussians themselves are viewed as
+The updated grid velocity field vin+1 is transferred back                                                                                                                                                                         the discretization of the continuum, which can be simulated
+onto particle to vpn+1 , updating the particles’ positions to                                                                                                                                                                     directly; on the other hand, the deformed Gaussians can be
+xn+1
+  p     = xnp + ∆tvpn+1 . We track F E rather than both                                                                                                                                                                           directly rendered by the splatting procedure, avoiding the
+F and F P [37], which is updated by FpE,n+1 = (I +                                                                                                                                                                                need for commercial rendering software in traditional ani-
+                                         nT                                                                                                                                                                                       mation pipelines. Most importantly, we can directly simu-
+∆t∇vp )FpE,n = (I + ∆t i vin+1 ∇wip          )FpE,n and reg-
+                            P
+                                                                                                                                                                                                                                  late scenes reconstructed from real data, achieving WS2 .
+ularized by an additional return mapping to support plastic-
+ity evolution: FpE,n+1 ← Z(FpE,n+1 ). Different plasticity                                                                                                                                                                        3.5. Evolving Orientations of Spherical Harmonics
+models define different return mappings. We refer to the
+supplemental document for details of the simulation algo-                                                                                                                                                                         Rendering the world-space
+                                                                                                                                                                                                                                                                     Surface   View    Rotated View
+rithm and different return mappings.                                                                                                                                                                                              3D Gaussians can already
+                                                                                                                                                                                                                                  obtain high-quality results.
+3.4. Physics-Integrated 3D Gaussians                                                                                                                                                                                              However, when the ob-
+                                                                                                                                                                                                                                  ject undergoes rotations,
+We treat Gaussian kernels as discrete particle clouds for                                                                                                                                                                         the spherical harmonic bases are still represented in the ma-
+spatially discretizing the simulated continuum. As the con-                                                                                                                                                                       terial space, resulting in varying appearances even if the
+tinuum deforms, we let the Gaussian kernels deform as well.                                                                                                                                                                       view direction is fixed relatively to the object. The solution
+However, for a Gaussian kernel defined at Xp in the ma-                                                                                                                                                                           is simple: when an ellipsoid is rotated over time, we rotate
+                              1       T   −1
+terial space, Gp (X) = e− 2 (X−Xp ) Ap (X−Xp ) , the de-                                                                                                                                                                          the orientations of its spherical harmonics as well. How-
+formed kernel under the deformation map ϕ(X, t),                                                                                                                                                                                  ever, the bases are hard-coded inside the GS framework. We
+                                                                                                                                                                                                                                  equivalently achieve this evolution by applying inverse rota-
+     G_p(\bm x, t) = e^{-\frac 12 (\bm \phi ^{-1}(\bm x, t) - \bm X_p)^T \bm A^{-1}_p(\bm \phi ^{-1}(\bm x, t) - \bm X_p)}                                                                      (5)                               tion on view directions. This effect is illustrated in the inset
+
+
+                                                                                                                                                                                                                    4
+figure. We remark that the rotation of view directions is not                                                                                                                 along 6 axes and checking intersections (condition 1). Rays
+considered in Wu et al. [45]. Chen et al. [6] tackles this                                                                                                                    originating from internal cells will always intersect with the
+issue in the Point-NeRF framework, but requires tracking                                                                                                                      surface. To further refine our selection of candidate grids,
+of surface orientation. In our framework, the local rotation                                                                                                                  we employ an additional ray to assess the intersection num-
+is readily obtained in the deformation gradient Fp . Denote                                                                                                                   ber (condition 2), thus ensuring greater accuracy.
+f 0 (d) as a spherical harmonic basis in material space, with                                                                                                                     Visualization of these internal particles is also crucial
+d being a point on the unit sphere (indicating view direc-                                                                                                                    as they may get exposed due to large deformation. Those
+tion). The polar decomposition, Fp = Rp Sp , leads us to                                                                                                                      filled particles inherit σp , Cp from their closet Gaussian ker-
+the rotated harmonic basis:                                                                                                                                                   nels. Each particle’s covariance matrix is initialized as
+                                                                                                                                                                              diag(rp2 , rp2 , rp2 ), where r is the particle radius calculated
+                                                       f^{t}(\bm d) = f^0(\bm R^{T}\bm d).                                                             (9)                                                           1
+                                                                                                                                                                              from its volume: rp = (3Vp0 /4π) 3 . Alternatively, one may
+3.6. Incremental Evolution of Gaussians                                                                                                                                       also consider employing generative models for internal fill-
+                                                                                                                                                                              ing, potentially leading to more realistic results.
+We also propose an alternative way for Gaussian kinemat-
+ics that better fits the updated Lagrangian framework, which                                                                                                                   3.8. Anisotropy Regularizer
+avoids the dependency on the total deformation gradient
+                                                                                                                                                                               The anisotropy of Gaussian kernels increases the efficiency
+ \bm F  . This approach also paves the way for physical mate-
+                                                                                                                                                                               of 3D representation while over-skinny kernels may point
+rial models that do not rely on employing  \bm F  as the strain
+                                                                                                                                                                               outward from the object surface under large deformations,
+measure. Following conventions from computational fluid
+                                                                                                                                                                               leading to unexpected plush artifacts. We propose the fol-
+dynamics [4, 23], the update rule for the world-space co-
+                                                                                                                                                                               lowing training loss during 3D Gaussian reconstruction:
+variance matrix a can also be derived by discretizing the
+                                                                                                                       T
+rate form of kinematics ȧ = (∇v)a + a(∇v) :
+                                                                                                                                                                                   \label {eq:regularization} \mathcal {L}_{aniso} = \frac {1}{|\mathcal {P}|}\sum _{p\in \mathcal {P}}\max \{\max (\bm S_p) / \min (\bm S_p), r\} - r,  (12)
+                                     \resizebox {.85\linewidth }{!}{ $d(\bm x) = \sum _p \sigma _p \exp \left ( -\frac {1}{2} (\bm x - \bm x_p)^T \bm A_p^{-1} (\bm x -\bm x_p)\right )$. } 
+                 \bm a_p^{n+1} = \bm a_i^{n} + \Delta t (\nabla \bm v_p \bm a_p^n + \bm a_p^n \nabla \bm v_p^T).                                  (10)
+
+This formulation facilitates the incremental update of the                                                                                                                    where Sp are the scalings of 3D Gaussians [16]. This loss
+Gaussian kernel shapes from time step tn to tn+1 with-                                                                                                                        essentially constrains that the ratio between the major axis
+out the need to obtain  \bm F_p  . The rotation matrix Rp of each                                                                                                             length and minor axis length does not exceed r. If desired,
+spherical harmonics basis can be incrementally updated in                                                                                                                     this term can be added to the training loss.
+a similar manner. Starting from Rp0 = I, we extract the
+rotation matrix Rpn+1 from (I + ∆tvp )Rpn using the polar                                                                                                                     4. Experiments
+decomposition.
+                                                                                                                                                                              In this section, we show the versatility of our approach
+3.7. Internal Filling                                                                                                                                                         across a wide range of materials. We also evaluate the ef-
+                                                                                                                                                                              fectiveness of our method across a comprehensive suite of
+The internal structure is occluded by the object’s surface,
+                                                                                                                                                                              benchmarks.
+as the reconstructed Gaussians tend to distribute near the
+surface, resulting in inaccurate behaviors of volumetric ob-                                                                                                                  4.1. Evaluation of Generative Dynamics
+jects. To fill particles into the void internal region, inspired
+by Tang et al. [42], we borrow the 3D opacity field from 3D                                                                                                                   Datasets We evaluate our method for generating diverse
+Gaussians                                                                                                                                                                     dynamics using several sources of input. In addition to the
+                                                                                                                                                                              synthetic data (sofa suite) generated by BlenderNeRF [34],
+                                                                                                                                                   (11)                       we utilize fox, plane, and ruins from the datasets of Instant-
+                                                                                                                                                                              NGP [26], Nerfstudio [41] and the DroneDeploy NeRF
+This continuous field is         Condition 1          Condition 2
+                                                                                                                                                                              [29], respectively. Furthermore, we collect two real-world
+discretized onto a 3D                                                                                                                                                         datasets (referred to as toast and jam) with an iPhone. Each
+grid. To achieve ro-                                                                                                                                                          scene contains 150 photos. The initial point clouds and
+bust internal filling, we                                                                                                                                                     camera parameters are obtained using COLMAP [35, 36].
+first define the concept
+of “intersection” within                                                                                                                                                      Simulation Setups We build upon the MPM from Zong
+                               External Grid Internal Grid       Ray
+the opacity field, guided                                                                                                                                                     et al. [53]. To generate novel physics-based dynamics of
+by a user-defined threshold σth . Specifically, we consider it                                                                                                                a 3D Gaussian scene, we manually select a simulation re-
+an intersection when a ray passes from a lower opacity grid                                                                                                                   gion and normalize it to a cube with edge length 2. The
+(σi < σth ) to a higher opacity one (σj > σth ). Based on                                                                                                                     internal particle filling can be performed before simulation.
+this definition, we identify candidate grids by casting rays                                                                                                                  The cuboid simulation domain is discretized by a 3D dense
+
+
+                                                                                                                                                                    5
+             Static                                                   Physics-based Dynamics
+Elasticity
+ Metal
+Fracture
+ Sand
+Paste
+ Collision
+
+
+
+
+Figure 3. Material Versatility. We demonstrate exceptional versatility of our approach across a wide variety of examples: fox (elastic
+entity), plane (plastic metal), toast (fracture), ruins (granular material), jam (viscoplastic material), and sofa suite (collision).
+
+
+grid. We selectively modify the velocities of specific parti-         ample with its initial scene and deformation sequence, as
+cles to induce controlled movement. The remaining parti-              shown in Fig. 3. Additional experiments are included in
+cles follow natural motion patterns governed by the estab-            the supplemental document. The dynamics include: Elas-
+lished physical laws. All our experiments are performed on            ticity refers to the property where the rest shape of the
+a 24-core 3.50GHz Intel i9-10920X machine with a Nvidia               object remains invariant during deformation, representing
+RTX 3090 GPU.                                                         the simplest form of daily-life dynamics. Metal can un-
+                                                                      dergo permanent rest shape changes, which follows von-
+Results We simulate a wide range of physics-based dy-                 Mises plasticity model. Fracture is naturally supported by
+namics. For each type of dynamics, we visualize one ex-
+
+
+                                                                  6
+                Ground Truth   Ours   Deforming-NeRF NeRF-Editing   PAC-NeRF       Ground Truth     Ours       Fixed Cov.   Rigid Cov. Fixed Harmonics
+Wolf (bend)
+Wolf (twist)
+
+
+
+
+                                                                                   Figure 5. Ablation Studies. Non-extensible Gaussians can lead to
+                                                                                   severe visual artifacts during deformations. Although direct ren-
+                                                                                   dering the deformed Gaussian kernels can already obtain good re-
+                                                                                   sults, additional rotations on spherical harmonics can improve the
+Stool (bend)
+
+
+
+
+                                                                                   rendering quality.
+
+
+                                                                                   as ground truth for the deformed NeRFs. The lattice defor-
+Stool (twist)
+
+
+
+
+                                                                                   mations are set as input to all methods for fair comparisons.
+                                                                                   Comparisons We compare our method with several state-
+                                                                                   of-the-art NeRF frameworks that support manual deforma-
+                                                                                   tions: 1) NeRF-Editing [51] deforms NeRF using an ex-
+Plant (bend)
+
+
+
+
+                                                                                   tracted surface mesh, 2) Deforming-NeRF [47] utilizes a
+                                                                                   cage mesh for deformation, and 3) PAC-NeRF [18] manip-
+                                                                                   ulates individual initial particles.
+Plant (twist)
+
+
+
+
+                                                                                       We show qualitative results in Fig. 4 and quantitative re-
+                                                                                   sults in Tab. 1. NeRF-Editing uses NeuS [43] as the scene
+                                                                                   representation, which is more suited for surface reconstruc-
+                                                                                   tions rather than high-fidelity renderings. Consequently, its
+Figure 4. Comparisons. For each benchmark case, we select one                      rendering quality is inherently lower than that of 3DGS.
+test viewpoint and visualize all comparisons. We zoom in on some                   Furthermore, the deformation highly depends on the pre-
+regions to highlight the ability of our method to maintain high-                   cision of the extracted surface mesh and the dilated cage
+fidelity rendering quality after deformations. We use a black back-                mesh – an overly tight mesh might not encompass the en-
+ground to avoid the interference of the background.                                tire radiance field, while an excessively large one could re-
+                                                                                   sult in a void border, as observed in the twisting stool and
+                                                                                   plant examples. Deforming-NeRF, on the other hand, pro-
+MPM simulation, where large deformations can cause parti-                          vides clear renderings and potentially leads to enhanced re-
+cles to separate into multiple groups. Sand follows Druker-                        sults if higher-resolution deformation cages are provided.
+Prager plasticity model [17], which can capture granular-                          However, it employs a smooth interpolation from all cage
+level frictional effects among particles. Paste is modeled                         vertices, thus filtering out fine local details and failing to
+as viscoplastic non-Newtonian fluid, adhering to Herschel-                         match lattice deformations. PAC-NeRF is designed for
+Bulkley plasticity model [52]. Collision is another key fea-                       simpler objects and textures in system identification tasks.
+ture of MPM simulation, which is automatically handled by                          While offering flexibility through its particle representation,
+grid time integration. Explicit MPM can be highly opti-                            it does not achieve high rendering fidelity. Our method
+mized to run on GPUs. We highlight that some of the cases                          utilizes both zero-order information (the deformation map)
+can achieve real-time based on the 1/24-s frame duration:                          and first-order information (the deformation gradient) from
+plane (30 FPS), toast (25 FPS) and jam (36 FPS). While uti-                        each lattice cell. It outperforms the other methods across all
+lizing FEM may further accelerate the elasticity simulation,                       cases, as high rendering qualities are well preserved after
+it will involve an additional step of mesh extraction and lose                     deformations. Although not primarily designed for editing
+the generalizability of MPM in inelasticity simulation.                            tasks, this comparison showcases our method’s significant
+                                                                                   potential for realistic editing of static NeRF scenes.
+4.2. Lattice Deformation Benchmarks
+                                                                                   Ablation Studies We further conduct several ablation
+Dataset Due to the absence of ground truth for post-                               studies on these benchmark scenes to validate the neces-
+deformation, we utilize BlenderNeRF [34] to synthesize                             sity of the kinematics of Gaussian kernels and spherical
+several scenes, applying bending and twisting with the lat-                        harmonics: 1) Fixed Covariance only translates the Gaus-
+tice deformation tool. For each scene, we create 100 multi-                        sian kernels. 2) Rigid Covariance only applies rigid trans-
+view renderings of the undeformed state for training, and                          formations on the Gaussians, as assumed in Luiten et al.
+100 multi-view renderings of each deformed state to serve                          [22]. 3) Fixed Harmonics does not rotate the orientations
+
+
+                                                                               7
+Table 1. We synthesize a lattice deformation benchmark dataset                                           Ours                          NeRF-Editing
+to compare with baselines and conduct ablation studies to validate
+our design choices. PSNR scores are reported (higher is better).
+                                                                                        Stretch                           Stretch
+Our method outperforms the others across all cases.
+
+ Test Case                        Wolf           Stool              Plant
+ Deformation Operator         Bend Twist      Bend Twist         Bend Twist
+                                                                                        Figure 7. Volume Conservation. Compared to the geometry-
+ NeRF-Editing [51]            26.74   24.37   25.00    21.10     19.85      19.08       based editing method [51], our physics-based method is able to
+ Deforming-NeRF [47]          21.65   21.72   22.32    21.16     17.90      18.63
+                                                                                        capture volumetric behaviors, leading to more realistic dynamics.
+ PAC-NeRF [18]                26.91   25.27   21.83    21.26     18.50      17.78
+ Fixed Covariance             26.77   26.02   29.94    25.31     23.95      23.09
+ Rigid Covariance             26.84   26.16   30.28    25.70     24.09      23.53       w/ Regularizer                   w/o Regularizer
+ Fixed Harmonics              26.83   26.02   30.87    25.75     25.09      23.69
+ Ours                         26.96   26.46   31.15    26.15     25.81      23.87
+
+       w/o Internal Filling                           w/ Internal Filling
+
+
+
+                                         ν↑
+
+
+
+                                                                                        Figure 8. Anisotropy Regularizer. We introduce an anisotropy
+                                                                                        constraint for Gaussian kernels, effectively enhancing the fidelity
+               E↑                                               E↑
+                                                                                        of the Gaussian-based representation under dynamic conditions.
+Figure 6. Internal filling enables more realistic simulation results.
+Our method also supports flexible control of dynamics via material
+parameters. A larger Young’s modulus E indicates higher stiffness
+                                                                                        Volume Conservation Existing approaches to NeRF ma-
+while a larger poission ratio ν leads to better volume preservation.                    nipulation focus primarily on geometric adjustments with-
+                                                                                        out incorporating physical properties. A key attribute of
+                                                                                        real-world objects is their inherent ability to conserve vol-
+of spherical harmonics, as assumed in Wu et al. [45].                                   ume during deformation. In Fig. 7, we conduct a com-
+    Here we visualize one example in Fig. 5. We can ob-                                 parison study between our method and NeRF-Editing [51],
+serve that Gaussians will not properly cover the surface af-                            which utilizes surface As-Rigid-As-Possible (ARAP) defor-
+ter deformation if they are non-extensible, leading to severe                           mation [38]. Unlike NeRF-Editing, our approach accurately
+visual artifacts. Enabling the rotation of spherical harmon-                            captures and maintains the volume of the deformed objects.
+ics can slightly improve the consistency with the ground
+truth. We include quantitative results on all test cases in
+                                                                                        Anisotropy Regularizer 3D Gaussian models inherently
+Tab. 1, which shows that all these enhancements are needed
+                                                                                        represent anisotropic ellipsoids. However, excessively slen-
+to achieve the best performance of our method.
+                                                                                        der Gaussian kernels can lead to burr-like visual artifacts,
+4.3. Additional Qualitative Studies                                                     especially pronounced during large deformations To tackle
+                                                                                        this issue, we introduce an additional regularization loss
+Internal Filling Typically, the 3D Gaussian splatting                                   Eq. (12) to constrain anisotropy. As demonstrated in Fig. 8,
+framework focuses on the surface appearance of objects and                              this additional loss function effectively mitigates the arti-
+often fails to capture their internal structure. Consequently,                          facts induced by extreme anisotropy.
+the interior of the modeled object remains hollow, resem-
+bling a mere shell. This is usually not true in the real world,                         5. Discussion
+leading to unrealistic simulation results. To address this
+challenge, we introduce an internal filling method leverag-                             Conclusion This paper introduces PhysGaussian, a uni-
+ing a reconstructed density field, which is derived from the                            fied simulation-rendering pipeline that generates physics-
+opacity of Gaussian kernels. Fig. 6 showcases our simula-                               based dynamics and photo-realistic renderings simultane-
+tion results with varying physical parameters. Objects de-                              ously and seamlessly.
+void of internal particles tend to collapse when subjected to
+gravity forces, irrespective of the material parameters used.                           Limitation In our framework, the evolution of shadows
+In contrast, our approach assisted by internal filling allows                           is not considered, and material parameters are manually
+for nuanced control over object dynamics, effectively ad-                               set. Automatic parameter assignment could be derived from
+justing to different material characteristics.                                          videos by combining GS segmentation [3, 50] with a dif-
+                                                                                        ferentiable MPM simulator. Additionally, incorporating
+
+
+                                                                                    8
+geometry-aware 3DGS reconstruction methods [9] could               References
+enhance generative dynamics. Future work will also ex-
+                                                                    [1] Jonathan T Barron, Ben Mildenhall, Dor Verbin, Pratul P
+plore handling more versatile materials like liquids and in-            Srinivasan, and Peter Hedman. Mip-nerf 360: Unbounded
+tegrating more intuitive user controls, possibly leveraging             anti-aliased neural radiance fields. In Proceedings of the
+advancements in Large Language Models (LLMs).                           IEEE/CVF Conference on Computer Vision and Pattern
+Acknowledgements We thank Ying Nian Wu and Feng                         Recognition, pages 5470–5479, 2022. 2
+Gao for useful discussions. We acknowledge support from             [2] Javier Bonet and Richard D Wood. Nonlinear continuum
+NSF (2301040, 2008915, 2244651, 2008564, 2153851,                       mechanics for finite element analysis. Cambridge university
+                                                                        press, 1997. 3, 4
+2023780), UC-MRPI, Sony, Amazon, and TRI.
+                                                                    [3] Jiazhong Cen, Jiemin Fang, Chen Yang, Lingxi Xie, Xi-
+                                                                        aopeng Zhang, Wei Shen, and Qi Tian. Segment any 3d
+                                                                        gaussians. arXiv preprint arXiv:2312.00860, 2023. 8
+                                                                    [4] S Chandrasekhar. Ellipsoidal figures of equilibrium—an his-
+                                                                        torical account. Communications on Pure and Applied Math-
+                                                                        ematics, 20(2):251–265, 1967. 5
+                                                                    [5] Hsiao-yu Chen, Edith Tretschk, Tuur Stuyck, Petr Kadlecek,
+                                                                        Ladislav Kavan, Etienne Vouga, and Christoph Lassner. Vir-
+                                                                        tual elastic objects. In Proceedings of the IEEE/CVF Con-
+                                                                        ference on Computer Vision and Pattern Recognition, pages
+                                                                        15827–15837, 2022. 2
+                                                                    [6] Jun-Kun Chen, Jipeng Lyu, and Yu-Xiong Wang. Neuraled-
+                                                                        itor: Editing neural radiance fields via manipulating point
+                                                                        clouds. In Proceedings of the IEEE/CVF Conference on
+                                                                        Computer Vision and Pattern Recognition, pages 12439–
+                                                                        12448, 2023. 2, 5
+                                                                    [7] Sara Fridovich-Keil, Alex Yu, Matthew Tancik, Qinhong
+                                                                        Chen, Benjamin Recht, and Angjoo Kanazawa. Plenoxels:
+                                                                        Radiance fields without neural networks. In Proceedings of
+                                                                        the IEEE/CVF Conference on Computer Vision and Pattern
+                                                                        Recognition, pages 5501–5510, 2022. 2
+                                                                    [8] Ming Gao, Xinlei Wang, Kui Wu, Andre Pradhana, Efty-
+                                                                        chios Sifakis, Cem Yuksel, and Chenfanfu Jiang. Gpu opti-
+                                                                        mization of material point methods. ACM Transactions on
+                                                                        Graphics (TOG), 37(6):1–12, 2018. 3
+                                                                    [9] Antoine Guédon and Vincent Lepetit. Sugar: Surface-
+                                                                        aligned gaussian splatting for efficient 3d mesh recon-
+                                                                        struction and high-quality mesh rendering. arXiv preprint
+                                                                        arXiv:2311.12775, 2023. 9
+                                                                   [10] Yuanming Hu, Yu Fang, Ziheng Ge, Ziyin Qu, Yixin Zhu,
+                                                                        Andre Pradhana, and Chenfanfu Jiang. A moving least
+                                                                        squares material point method with displacement disconti-
+                                                                        nuity and two-way rigid body coupling. ACM Transactions
+                                                                        on Graphics (TOG), 37(4):1–14, 2018. 2
+                                                                   [11] Yuanming Hu, Tzu-Mao Li, Luke Anderson, Jonathan
+                                                                        Ragan-Kelley, and Frédo Durand. Taichi: a language
+                                                                        for high-performance computation on spatially sparse data
+                                                                        structures. ACM Transactions on Graphics (TOG), 38(6):
+                                                                        1–16, 2019. 3
+                                                                   [12] Clément Jambon, Bernhard Kerbl, Georgios Kopanas,
+                                                                        Stavros Diolatzis, Thomas Leimkühler, and George” Dret-
+                                                                        takis. Nerfshop: Interactive editing of neural radiance
+                                                                        fields”. Proceedings of the ACM on Computer Graphics and
+                                                                        Interactive Techniques, 6(1), 2023. 1
+                                                                   [13] Chenfanfu Jiang, Craig Schroeder, Andrew Selle, Joseph
+                                                                        Teran, and Alexey Stomakhin. The affine particle-in-cell
+                                                                        method. ACM Transactions on Graphics (TOG), 34(4):1–10,
+                                                                        2015. 3, 11, 12
+
+
+                                                               9
+[14] Chenfanfu Jiang, Craig Schroeder, Joseph Teran, Alexey                  [27] Keunhong Park, Utkarsh Sinha, Jonathan T Barron, Sofien
+     Stomakhin, and Andrew Selle. The material point method                       Bouaziz, Dan B Goldman, Steven M Seitz, and Ricardo
+     for simulating continuum materials. In Acm siggraph 2016                     Martin-Brualla. Nerfies: Deformable neural radiance fields.
+     courses, pages 1–52. 2016. 4, 11                                             In Proceedings of the IEEE/CVF International Conference
+[15] Chenfanfu Jiang, Theodore Gast, and Joseph Teran.                            on Computer Vision, pages 5865–5874, 2021. 2
+     Anisotropic elastoplasticity for cloth, knit and hair frictional        [28] Yicong Peng, Yichao Yan, Shengqi Liu, Yuhao Cheng,
+     contact. ACM Transactions on Graphics (TOG), 36(4):1–14,                     Shanyan Guan, Bowen Pan, Guangtao Zhai, and Xiaokang
+     2017. 3                                                                      Yang. Cagenerf: Cage-based neural radiance field for gen-
+[16] Bernhard Kerbl, Georgios Kopanas, Thomas Leimkühler,                        eralized 3d deformation and animation. Advances in Neural
+     and George Drettakis. 3d gaussian splatting for real-time                    Information Processing Systems, 35:31402–31415, 2022. 1,
+     radiance field rendering. ACM Transactions on Graphics                       2
+     (ToG), 42(4):1–14, 2023. 1, 2, 3, 4, 5                                  [29] Nicholas Pilkington. Dronedeploy nerf dataset, 2022. 5
+[17] Gergely Klár, Theodore Gast, Andre Pradhana, Chuyuan                   [30] Albert Pumarola, Enric Corona, Gerard Pons-Moll, and
+     Fu, Craig Schroeder, Chenfanfu Jiang, and Joseph Teran.                      Francesc Moreno-Noguer. D-nerf: Neural radiance fields
+     Drucker-prager elastoplasticity for sand animation. ACM                      for dynamic scenes. In Proceedings of the IEEE/CVF Con-
+     Transactions on Graphics (TOG), 35(4):1–12, 2016. 3, 7,                      ference on Computer Vision and Pattern Recognition, pages
+     12                                                                           10318–10327, 2021. 2
+[18] Xuan Li, Yi-Ling Qiao, Peter Yichen Chen, Krishna Murthy                [31] Yi-Ling Qiao, Alexander Gao, and Ming Lin.              Neu-
+     Jatavallabhula, Ming Lin, Chenfanfu Jiang, and Chuang                        physics: Editable neural geometry and physics from monoc-
+     Gan. PAC-neRF: Physics augmented continuum neural ra-                        ular videos. Advances in Neural Information Processing Sys-
+     diance fields for geometry-agnostic system identification. In                tems, 35:12841–12854, 2022. 2
+     The Eleventh International Conference on Learning Repre-                [32] Yi-Ling Qiao, Alexander Gao, Yiran Xu, Yue Feng, Jia-Bin
+     sentations, 2023. 2, 7, 8                                                    Huang, and Ming C Lin. Dynamic mesh-aware radiance
+[19] Yuan Li, Zhi-Hao Lin, David Forsyth, Jia-Bin Huang, and                      fields. In Proceedings of the IEEE/CVF International Con-
+     Shenlong Wang. Climatenerf: Extreme weather synthesis                        ference on Computer Vision, pages 385–396, 2023. 2
+     in neural radiance field. In Proceedings of the IEEE/CVF                [33] Yuxing Qiu, Samuel Temple Reeve, Minchen Li, Yin Yang,
+     International Conference on Computer Vision, pages 3227–                     Stuart Ryan Slattery, and Chenfanfu Jiang. A sparse dis-
+     3238, 2023. 2                                                                tributed gigascale resolution material point method. ACM
+[20] Zhi-Hao Lin, Wei-Chiu Ma, Hao-Yu Hsu, Yu-Chiang Frank                        Transactions on Graphics, 42(2):1–21, 2023. 3
+     Wang, and Shenlong Wang. Neurmips: Neural mixture                       [34] Maxime Raafat. BlenderNeRF, 2023. 5, 7, 12
+     of planar experts for view synthesis. In Proceedings of                 [35] Johannes Lutz Schönberger and Jan-Michael Frahm.
+     the IEEE/CVF Conference on Computer Vision and Pattern                       Structure-from-motion revisited. In Conference on Com-
+     Recognition, pages 15702–15712, 2022. 2                                      puter Vision and Pattern Recognition (CVPR), 2016. 5
+[21] Ruiyang Liu, Jinxu Xiang, Bowen Zhao, Ran Zhang, Jingyi                 [36] Johannes Lutz Schönberger, Enliang Zheng, Marc Pollefeys,
+     Yu, and Changxi Zheng. Neural impostor: Editing neu-                         and Jan-Michael Frahm. Pixelwise view selection for un-
+     ral radiance fields with explicit shape manipulation. arXiv                  structured multi-view stereo. In European Conference on
+     preprint arXiv:2310.05391, 2023. 2                                           Computer Vision (ECCV), 2016. 5
+[22] Jonathon Luiten, Georgios Kopanas, Bastian Leibe, and                   [37] Juan C Simo and Thomas JR Hughes. Computational inelas-
+     Deva Ramanan.           Dynamic 3d gaussians: Tracking                       ticity. Springer Science & Business Media, 2006. 4
+     by persistent dynamic view synthesis.           arXiv preprint          [38] Olga Sorkine and Marc Alexa. As-rigid-as-possible surface
+     arXiv:2308.09713, 2023. 2, 7                                                 modeling. In Symposium on Geometry processing, pages
+[23] WILLIAM J McKIVER and David G Dritschel. The mo-                             109–116. Citeseer, 2007. 8
+     tion of a fluid ellipsoid in a general linear background flow.          [39] Alexey Stomakhin, Craig Schroeder, Lawrence Chai, Joseph
+     Journal of Fluid Mechanics, 474:147–173, 2003. 5                             Teran, and Andrew Selle. A material point method for snow
+[24] Ben Mildenhall, Pratul P Srinivasan, Matthew Tancik,                         simulation. ACM Transactions on Graphics (TOG), 32(4):
+     Jonathan T Barron, Ravi Ramamoorthi, and Ren Ng. Nerf:                       1–10, 2013. 3, 4
+     Representing scenes as neural radiance fields for view syn-             [40] Cheng Sun, Min Sun, and Hwann-Tzong Chen. Direct voxel
+     thesis. Communications of the ACM, 65(1):99–106, 2021. 1,                    grid optimization: Super-fast convergence for radiance fields
+     2, 3, 12                                                                     reconstruction. In Proceedings of the IEEE/CVF Conference
+[25] Matthias Müller, Nuttapong Chentanez, and Miles Macklin.                    on Computer Vision and Pattern Recognition, pages 5459–
+     Simulating visual geometry. In Proceedings of the 9th In-                    5469, 2022. 2
+     ternational Conference on Motion in Games, pages 31–38,                 [41] Matthew Tancik, Ethan Weber, Evonne Ng, Ruilong Li,
+     2016. 2                                                                      Brent Yi, Terrance Wang, Alexander Kristoffersen, Jake
+[26] Thomas Müller, Alex Evans, Christoph Schied, and Alexan-                    Austin, Kamyar Salahi, Abhik Ahuja, et al. Nerfstudio: A
+     der Keller. Instant neural graphics primitives with a mul-                   modular framework for neural radiance field development.
+     tiresolution hash encoding. ACM Transactions on Graphics                     In ACM SIGGRAPH 2023 Conference Proceedings, pages
+     (ToG), 41(4):1–15, 2022. 2, 5                                                1–12, 2023. 5
+
+
+                                                                        10
+[42] Jiaxiang Tang, Jiawei Ren, Hang Zhou, Ziwei Liu, and Gang            Appendix
+     Zeng. Dreamgaussian: Generative gaussian splatting for effi-
+     cient 3d content creation. arXiv preprint arXiv:2309.16653,          A. MPM Algorithm
+     2023. 5
+                                                                          In MPM, a continuum body is discretized into a set of La-
+[43] Peng Wang, Lingjie Liu, Yuan Liu, Christian Theobalt, Taku
+     Komura, and Wenping Wang. Neus: Learning neural im-                  grangian particles p, and time is discretized into a sequence
+     plicit surfaces by volume rendering for multi-view recon-            of time steps t = 0, t1 , t2 , .... Here we take a fixed stepsize
+     struction. In Advances in Neural Information Processing              ∆t, so tn = n∆t.
+     Systems, 2021. 7                                                         At each time step, masses and momentums on particles
+[44] Xinlei Wang, Yuxing Qiu, Stuart R Slattery, Yu Fang,                 are first transferred to grid nodes. Grid velocities are then
+     Minchen Li, Song-Chun Zhu, Yixin Zhu, Min Tang, Dinesh               updated using forward Euler’s method and transferred back
+     Manocha, and Chenfanfu Jiang. A massively parallel and               to particles for subsequent advection. Let mp , xnp , vpn , Fpn ,
+     scalable multi-gpu material point method. ACM Transac-               τpn , and Cpn denote the mass, position, velocity, deforma-
+     tions on Graphics (TOG), 39(4):30–1, 2020. 3                         tion gradient, Kirchhoff stress, and affine momentum on
+[45] Guanjun Wu, Taoran Yi, Jiemin Fang, Lingxi Xie, Xiaopeng             particle p at time tn . Let mi , xni and vin denote the mass,
+     Zhang, Wei Wei, Wenyu Liu, Qi Tian, and Xinggang Wang.               position, and velocity on grid node i at time tn . Here, par-
+     4d gaussian splatting for real-time dynamic scene rendering.
+                                                                          ticle masses are invariant due to mass conservation law. Let
+     arXiv preprint arXiv:2310.08528, 2023. 2, 3, 5, 8
+                                                                          mni , xni and vin denote the mass, position, and velocity on
+[46] Qiangeng Xu, Zexiang Xu, Julien Philip, Sai Bi, Zhixin
+     Shu, Kalyan Sunkavalli, and Ulrich Neumann. Point-nerf:
+                                                                          grid node i at time tn . We summarize the explicit MPM
+     Point-based neural radiance fields. In Proceedings of the            algorithm as follows:
+     IEEE/CVF Conference on Computer Vision and Pattern                   1. Transfer Particles to Grid. Transfer mass and momen-
+     Recognition, pages 5438–5448, 2022. 2                                    tum from particles to grids as
+[47] Tianhan Xu and Tatsuya Harada. Deforming radiance fields
+     with cages. In European Conference on Computer Vision,                                                                     \begin {aligned} m_{{i}}^n &=\sum _p w_{{i} p}^n m_p, \\ m_i^n\boldsymbol {v}_{{i}}^n &= \sum _p w_{{i} p}^n m_p\left (\boldsymbol {v}_p^n+\boldsymbol {C}_p^n\left (\boldsymbol {x}_{{i}}-\boldsymbol {x}_p^n\right )\right ). \end {aligned} 
+     pages 159–175. Springer, 2022. 1, 7, 8                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    (13)
+[48] Ziyi Yang, Xinyu Gao, Wen Zhou, Shaohui Jiao, Yuqing
+     Zhang, and Xiaogang Jin. Deformable 3d gaussians for
+     high-fidelity monocular dynamic scene reconstruction. arXiv
+     preprint arXiv:2309.13101, 2023. 2                                      We adopt the APIC scheme [13] for momentum transfer.
+[49] Zeyu Yang, Hongye Yang, Zijie Pan, Xiatian Zhu, and Li               2. Grid Update. Update grid velocities based on forces at
+     Zhang. Real-time photorealistic dynamic scene representa-               the next timestep by
+     tion and rendering with 4d gaussian splatting. arXiv preprint
+     arXiv:2310.10642, 2023. 2                                                      \boldsymbol {v}_i^{n+1} = \boldsymbol {v}_i^{n} - \frac {\Delta t}{m_i} \sum _p \boldsymbol {\tau }_p^n \nabla w_{i p}^n V_p^0 + \Delta t \boldsymbol {g}.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 (14)
+[50] Mingqiao Ye, Martin Danelljan, Fisher Yu, and Lei Ke.
+     Gaussian grouping: Segment and edit anything in 3d scenes.           3. Transfer Grid to Particles. Transfer velocities back to
+     arXiv preprint arXiv:2312.00732, 2023. 8                                particles and update particle states.
+[51] Yu-Jie Yuan, Yang-Tian Sun, Yu-Kun Lai, Yuewen Ma,
+     Rongfei Jia, and Lin Gao. Nerf-editing: geometry editing of                    \begin {aligned} \boldsymbol {v}_p^{n+1}&=\sum _i \boldsymbol {v}_{{i}}^{n+1} w_{{i} p}^n, \\ \boldsymbol {x}_p^{n+1} &= \boldsymbol {x}_p^{n} + \Delta t \boldsymbol {v}_p^{n+1}, \\ {\boldsymbol {C}}_p^{n+1}&=\frac {12}{\Delta x^2(b+1)} \sum _{{i}} w_{{i} p}^n \boldsymbol {v}_i^{n+1} \left (\boldsymbol {x}_{{i}}^n-\boldsymbol {x}_p^n\right )^T,\\ \nabla \bm v_p^{n+1} &= \sum _i \boldsymbol {v}_{{i}}^{n+1} {\nabla w_{{i} p}^n}^{T},\\ \boldsymbol {F}_p^{\text {E, tr}} &= (\bm I + \nabla \bm v_p^{n+1}) \bm F^{E, n},\\ \boldsymbol {F}_p^{E,n+1} &= \mathcal {Z}(\boldsymbol {F}_p^{\text {E, tr}}), \\ \boldsymbol {\tau }_p^{n+1} &= \boldsymbol {\tau }(\boldsymbol {F}_p^{E,n+1}). \end {aligned} 
+     neural radiance fields. In Proceedings of the IEEE/CVF Con-
+     ference on Computer Vision and Pattern Recognition, pages
+     18353–18364, 2022. 1, 2, 7, 8
+[52] Yonghao Yue, Breannan Smith, Christopher Batty, Changxi
+     Zheng, and Eitan Grinspun. Continuum foam: A material
+     point method for shear-dependent flows. ACM Transactions
+     on Graphics (TOG), 34(5):1–20, 2015. 7, 12
+[53] Zeshun Zong, Xuan Li, Minchen Li, Maurizio M Chiara-
+     monte, Wojciech Matusik, Eitan Grinspun, Kevin Carlberg,
+     Chenfanfu Jiang, and Peter Yichen Chen. Neural stress
+     fields for reduced-order elastoplasticity and fracture. arXiv
+     preprint arXiv:2310.17790, 2023. 5, 12
+                                                                                                                                   (15)
+                                                                             Here b is the B-spline degree, and ∆x is the Eulerian grid
+                                                                             spacing. The computation of the return map Z and the
+                                                                             Kirchhoff stress τ is outlined in Appendix B. We refer
+                                                                             the readers to [14] for the detailed derivations from the
+                                                                             continuous conservation law to its MPM discretization.
+
+
+                                                                     11
+                                           Table 2. Model Settings.                                                                                                                                     B.3. Neo-Hookean Elasticity
+       Scene                                                      Figure                                           Constitutive Model                                                                   The Kirchhoff stress τ is defined as
+       Vasedeck                                                   Fig. 1                                           Fixed corotated
+                                                                                                                                                                                                                                                                                                                         \boldsymbol {\tau } = \mu (\boldsymbol {F}^E {\boldsymbol {F}^E}^T - \boldsymbol {I}) + \log (J) \boldsymbol {I},                                                                                                                                                                                       (18)
+       Ficus                                                      Fig. 2                                           Fixed corotated
+       Fox                                                        Fig. 3                                           Fixed corotated                                                                      where J is the determinant of F E [13].
+       Plane                                                      Fig. 3                                           von Mises
+       Toast                                                      Fig. 3                                           Fixed corotated                                                                      B.4. Drucker-Prager Plasticity
+       Ruins                                                      Fig. 3                                           Drucker-Prager                                                                       The return mapping of Drucker-Prager plasticity for sand
+       Jam                                                        Fig. 3                                           Herschel-Bulkley                                                                     [17] is, given F = U ΣV T and ϵ = log(Σ),
+       Sofa Suite                                                 Fig. 3                                           Fixed corotated
+       Materials                                                  Fig. 6                                           Fixed corotated                                                                                                                                                                                                                                                     \boldsymbol {F}^E = \boldsymbol {U} \mathcal {Z}(\boldsymbol {\Sigma }) \boldsymbol {V}^T,                                                                                                                                                (19)
+       Microphone                                                 Fig. 7                                           Neo-Hookean
+       Bread                                                      Fig. 9                                           Fixed corotated
+       Cake                                                       Fig. 9                                           Herschel-Bulkley
+       Can                                                        Fig. 9                                           von Mises                                                                              \mathcal {Z}(\boldsymbol {\Sigma })=\left \{\begin {array}{ll} \mathbf {1}, & \operatorname {sum}(\boldsymbol {\epsilon })>0, \\ \boldsymbol {\Sigma }, & \delta \gamma \leq 0, \text { and } \operatorname {sum}(\boldsymbol {\epsilon }) \leq 0, \\ \exp \left (\boldsymbol {\epsilon }-\delta \gamma \frac {\hat {\epsilon }}{\|\hat {\epsilon }\|}\right ), & \text { otherwise. } \end {array}\right . 
+       Wolf                                                       Fig. 9                                           Drucker-Prager
+
+                            Table 3. Material Parameters.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                q                                       (20)
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  2 2 sin ϕf
+                                                                                                                                                                                                        Here δγ = ∥ϵ̂∥ + α (dλ+2µ)
+                                                                                                                                                                                                                                2µ
+                                                                                                                                                                                                                                   sum(ϵ)
+                                                                                                                                                                                                                                          ,α=                                                                                                                                                                                                                                                                                                                                                                     3 3−sin ϕf , and
+     Notation                       Meaning                                                                                                 Relation to E, ν                                            ϕf is the friction angle. ϵ̂ = dev(ϵ).
+     E                              Young’s modulus                                                                                         /
+     ν                              Poisson’s ratio                                                                                         /                                                           B.5. von Mises Plasticity
+                                                                                                                                                   E
+     µ                              Shear modulus                                                                                           µ = 2(1+ν)                                                  Similar to Drucker-Prager plasticity, given F = U ΣV T
+                                                                                                                                                      Eν
+     λ                              Lamé modulus                                                                                           λ = (1+ν)(1−2ν)                                             and ϵ = log(Σ),
+                                                                                                                                                    E
+     κ                              Bulk modulus                                                                                            κ = 3(1−2ν)
+                                                                                                                                                                                                                                                                                                                                                                                       \boldsymbol {F}^E = \boldsymbol {U} \mathcal {Z}(\boldsymbol {\Sigma }) \boldsymbol {V}^T, 
+
+B. Elasticity and Plasticity Models                                                                                                                                                                     where
+
+We adopt the constitutive models used in [53]. We list the                                                                                                                                                                                   \mathcal {Z}(\boldsymbol {\Sigma })=\left \{\begin {array}{ll} \boldsymbol {\Sigma }, & \delta \gamma \leq 0, \\ \exp \left (\boldsymbol {\epsilon }-\delta \gamma \frac {\hat {\epsilon }}{\|\boldsymbol {\epsilon }\|}\right ), & \text { otherwise, } \end {array}\right .                                                                                                       (21)
+models used for each scene in Tab. 2 and summarize all the
+parameters needed in discussing the constitutive models in
+Tab. 3.                                                                                                                                                                                                 and δγ = ∥ϵ̂∥F − τ2µ
+                                                                                                                                                                                                                           Y
+                                                                                                                                                                                                                             . Here τY is the yield stress.
+    In all plasticity models used in our work, the deformation                                                                                                                                          B.6. Herschel-Bulkley Plasticity
+gradient is multiplicatively decomposed into F = F E F P
+following some yield stress condition. A hyperelastic con-                                                                                                                                              We follow Yue et al. [52] and take the simple case where
+stitutive model is applied to F E to compute the Kirch-                                                                                                                                                 h = 1. Denote strial = dev(τ trial      trial   trial
+                                                                                                                                                                                                                                       q), and s = ||s ||. The
+hoff stress τ . For a pure elastic continuum, we simply take                                                                                                                                            yield condition is Φ(s) = s −                                                                                                                                                                                                                                                                          2
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             ≤ 0. If it is violated,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               3 σY
+FE = F.
+                                                                                                                                                                                                        we modify strial by
+B.1. Fixed Corotated Elasticity                                                                                                                                                                                                                                                                                                                                                                                                                   r                                                                  !                                                                                                  
+                                                                                                                                                                                                                                                                                                            trial                                                                            trial                                                                         2                                                                                                                                       η
+The Kirchhoff stress τ is defined as                                                                                                                                                                                                                      s=s                                                                              −                                       s                                        −                                                σY                                       / 1+                                                                                                   .
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                           3                                                                                                                                     2µ∆t
+            \boldsymbol {\tau } = 2 \mu (\boldsymbol {F}^E-\boldsymbol {R}) {\boldsymbol {F}^E}^{T}+\lambda (J-1) J,                                                                        (16)                                                                                                                                                                                                                                                                                                                                                                            trial
+
+                                    T                                          E                                                           T
+                                                                                                                                                                                                        s can then be recovered as s = s · ||sstrial || . Define bE =
+where R = U V and F = U ΣV is the singular value                                                                                                                                                                                                                           T
+decomposition of elastic deformation gradient. J is the de-                                                                                                                                             F E F E . The Kirchhoff stress τ is computed as
+terminant of F E [13].                                                                                                                                                                                             κ 2                    h         1
+                                                                                                                                                                                                                                                        i
+                                                                                                                                                                                                                      J − 1 I + µ dev det(bE )− 3 bE .
+                                                                                                                                                                                                                            
+                                                                                                                                                                                                               τ =
+B.2. StVK Elasticity                                                                                                                                                                                               2
+
+The Kirchhoff stress τ is defined as                                                                                                                                                                    C. Additional Evaluations
+                    \boldsymbol {\tau }=\boldsymbol {U} \left (2 \mu \boldsymbol {\epsilon }+\lambda \operatorname {sum}(\boldsymbol {\epsilon }) \mathbf {1}\right ) \boldsymbol {V}^T,    (17)        We present additional evaluations of our method in Fig. 9.
+                                                                                                                                                                                                        The vasedeck data is from the Nerf dataset [24] and the oth-
+where ϵ = log(Σ) and F E = U ΣV T [17].                                                                                                                                                                 ers are synthetic data, generated using BlenderNeRF [34].
+
+
+                                                                                                                                                                                                   12
+       Static                                                            Physics-based Dynamics
+
+
+
+
+Figure 9. Additional Evaluation. Examples from top to bottom are: vasedeck (elastic entity), bread (fracture), cake (viscoplastic material),
+can (metal) and wolf (granular material).
+
+
+
+
+                                                                    13
+
