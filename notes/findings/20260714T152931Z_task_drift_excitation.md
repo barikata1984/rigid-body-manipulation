@@ -261,7 +261,7 @@ bf ≈ 0.5 で初めて励起の高調波帯が base 帯を上回るが, 振幅�
 
 1. Space robotics (Uchida 2025, Ekal 2018) — free-floating base で停止同定不可能
 2. Humanoid loco-manipulation (Foster 2024) — EKF で online, 36%/65% 性能向上
-3. Human-robot cooperative transport (Yun 2023) — null-space perturbation
+3. Human-robot cooperative transport (Park, Shin & Kim 2023, arXiv:2310.12409) — null-space perturbation
 4. Provably-safe online SysID / 工業応用 (Michaux 2025)
 5. Warehouse / mobile manipulation (Sun 2023)
 
@@ -269,7 +269,7 @@ bf ≈ 0.5 で初めて励起の高調波帯が base 帯を上回るが, 振幅�
 
 ### 論文化する場合の positioning ドラフト
 
-> Fourier-series excitation for rigid-body inertial parameter identification (Swevers 1997; Park 2006; Kubus 2007) has traditionally assumed that the trajectory is either purely periodic around a fixed operating point or freely designed. However, many practical scenarios require the robot to execute a task-mandated large-amplitude motion while performing identification — space servicing (Uchida 2025), humanoid loco-manipulation (Foster 2024), human-robot cooperative transport (Yun 2023). Existing approaches either (a) confine excitation to the null-space of the task (Yun 2023), (b) restrict identification to stop-and-go phases (Nadeau 2023), or (c) rely on observer / adaptive laws that do not design excitation.
+> Fourier-series excitation for rigid-body inertial parameter identification (Swevers 1997; Park 2006; Kubus 2007) has traditionally assumed that the trajectory is either purely periodic around a fixed operating point or freely designed. However, many practical scenarios require the robot to execute a task-mandated large-amplitude motion while performing identification — space servicing (Uchida 2025), humanoid loco-manipulation (Foster 2024), human-robot cooperative transport (Park et al. 2023). Existing approaches either (a) confine excitation to the null-space of the task (Park et al. 2023), (b) restrict identification to stop-and-go phases (Nadeau 2023), or (c) rely on observer / adaptive laws that do not design excitation.
 >
 > We show experimentally that when a task-mandated base motion $q_{\text{base}}(t)$ is superimposed on a Fourier excitation $q_{\text{exc}}(t)$, the observation-matrix condition number degrades by orders of magnitude, following a $T^2/(\text{turn count})$ scaling in the relative amplitude ratio. This degradation is invariant to the choice of optimization criterion (condition number vs D-optimality) and cannot be absorbed by coordinate transformations on the parameter space (Lee-Lee-Park 2021). We derive the mathematical mechanism (spectral competition and analytical Fourier coefficient bounds shrinking as $1/f_0^2$) and validate it on a 6-DoF prismatic-revolute manipulator identifying a hammer's 10 inertial parameters.
 
