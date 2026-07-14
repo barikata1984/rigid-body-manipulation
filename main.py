@@ -37,6 +37,25 @@ def _build_dataset_subdir(target_trajectory, target_trajectory_path) -> str | No
     return base
 
 
+def _next_run_dir(base_dir: Path, subdir: str) -> Path:
+    """Return ``base_dir/<subdir>_run<N>`` with the smallest unused positive N.
+
+    Scans siblings matching ``<subdir>_run<digits>`` and picks ``max(N)+1`` so that
+    repeated simulations for the same trajectory accumulate side by side instead of
+    overwriting each other.
+    """
+    prefix = f"{subdir}_run"
+    max_n = 0
+    if base_dir.exists():
+        for path in base_dir.iterdir():
+            if not path.is_dir() or not path.name.startswith(prefix):
+                continue
+            suffix = path.name[len(prefix) :]
+            if suffix.isdigit():
+                max_n = max(max_n, int(suffix))
+    return base_dir / f"{prefix}{max_n + 1}"
+
+
 def resolve_config():
     cli_config = tyro.cli(SimulatorConfig)
     yaml_config = OmegaConf.load(cli_config.exp_setup)
@@ -65,7 +84,7 @@ def resolve_config():
     if OmegaConf.is_missing(cfg.recorder, "dataset_dir"):
         base_dir = Path.cwd() / "datasets" / object_dir.name
         subdir = _build_dataset_subdir(target_trajectory, cfg.target_trajectory)
-        dataset_dir = base_dir / subdir if subdir is not None else base_dir
+        dataset_dir = _next_run_dir(base_dir, subdir) if subdir is not None else base_dir
         cfg.recorder.dataset_dir = dataset_dir
     else:
         dataset_dir = Path(cfg.recorder.dataset_dir)
