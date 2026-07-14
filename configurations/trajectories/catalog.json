@@ -98,5 +98,105 @@
     "objective_type": "condition_number",
     "num_harmonics": 5,
     "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-14T22:05:25",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260714_220525",
+    "condition_number": 43.73005740168055,
+    "config": "/tmp/claude-1000/-home-atsushi-workspace-rigid-body-manipulation/aa640d2e-b7a2-4f1f-9e5f-eedde13d73ac/scratchpad/cond10_10s_probe.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-14T22:14:32",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260714_221432",
+    "condition_number": 53.00310580127987,
+    "config": "/tmp/claude-1000/-home-atsushi-workspace-rigid-body-manipulation/aa640d2e-b7a2-4f1f-9e5f-eedde13d73ac/scratchpad/cond10_10s_bf02_probe.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.2
+  },
+  {
+    "timestamp": "2026-07-14T22:17:56",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260714_221756",
+    "condition_number": 57.00187298404804,
+    "config": "configurations/trajectory_generation/excited_6dof_20s_cond50.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-14T22:37:10",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260714_223710",
+    "condition_number": 24.81858227166551,
+    "config": "/tmp/claude-1000/-home-atsushi-workspace-rigid-body-manipulation/aa640d2e-b7a2-4f1f-9e5f-eedde13d73ac/scratchpad/cond10_10s_env_relaxed_probe.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-14T23:02:48",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260714_230248",
+    "condition_number": 6.434224710043371,
+    "config": "/tmp/claude-1000/-home-atsushi-workspace-rigid-body-manipulation/aa640d2e-b7a2-4f1f-9e5f-eedde13d73ac/scratchpad/cond10_20s_match0709_probe.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-14T23:12:01",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260714_231201",
+    "condition_number": 24.12220760163643,
+    "config": "/tmp/claude-1000/-home-atsushi-workspace-rigid-body-manipulation/aa640d2e-b7a2-4f1f-9e5f-eedde13d73ac/scratchpad/cond10_10s_match0709_probe.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-14T23:37:33",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260714_233733",
+    "condition_number": 5.208794991269831,
+    "config": "/tmp/claude-1000/-home-atsushi-workspace-rigid-body-manipulation/aa640d2e-b7a2-4f1f-9e5f-eedde13d73ac/scratchpad/cond10_10s_j5_2pi_probe.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-14T23:37:58",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260714_233758",
+    "condition_number": 1.0998110240597645,
+    "config": "/tmp/claude-1000/-home-atsushi-workspace-rigid-body-manipulation/aa640d2e-b7a2-4f1f-9e5f-eedde13d73ac/scratchpad/cond10_10s_nomain_probe.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-14T23:37:58",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260714_233758",
+    "condition_number": 1.1015369322091038,
+    "config": "/tmp/claude-1000/-home-atsushi-workspace-rigid-body-manipulation/aa640d2e-b7a2-4f1f-9e5f-eedde13d73ac/scratchpad/cond10_20s_nomain_probe.yaml",
+    "objective_type": "condition_number",
+    "num_harmonics": 5,
+    "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-15T00:03:02",
+    "subcommand": "excited",
+    "output_dir": "configurations/trajectories/excited_20260715_000302",
+    "condition_number": 24.13116941300445,
+    "config": "/tmp/claude-1000/-home-atsushi-workspace-rigid-body-manipulation/aa640d2e-b7a2-4f1f-9e5f-eedde13d73ac/scratchpad/dopt_10s_8pi_probe.yaml",
+    "objective_type": "d_optimal",
+    "num_harmonics": 5,
+    "base_freq": 0.1
   }
 ]
