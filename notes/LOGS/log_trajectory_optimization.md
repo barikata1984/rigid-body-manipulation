@@ -1231,4 +1231,57 @@ wrench の force ノイズは mass に, torque ノイズは主にモーメント
 
 `sensors/sensors.py` のデフォルト値を Robotiq 公称値 (force_stddev=0.1N, torque_stddev=0.005Nm) に変更する作業は未実施である.
 コード変更は一切行っておらず, 今回のスイープはすべて既存 CLI フラグ (`--noise-scale` / `--force-noise-scale` / `--torque-noise-scale`) のみで実行した.
+
+## 2026-07-14/15: Task-required base drift による cond 悪化機構の発見
+
+### 発見の要点
+
+軌道分解 $q(t) = q_\text{base}(t) + q_\text{exc}(t)$ で task-required 非最適化 base drift (j5=8π の quintic spline drift) がフーリエ級数励起を圧倒し, 観測行列条件数を桁で悪化させることを実験的に確立した. 詳細は `notes/findings/20260714T152931Z_task_drift_excitation.md` を参照.
+
+主な probe (07-09 setup: N=5, bf=0.1, envelope 1.5/π/inf/7.5/2π, n_restarts=3, max_iter=15, target=10):
+
+| 設定 | best cond | 出力 |
+|---|---|---|
+| T=20s + main 8π (07-09 再現) | 6.4342 | excited_20260714_230248 |
+| T=10s + main 8π | 24.12 | excited_20260714_231201 |
+| T=10s + main 2π (1 turn) | 5.21 | excited_20260714_233733 |
+| T=10s + main 無効化 | 1.0998 | 233758_10s_backup |
+| T=20s + main 無効化 | 1.1015 | 233758_20s_backup |
+| T=10s + main 8π + D-opt 目的関数 | 24.13 (D-opt=1.90) | excited_20260715_000302 |
+
+### 数学的機構
+
+励起振幅バウンドは $|c_k| \leq \ddot q_\text{max}/(2\pi f_0 k)^2$ で $T$ 非依存. Base 加速度ピークは $\ddot q_\text{base}^\text{peak} \propto (\text{turn 数})/T^2$. したがって励起 : base の相対振幅比 $\propto T^2/(\text{turn 数})$. T=10s では T=20s の 1/4, j5=2π では j5=8π の 4 倍, no-main では無限大.
+
+### 目的関数不変性
+
+D-opt 最適化でも cond=24.13 で頭打ち (cond 最適化 24.12 と同水準). base drift による cond 悪化は目的関数選択に不変 = 情報行列自体が structurally degraded. Lee-Lee-Park 2021 の Riemannian pullback (パラメータ空間の座標不変化) でも吸収できない real information loss.
+
+### 反証済み仮説
+
+- bf を上げる (0.1 → 0.2) で T 短縮を相殺: 実測 cond=53.00 (悪化). 理由: フーリエ係数バウンドが $1/f_0^2$ で縮む効果が勝る.
+- Envelope 拡張 (dq: 2.0/π, ddq: 4.0/2π): 実測 cond=24.82. envelope を緩めても binding していないので改善限定的.
+- Search 予算不足: n_restarts=3 で 3 restart 全て cond ≈ 24 に収束. 局所解ではなく構造的下限.
+
+### Prior art 判定 (7 論文精読, 4 論文未確認)
+
+判定済:
+- Swevers 1997 (c) 前提想定違反 (q_0 定数前提)
+- Park 2006 (b) 部分的類似 (Fourier+多項式分解の起源だが多項式は BC 用の従属変数)
+- Kubus 2007/2008 (c) 別問題 (推定器 RTLS が主眼)
+- Bonnet 2016 (b) DoF 分解類似だが task drift なし
+- Lee-Lee-Park 2021 (c) 直交 (パラメータ空間の座標不変性, 相補的)
+- Annual Reviews 2024 (c) 未言及 (Conclusion で future prospect として言及)
+- Leboutet 2021 (c) 未言及 (41 ページ中 1 節のみ excitation)
+
+未確認: Yun 2023 (arXiv:2310.12409), Abu-Dakka 2017 IROS, Ayusawa 2017 ICRA, In-Situ Excitation Trajectory Optimizer (LNEE 2024).
+
+### 実装変更
+
+- `main.py`: `_next_run_dir` 追加. `_build_dataset_subdir` の直後で glob→max_n+1 で `_run<N>` 自動採番. 「dataset ディレクトリの上書き」ISSUES を解消.
+- `trajectories/generate.py`: `_Tee` プロキシ + `_tee_stdio` context manager 追加. 各 run の `<output_dir>/optimize.log` に stdout+stderr を line-buffered 保存 (per-iteration Cond 履歴を残す).
+
+### 実用需要 (5 ドメイン)
+
+Space robotics (Uchida 2025, Ekal 2018), Humanoid loco-manipulation (Foster 2024), Human-robot cooperative transport (Yun 2023), Provably-safe online SysID (Michaux 2025), Warehouse / mobile manipulation (Sun 2023). Gap: 設計された joint-space Fourier 励起を大振幅 task 軌道に重ねる形は既存で薄い.
 パラメータ別 (10 個全部) の誤差分析も未実施である.

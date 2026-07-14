@@ -37,7 +37,17 @@
   - [ ] `Sensors` に seed パラメータを追加し, ノイズスイープ比較を再現可能にする
   - [ ] `sensors/sensors.py` のデフォルト値 (force_stddev=2N, torque_stddev=0.1Nm) を Robotiq FT300-S 公称スペック (force_stddev=0.1N, torque_stddev=0.005Nm) に変更する (2026-07-13/14: 値の決定は完了したがコード変更は未実施. 現行デフォルトは公称値のちょうど 20 倍過大)
   - [ ] 慣性パラメータ 10 個 (mass, mx/my/mz, 慣性テンソル 6 成分) のパラメータ別誤差分析を実施する (2026-07-13/14: 既存の total_mass 単体評価では wrench ノイズがどのパラメータに流れるか分離できていない. GT がゼロ近辺の成分の評価尺度 (絶対誤差か特性スケールでの正規化か) の決定も必要. 詳細: notes/ISSUES.md)
-  - [ ] dataset 出力ディレクトリに run 識別子を追加する (2026-07-13/14: 同一軌道でノイズ設定だけ変えて繰り返し実行すると全 run が同じディレクトリを上書きする. 詳細: notes/ISSUES.md)
+  - [x] dataset 出力ディレクトリに run 識別子を追加する (2026-07-14/15: `main.py` に `_next_run_dir` を追加し, `_build_dataset_subdir` の直後で glob→max_n+1 により `_run<N>` を自動採番するよう解消)
+
+## Task-required base drift と励起の相互作用 (2026-07-14/15)
+
+- [ ] Yun 2023 (arXiv:2310.12409) 精読 (最も近い null-space perturbation 手法)
+- [ ] Abu-Dakka 2017 IROS "Comparison of trajectory parametrization methods" 精読
+- [ ] Ayusawa 2017 ICRA "Generating persistently exciting trajectory" 精読
+- [ ] In-Situ Excitation Trajectory Optimizer (Springer LNEE 2024, DOI:10.1007/978-981-95-2098-5_52) 精読 (paywall, institutional access 経由)
+- [ ] cond 一覧を base 振幅 vs cond の連続関係で追加検証 (e.g., j5=4π, j5=π 等の中間点)
+- [ ] Task drift excitation 論文化: 相対振幅比 $\propto T^2/(\text{turn 数})$ の数学的形式化 (proof or numerical evidence)
+- [ ] `trajectories/generate.py` の tee 機構は「Loaded MuJoCo model...」の pre-optimize print をキャプチャできない (output_dir 確定前). 気になれば output_dir 解決をさらに早める
 
 ## Code Cleanup
 
