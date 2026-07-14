@@ -1,3 +1,4 @@
+import contextlib
 import dataclasses
 import sys
 from datetime import datetime
@@ -39,6 +40,50 @@ SUBCOMMAND_BY_TYPE = {
 
 # Default root for auto-generated trajectory outputs (git-tracked, shared across machines)
 DEFAULT_OUTPUT_ROOT = Path("configurations/trajectories")
+
+
+class _Tee:
+    """File-like proxy that mirrors writes to multiple streams."""
+
+    def __init__(self, *streams):
+        self._streams = streams
+
+    def write(self, data):
+        n = 0
+        for stream in self._streams:
+            n = stream.write(data)
+        return n
+
+    def flush(self):
+        for stream in self._streams:
+            stream.flush()
+
+    def isatty(self):
+        return any(getattr(s, "isatty", lambda: False)() for s in self._streams)
+
+    def fileno(self):
+        return self._streams[0].fileno()
+
+
+@contextlib.contextmanager
+def _tee_stdio(log_path: Path):
+    """Duplicate stdout/stderr into ``log_path`` while preserving terminal output.
+
+    Opens the file line-buffered so a concurrent ``tail -f`` sees each iteration
+    as it is printed. stderr is merged into the same file so tracebacks land
+    next to the iteration log.
+    """
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_file = open(log_path, "w", buffering=1, encoding="utf-8")
+    orig_out, orig_err = sys.stdout, sys.stderr
+    sys.stdout = _Tee(orig_out, log_file)
+    sys.stderr = _Tee(orig_err, log_file)
+    try:
+        yield log_file
+    finally:
+        sys.stdout = orig_out
+        sys.stderr = orig_err
+        log_file.close()
 
 
 def _explicitly_set_cli_keys(cli_config) -> set[str]:
@@ -135,20 +180,16 @@ def main():
             kwargs["kinematics_func"] = kinematics_func
             print("Loaded MuJoCo model and built kinematics_func for optimization.")
 
-    # Dispatch based on type
-    traj = instantiate(config, **kwargs)
-
-    print(f"Generating {type(traj).__name__}...")
-
-    # Use explicit paths from config
+    # Resolve output paths before instantiating the trajectory so that all
+    # optimizer/generator prints can be tee'd into optimize.log alongside the
+    # other run artifacts. Explicit CLI/YAML paths always win and are left
+    # untouched.
     plot_path = str(config.plot_path) if config.plot_path else None
     json_path = str(config.json_path) if config.json_path else None
 
     subcommand = SUBCOMMAND_BY_TYPE[type(config)]
     now = datetime.now()
 
-    # If neither output path is set, auto-generate a timestamped output directory.
-    # An explicit CLI/YAML path always wins and is left untouched.
     if plot_path is None and json_path is None:
         output_dir = DEFAULT_OUTPUT_ROOT / f"{subcommand}_{now.strftime('%Y%m%d_%H%M%S')}"
         json_path = str(output_dir / "trajectory.json")
@@ -157,26 +198,32 @@ def main():
         # Record the directory containing whichever path was explicitly set.
         output_dir = Path(json_path or plot_path).parent
 
-    # generate() accepts kwargs which will be passed to plot etc
-    traj.generate(
-        show_plot=config.show_plot,
-        plot_path=plot_path,
-        json_path=json_path,
-        metadata={"subcommand": subcommand, "generation_config": dataclasses.asdict(config)},
-    )
+    with _tee_stdio(Path(output_dir) / "optimize.log"):
+        # Dispatch based on type
+        traj = instantiate(config, **kwargs)
 
-    if plot_path:
-        print(f"Plot saved to: {plot_path}")
-    if json_path:
-        print(f"Data saved to: {json_path}")
+        print(f"Generating {type(traj).__name__}...")
 
-    append_catalog_entry(
-        timestamp=now.isoformat(timespec="seconds"),
-        subcommand=subcommand,
-        output_dir=str(output_dir),
-        config=config,
-        condition_number=getattr(traj, "final_condition_number", None),
-    )
+        # generate() accepts kwargs which will be passed to plot etc
+        traj.generate(
+            show_plot=config.show_plot,
+            plot_path=plot_path,
+            json_path=json_path,
+            metadata={"subcommand": subcommand, "generation_config": dataclasses.asdict(config)},
+        )
+
+        if plot_path:
+            print(f"Plot saved to: {plot_path}")
+        if json_path:
+            print(f"Data saved to: {json_path}")
+
+        append_catalog_entry(
+            timestamp=now.isoformat(timespec="seconds"),
+            subcommand=subcommand,
+            output_dir=str(output_dir),
+            config=config,
+            condition_number=getattr(traj, "final_condition_number", None),
+        )
 
 
 if __name__ == "__main__":
