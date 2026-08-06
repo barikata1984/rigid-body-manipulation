@@ -23,7 +23,13 @@ FTA で `sensors/sensors.py:17-23` のノイズ設定が真因と特定した. `
 
 追記 (2026-07-12 続 4): 上記の qacc σ=3.6 m/s² という値自体に誤りがあったと判明した. `jointacc_noise_scaler` の実装は `(sqrt(2)*fps)**2 = 2*fps**2` だったが, これは二階中心差分 `(x[k]-2x[k-1]+x[k-2])/dt**2` を構成する係数 `[1,-2,1]` の二乗和 (=6) を使うべきところを, 一階差分の係数二乗和 (=2) の二乗として誤って導出したものだった. `sqrt(6)*fps**2` に修正した結果, 既定の qacc_sigma_trans は 3.6 m/s² から約 4.4 m/s² に約 22% 増加した (fps² スケーリング自体と sqrt(6) という定数はノイズモデルの選択から数学的に確定するため, ここに調整の余地はない). 修正後の値で `noise_scale` (新設の基準 σ 倍率パラメータ) を 0.03〜1.0 で振ったところ, 既定 (noise_scale=1.0, qacc_sigma=4.4 m/s²) は TLS L2=0.259 と依然として同定に過大なノイズであり, TLS L2 が 0.05 を初めて下回るのは noise_scale≈0.25 (qacc_sigma≈1.1 m/s²) からだった. 基準となる `jointpos_stddev` の適切な値は実機のエンコーダ/FT センサー仕様に基づくグラウンディングが依然として必要であり, 本問題は未解決のまま残る. なお `Sensors` が unseeded RNG のため, 上記スイープの各点は単一実現であり run-to-run variance を含む (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-12 (続 4) エントリ).
 
+追記 (2026-08-06): 未実装のまま残っていた wrench 側デフォルト (force σ=2N, torque σ=0.1Nm, 公称値の 20 倍) が下流に実害を出した. loaded_dice の torque 信号 RMS は 0.023-0.033Nm で, σ=0.1Nm 下では SNR≈0.3 となり, 摂動版データセットの最小二乗解は主慣性モーメントが負という物理的に不可能な値になる. hammer の摂動版も同じ病理を持つ (最小二乗質量比 0.632, loaded_dice は 0.613) が, 出荷されたのがノイズなし版だったため表面化していなかった. 運動学側では `dtwist_sen` の並進成分のノイズ std 4.25 が信号 RMS 3.69 を上回っており, qacc ノイズ過大という本課題の中心はそのまま残る (詳細: `notes/LOGS/2026-08-06_loaded-dice-wrench-inconsistency.md`).
+
 追記 (2026-07-13/14): wrench (force/torque) 側は実機グラウンディングにより律速要因から外れたと判明した. Robotiq FT300-S の公称シグナルノイズ (force σ=0.1N, torque σ=0.005Nm) は現行コードのデフォルト (2N/0.1Nm) のちょうど 1/20 である. kinematics ノイズ (noise_scale=0.1) と同時に与えた場合, wrench 側の寄与は kinematics 起因の誤差フロアに完全に埋もれて検出できなかった. kinematics ノイズを厳密にゼロにした極端条件のスイープでも, Robotiq 公称値相当 (R=1) では total_mass 誤差 <0.03%, L2 ≤0.0013 と無害だった. これにより本問題の律速要因は kinematics (qacc) ノイズ側に絞られた. ただし本問題自体は未解決である (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-13/14 エントリ).
+
+## [2026-08-06] `global_gt` が物体座標系, `regressor` がセンサ座標系で書かれている
+
+データセットの `global_gt` は CAD 真値を物体 (aabb) 座標系原点まわりへ移した値であり (`object_cad_gt.csv` と相対差 0), 一方 `regressor` はセンサ座標系で組まれる. 両者は `pose_sen_obj` で関係し, loaded_dice では `mx, my, iyz, izx` の符号反転に相当する. ノイズなしデータで変換を施すと force 残差 0.4105→0.0179 N, torque 残差 0.0536→0.00026 N·m, 最近傍一致 300/300 になる. hammer は重心が z 軸上・慣性テンソルほぼ対角で該当 4 成分が 1e-9 以下のため症状が出ず, 重心が軸から外れた loaded_dice で初めて露呈した. `global_gt` を予測値と突き合わせる利用側 (`wandb_add_reference.py`, 提案中の出荷前チェック) はすべて影響を受ける (詳細: `notes/LOGS/2026-08-06_loaded-dice-wrench-inconsistency.md`).
 
 ## [2026-07-14] 同定精度の評価が total_mass 単体に偏っている
 

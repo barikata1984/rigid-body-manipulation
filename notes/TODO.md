@@ -35,7 +35,7 @@
   - [ ] `jointpos_stddev` を実機の関節エンコーダ仕様に基づいてグラウンディングする (2026-07-13/14: `force_stddev`/`torque_stddev` は Robotiq FT300-S 公称スペック (force σ=0.1N, torque σ=0.005Nm) に基づき決定済み. `jointpos_stddev` (並進 prismatic 5e-4 m, 回転 revolute 1e-3 rad. 単位が異なるため分けて評価する) は未着手のまま残る. マニピュレータ `xml_models/manipulators/sequential` が実在機の模擬か汎用仮想機かの素性確認も含む. 詳細: notes/LOGS/log_trajectory_optimization.md 2026-07-13/14 エントリ)
   - [ ] 実機調査で FT ノイズが運動学ノイズに対し不均衡に大きいと分かった場合に限り, 列ごとの既知 σ を重みとして `scipy.odr` に渡す scaled/generalized TLS への変更を検討する (素の `total_lstsq` は [Y|τ] 全列の等分散を仮定するため) (2026-07-13/14: kinematics=0 スイープにより, 素の TLS の異分散バイアスは wrench ノイズの絶対量ではなく Y と τ の誤差比で決まると判明した. Robotiq 公称値相当の実測ノイズ下では total_mass 誤差 <0.03% と無害で, 異分散病理が顕在化するのは kinematics ノイズがほぼゼロという非現実的条件のみだった. 優先度は低いと判断する)
   - [ ] `Sensors` に seed パラメータを追加し, ノイズスイープ比較を再現可能にする
-  - [ ] `sensors/sensors.py` のデフォルト値 (force_stddev=2N, torque_stddev=0.1Nm) を Robotiq FT300-S 公称スペック (force_stddev=0.1N, torque_stddev=0.005Nm) に変更する (2026-07-13/14: 値の決定は完了したがコード変更は未実施. 現行デフォルトは公称値のちょうど 20 倍過大)
+  - [ ] `sensors/sensors.py` のデフォルト値 (force_stddev=2N, torque_stddev=0.1Nm) を Robotiq FT300-S 公称スペック (force_stddev=0.1N, torque_stddev=0.005Nm) に変更する (2026-07-13/14: 値の決定は完了したがコード変更は未実施. 現行デフォルトは公称値のちょうど 20 倍過大. 2026-08-06: この未実装が下流に実害を出した — loaded_dice の torque 信号 RMS 0.023-0.033Nm に対し σ=0.1Nm で SNR≈0.3 となり摂動版が同定不能になった. 公称値なら SNR≈6 で足りる. → notes/LOGS/2026-08-06_loaded-dice-wrench-inconsistency.md)
   - [ ] 慣性パラメータ 10 個 (mass, mx/my/mz, 慣性テンソル 6 成分) のパラメータ別誤差分析を実施する (2026-07-13/14: 既存の total_mass 単体評価では wrench ノイズがどのパラメータに流れるか分離できていない. GT がゼロ近辺の成分の評価尺度 (絶対誤差か特性スケールでの正規化か) の決定も必要. 詳細: notes/ISSUES.md)
   - [x] dataset 出力ディレクトリに run 識別子を追加する (2026-07-14/15: `main.py` に `_next_run_dir` を追加し, `_build_dataset_subdir` の直後で glob→max_n+1 により `_run<N>` を自動採番するよう解消)
 
@@ -48,6 +48,16 @@
 - [ ] cond 一覧を base 振幅 vs cond の連続関係で追加検証 (e.g., j5=4π, j5=π 等の中間点)
 - [ ] Task drift excitation 論文化: 相対振幅比 $\propto T^2/(\text{turn 数})$ の数学的形式化 (proof or numerical evidence)
 - [ ] `trajectories/generate.py` の tee 機構は「Loaded MuJoCo model...」の pre-optimize print をキャプチャできない (output_dir 確定前). 気になれば output_dir 解決をさらに早める
+
+## データセット出荷 (2026-08-06)
+
+- [ ] 出荷先 `datasets/neural-mass-fields/loaded_dice/` の `transforms.json` と train/valid/test 分割を, 同ディレクトリ同梱の `unperturbed_*.json.bak` へ差し替える (→ notes/LOGS/2026-08-06_loaded-dice-wrench-inconsistency.md)
+- [ ] `global_gt` をセンサ座標系へ変換して書き出すよう生成側を修正する (`main.py:147-148` で `transfer_iparams(simulation.pose_sen_obj.inv(), gt_iparams)`. 現状は物体 aabb 系で書かれ, センサ系の `regressor` と不一致)
+- [ ] 摂動版だけが `transforms.json` を名乗る命名規則 (`recorders/standard_recorder.py:171-173`) を見直す, または `perturb_wrench` の状態を JSON 最上位に記録して下流が検知できるようにする
+- [ ] 出荷前の自己整合性チェックを組み込む: `‖regressor @ gt_sen − wrench‖ / ‖wrench‖` が force <1e-2 / torque <2e-2 (`global_gt` はセンサ系へ変換してから判定する. 変換なし・torque 1e-2 では正しいファイルを誤検出で弾く)
+- [ ] `Sensors` の乱数種を固定し, `SimulatorConfig.config_export_path` を既定で有効にする (現状, 摂動系列も生成コマンドも再現不能)
+- [ ] 重心が軸上にない物体を回帰テストに含める (hammer は重心が z 軸上・慣性テンソルほぼ対角のため座標系バグを検出できない)
+- [ ] hammer データ (`hammer_spline_20260731_113007_run1`) が実機由来か否かを提供元に確認する (ディレクトリ構成が本リポジトリのシミュレータ出力と一致する)
 
 ## Code Cleanup
 
