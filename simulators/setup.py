@@ -16,9 +16,18 @@ from transforms3d.quaternions import mat2quat, quat2mat
 from dynamics import coordinate_transfer_imat
 from utilities import get_element_id
 
+from .camera_calibration import (
+    CameraCalibrationConfig,
+    calibrate_model_camera,
+    resolve_distance_factor,
+    save_calibration,
+    set_camera_distance,
+)
+
 
 def generate_model_data(
     cfg: DictConfig | ListConfig,
+    trajectory_frames=None,
 ) -> tuple[MjModel, MjData, dict[str, float | list[float]]]:
     # Get the ground truth data output by a CAD application ========================
     target_dir = Path(cfg.object)
@@ -36,9 +45,15 @@ def generate_model_data(
     attachment_site.attach(target_object)  # type: ignore
 
 
-    # Set camera position
+    # Set the initial camera position. In ``calibrate`` mode this is only a
+    # compilation-time seed; the compiled model is calibrated below and then
+    # receives one final fixed distance for the complete generated dataset.
     aabb_scale = manipulator.custom.numeric["target/aabb_scale"].data[0]  # type: ignore
-    track_cam_pos = [0, 0, 4 * aabb_scale]
+    camera_cfg = getattr(cfg, "camera_calibration", CameraCalibrationConfig())
+    if camera_cfg is None:
+        camera_cfg = CameraCalibrationConfig()
+    distance_factor = resolve_distance_factor(camera_cfg, target_dir, aabb_scale)
+    track_cam_pos = [0, 0, distance_factor * aabb_scale]
     track_cam = manipulator.find("camera", cfg.recorder.track_cam_name)
     track_cam.pos = track_cam_pos  # type: ignore
 
@@ -50,6 +65,30 @@ def generate_model_data(
 
     if cfg.reset_keyframe is not None:
         mj_resetDataKeyframe(m, d, get_element_id(m, "keyframe", cfg.reset_keyframe))
+
+    track_cam_id = get_element_id(m, "camera", cfg.recorder.track_cam_name)
+    set_camera_distance(m, d, track_cam_id, aabb_scale, distance_factor)
+    if camera_cfg.mode == "calibrate":
+        result = calibrate_model_camera(
+            m,
+            d,
+            track_cam_id,
+            aabb_scale,
+            camera_cfg,
+            trajectory_frames=trajectory_frames,
+            height=int(cfg.recorder.fig_height),
+            width=int(cfg.recorder.fig_width),
+        )
+        distance_factor = result.distance_factor
+        set_camera_distance(m, d, track_cam_id, aabb_scale, distance_factor)
+        if camera_cfg.calibration_path is not None:
+            save_calibration(camera_cfg.calibration_path, target_dir, aabb_scale, result)
+        logging.info(
+            "Calibrated camera for %s: factor=%.8g, median foreground ratio=%.6g",
+            target_dir,
+            result.distance_factor,
+            result.measured_foreground_ratio,
+        )
 
     return m, d, ground_truth
 

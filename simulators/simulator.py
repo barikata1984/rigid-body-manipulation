@@ -20,6 +20,7 @@ from sensors import Sensors
 from visualization.visualization import ax_plot_lines, ax_plot_lines_w_tgt
 
 from .base_simulator import BaseSimulatorConfig
+from .camera_calibration import CameraCalibrationConfig
 
 
 @dataclass
@@ -50,6 +51,7 @@ class SimulatorConfig(BaseSimulatorConfig):
     object: str = MISSING
     reset_keyframe: str = MISSING
     # Some tests pass these explicitly; keep them optional for trajectory-driven runs
+    camera_calibration: CameraCalibrationConfig = field(default_factory=CameraCalibrationConfig)
     duration: float | None = None
     fps: int | None = None
     recorder: StandardRecorderConfig = field(default_factory=StandardRecorderConfig)

@@ -21,6 +21,7 @@ dependencies = [
 
 [project.scripts]
 generate-trajectory = "trajectories.generate:main"
+calibrate-camera = "simulators.calibrate_camera:main"
 
 [project.optional-dependencies]
 dev = ["pytest"]

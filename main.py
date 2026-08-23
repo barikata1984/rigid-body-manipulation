@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 from shutil import copy
 
@@ -56,16 +57,38 @@ def _next_run_dir(base_dir: Path, subdir: str) -> Path:
     return base_dir / f"{prefix}{max_n + 1}"
 
 
+def _merge_camera_calibration_config(cfg, yaml_config, cli_config):
+    """Keep YAML camera settings unless a nested camera flag was explicit."""
+
+    yaml_camera = yaml_config.get("camera_calibration")
+    if yaml_camera is None:
+        return cfg
+
+    merged_camera = OmegaConf.merge(cfg.camera_calibration, yaml_camera)
+    prefix = "--camera-calibration."
+    explicit_fields = {
+        token.split("=", 1)[0][len(prefix) :].replace("-", "_")
+        for token in sys.argv[1:]
+        if token.startswith(prefix)
+    }
+    for field in explicit_fields:
+        if hasattr(cli_config.camera_calibration, field):
+            merged_camera[field] = getattr(cli_config.camera_calibration, field)
+    cfg.camera_calibration = merged_camera
+    return cfg
+
+
 def resolve_config():
     cli_config = tyro.cli(SimulatorConfig)
     yaml_config = OmegaConf.load(cli_config.exp_setup)
     cfg = OmegaConf.merge(SimulatorConfig, yaml_config, cli_config)
-    m, d, gt = generate_model_data(cfg)
-
+    cfg = _merge_camera_calibration_config(cfg, yaml_config, cli_config)
     target_trajectory = None
     if cfg.target_trajectory:
         with open(cfg.target_trajectory) as f:
             target_trajectory = json_to_namespace(json.load(f))
+
+    m, d, gt = generate_model_data(cfg, trajectory_frames=target_trajectory.frames if target_trajectory else None)
 
     if OmegaConf.is_missing(cfg.recorder, "fps"):
         if target_trajectory is None:
