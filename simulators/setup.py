@@ -38,7 +38,7 @@ def generate_model_data(
 
     # Set camera position
     aabb_scale = manipulator.custom.numeric["target/aabb_scale"].data[0]  # type: ignore
-    track_cam_pos = [0, 0, 4 * aabb_scale]
+    track_cam_pos = [0, 0, 5 * aabb_scale]
     track_cam = manipulator.find("camera", cfg.recorder.track_cam_name)
     track_cam.pos = track_cam_pos  # type: ignore
 
@@ -217,8 +217,8 @@ def spawn_target_object(
         name="white_background",
         type="skybox",
         builtin="flat",
-        rgb1="0 0 0",
-        rgb2="0 0 0",
+        rgb1="1 1 1",
+        rgb2="1 1 1",
         width="1",
     )
 

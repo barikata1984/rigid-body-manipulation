@@ -112,6 +112,63 @@ def transfer_simat(
     return transfered[0] if single_pose or single_simat else transfered
 
 
+def iparams_to_simat(
+    iparams: Sequence[float] | NDArray,
+) -> NDArray:
+    r"""Assemble a spatial inertia tensor from the 10 inertial parameters.
+
+    ``iparams`` is ordered as [m, mcx, mcy, mcz, ixx, iyy, izz, ixy, iyz, izx], i.e. the mass,
+    the first moment of mass (m * com), and the moments of inertia taken about the origin of
+    the frame the parameters are described in. The resulting tensor follows the twist ordering
+    of this codebase, (linear, angular):
+
+        \mathfrak{g} = [[m E, -[h]_\times], [[h]_\times, I]]
+    """
+    iparams = np.asarray(iparams, dtype=float)
+    mass = iparams[0]
+    wedge_f_mom = SO3.wedge(iparams[1:4])  # first moment of mass, h = m * com
+    ixx, iyy, izz, ixy, iyz, izx = iparams[4:]
+    imat = np.array([[ixx, ixy, izx], [ixy, iyy, iyz], [izx, iyz, izz]])
+
+    return np.block([[mass * np.eye(3), -wedge_f_mom], [wedge_f_mom, imat]])
+
+
+def simat_to_iparams(
+    simat: NDArray,
+) -> NDArray:
+    """Extract the 10 inertial parameters from a spatial inertia tensor (inverse of
+    :func:`iparams_to_simat`)."""
+    f_mom = SO3.vee(simat[3:, :3])
+    imat = simat[3:, 3:]
+
+    return np.array(
+        [
+            simat[0, 0],
+            *f_mom,
+            imat[0, 0],
+            imat[1, 1],
+            imat[2, 2],
+            imat[0, 1],
+            imat[1, 2],
+            imat[2, 0],
+        ]
+    )
+
+
+def transfer_iparams(
+    pose_target_current: SE3,
+    iparams_current: Sequence[float] | NDArray,
+) -> NDArray:
+    """Transfer the frame in which the 10 inertial parameters are described.
+
+    ``pose_target_current`` is the configuration of the frame the parameters are currently
+    described in w.r.t the target frame, matching the argument taken by :func:`transfer_simat`
+    and :func:`coordinate_transfer_imat`. Both the first moment of mass and the moments of
+    inertia are rotated and shifted accordingly (rotation + parallel axis theorem).
+    """
+    return simat_to_iparams(transfer_simat(pose_target_current, iparams_to_simat(iparams_current)))
+
+
 def inverse(
     traj: np.ndarray,
     hposes_body_parent,

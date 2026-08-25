@@ -303,7 +303,10 @@ class Simulator:
 
         self.data.poses_sen_obj.append(self.pose_sen_obj.as_matrix().tolist())
         self.data.poses_sen_obji.append(self.pose_sen_obji.as_matrix().tolist())
-        self.data.file_paths.append(str(self.recorder.complete_image_dir / file_name))
+        # Store the path relative to the dataset root so that loaders on other machines can
+        # resolve it with os.path.join(dataset_root, file_path)
+        image_path = self.recorder.complete_image_dir / file_name
+        self.data.file_paths.append(str(image_path.relative_to(self.recorder.dataset_dir)))
 
     def _set_ctrl(self, tgt_traj, act_traj):
         # Get residual of state

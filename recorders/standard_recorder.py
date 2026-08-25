@@ -19,6 +19,19 @@ from utilities import get_element_id
 from .base_recorder import BaseRecorderConfig
 
 
+def split_file_name(name_prefix: str, suffix: str, primary_prefix: str) -> str:
+    """Name a transforms file so that exactly one keeps the bare ".json" extension.
+
+    Downstream NeRF loaders glob the dataset root for "*.json" and branch on the hit count,
+    so every file except the unsplit dump of ``primary_prefix`` gets ".bak" appended: it stays
+    on disk but out of the glob. ``primary_prefix`` decides which series is the one shipped.
+    """
+    file_name = f"{name_prefix}{suffix}.json"
+    if suffix or name_prefix != primary_prefix:
+        file_name += ".bak"
+    return file_name
+
+
 @dataclass
 class StandardRecorderConfig(BaseRecorderConfig):
     target_class: str = "StandardRecorder"
@@ -53,8 +66,12 @@ class StandardRecorder:
         self.cam_fovy = radians(m.cam_fovy[self.cam_id])
         self.cam_focus = 0.5 * self.fig_height / tan(0.5 * self.cam_fovy)
         self.cam_fovx = 2 * atan2(0.5 * self.fig_width, self.cam_focus)
+        # Which transforms series is shipped, i.e. keeps the bare ".json" name. Overridden to
+        # "unperturbed_transforms" by main when a noise-free series is written alongside.
+        self.primary_prefix = "transforms"
         self.dataset_dir = Path(cfg.dataset_dir)
         self.complete_image_dir = self.dataset_dir / "complete"
+        self.mask_dir = self.dataset_dir / "masks"
         self.renderer = Renderer(m, self.fig_height, self.fig_width)
         self.aabb_scale = cfg.aabb_scale
         self.fps = cfg.fps
@@ -62,6 +79,7 @@ class StandardRecorder:
         self.complete_image_dir.mkdir(
             parents=True, exist_ok=True
         )  # has to be called before the videowriter instantiated
+        self.mask_dir.mkdir(parents=True, exist_ok=True)
 
         self.videowriter = cv2.VideoWriter(
             str(self.dataset_dir / cfg.videoname),
@@ -92,8 +110,16 @@ class StandardRecorder:
 
         self.renderer.update_scene(d, cam_id)
         bgr = self.renderer.render()[:, :, [2, 1, 0]]
-        # Make an alpha mask to remove the white background
-        alpha = np.where(np.all(bgr == 0, axis=-1), 0, 255).astype(np.uint8)[..., np.newaxis]
+
+        # Segmentation pass over the same scene: [..., 0] holds the object id and the
+        # background is -1, so non-negative entries are the foreground
+        self.renderer.enable_segmentation_rendering()
+        segmentation = self.renderer.render()
+        self.renderer.disable_segmentation_rendering()
+        mask = ((segmentation[..., 0] >= 0) * 255).astype(np.uint8)
+
+        cv2.imwrite(str(self.mask_dir / file_name), mask)  # single-channel 0/255 mask
+        alpha = mask[..., np.newaxis]
         cv2.imwrite(str(self.complete_image_dir / file_name), np.append(bgr, alpha, axis=2))  # image (bgr + alpha)
         # Write a video frame
         self.videowriter.write(bgr)
@@ -139,19 +165,25 @@ class StandardRecorder:
                 split_image_dir.mkdir(parents=True, exist_ok=True)
 
                 for frame in frames:
-                    image_path = Path(frame["file_path"])
+                    # frame["file_path"] is relative to the dataset root (absolute paths are
+                    # left untouched by "/", so legacy transforms keep working)
+                    image_path = self.dataset_dir / frame["file_path"]
                     shutil.copy(image_path, split_image_dir / image_path.name)
 
-        labels = ["total_mass", "mx", "my", "mz", "ixx", "iyy", "izz", "ixy", "iyz", "izx", "aabb_scale"]
+        # "aabb_scale" is carried by base_transform as a top-level key, so it is deliberately
+        # absent here: labels describes the 10 inertial parameters only
+        labels = ["total_mass", "mx", "my", "mz", "ixx", "iyy", "izz", "ixy", "iyz", "izx"]
 
         split_transform = self.base_transform.copy()
         split_transform["frames"] = frames
         split_transform["labels"] = labels
-        split_transform["global_gt"] = [*gt_iparams, self.aabb_scale]
-        split_transform["ls"] = [*ls_iparams, np.nan]
-        split_transform["tls"] = [*tls_iparams, np.nan]
+        split_transform["global_gt"] = list(gt_iparams)
+        split_transform["ls"] = list(ls_iparams)
+        split_transform["tls"] = list(tls_iparams)
 
-        with open(self.dataset_dir / f"{name_prefix}{suffix}.json", "w") as f:
+        file_name = split_file_name(name_prefix, suffix, self.primary_prefix)
+
+        with open(self.dataset_dir / file_name, "w") as f:
             json.dump(split_transform, f, indent=2)
 
     def write_split_transforms(

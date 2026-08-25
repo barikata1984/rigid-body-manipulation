@@ -8,6 +8,7 @@ import tyro
 from numpy.linalg import lstsq, norm
 from omegaconf import OmegaConf
 
+from dynamics import transfer_iparams
 from factory import instantiate
 from omegaconf_custom_resolvers import pi_converter
 from regressions import total_lstsq
@@ -109,7 +110,7 @@ def run_simulation(cfg, m, d, target_trajectory):
     return simulation, result
 
 
-def identify_inertial_params(result, gt):
+def identify_inertial_params(result, gt, pose_obj_sen):
     gt_total_mass = gt["mass"]
     gt_f_moms = gt_total_mass * gt["com"]
     gt_moms_i = gt["globalinertia"]
@@ -117,8 +118,13 @@ def identify_inertial_params(result, gt):
 
     regressors = np.array(result["regressors"])
     wrenches = np.array(result["wrenches"])
-    ls_iparams = lstsq(regressors.reshape(-1, 10), wrenches.reshape(-1))[0]
-    tls_iparams = total_lstsq(regressors.reshape(-1, 10), wrenches.reshape(-1))[0]
+    # The regressors are built in the ft sensor frame, so the identified parameters are described
+    # there while the ground truth is described in the object's aabb frame. Bring the estimates to
+    # the object frame so that the comparison and the values written to the dataset are consistent.
+    ls_iparams_sen = lstsq(regressors.reshape(-1, 10), wrenches.reshape(-1))[0]
+    tls_iparams_sen = total_lstsq(regressors.reshape(-1, 10), wrenches.reshape(-1))[0]
+    ls_iparams = transfer_iparams(pose_obj_sen, ls_iparams_sen)
+    tls_iparams = transfer_iparams(pose_obj_sen, tls_iparams_sen)
     l2_ls = norm(ls_iparams - gt_iparams, 2)
     l2_tls = norm(tls_iparams - gt_iparams, 2)
     labels = ["total_mass", "mx", "my", "mz", "ixx", "iyy", "izz", "ixy", "iyz", "izx", "l2"]
@@ -137,7 +143,11 @@ def identify_inertial_params(result, gt):
 def main():
     cfg, m, d, gt, target_trajectory = resolve_config()
     simulation, result = run_simulation(cfg, m, d, target_trajectory)
-    gt_iparams, ls_iparams, tls_iparams = identify_inertial_params(result, gt)
+    pose_obj_sen = simulation.pose_sen_obj.inv()
+    gt_iparams, ls_iparams, tls_iparams = identify_inertial_params(result, gt, pose_obj_sen)
+    if result.get("unperturbed_frames") is not None:
+        # Ship the noise-free series: it, not the perturbed one, keeps the bare .json name
+        simulation.recorder.primary_prefix = "unperturbed_transforms"
     simulation.recorder.finish(result["frames"], gt_iparams, ls_iparams, tls_iparams)
 
     if result.get("unperturbed_frames") is not None:
@@ -146,7 +156,7 @@ def main():
             "regressors": result["unperturbed_regressors"],
             "wrenches": result["unperturbed_wrenches"],
         }
-        gt_iparams, ls_iparams_u, tls_iparams_u = identify_inertial_params(unperturbed_result, gt)
+        gt_iparams, ls_iparams_u, tls_iparams_u = identify_inertial_params(unperturbed_result, gt, pose_obj_sen)
         simulation.recorder.write_split_transforms(
             result["unperturbed_frames"],
             gt_iparams,
