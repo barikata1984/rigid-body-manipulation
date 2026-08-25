@@ -74,7 +74,7 @@
 ## Code Cleanup
 
 - [x] `_lqr.py`(旧 LQR 実装)を削除するか残すか判断する (2026-08-25 判明: 2026-06-30 のコミット 3d85322 で削除済みだった. 現行 `controllers/lqr.py` のみ残存し `__init__.py` から参照)
-- [ ] `xml_models/targets/sledgehammer/object.mtl` の未コミット差分の去就を決める: テクスチャ参照を `assets/` から未追跡の `object/` へ変えており, このままコミットすると他マシンで参照が切れる. 同名 PNG は `assets/` に既存のため, 差分破棄 (`assets/` 参照維持) が最小 (2026-08-25 起票)
+- [x] `xml_models/targets/sledgehammer/object.mtl` の未コミット差分の去就を決める (2026-08-25 解消: MuJoCo は mtl を読まず実行時未使用と判明したため, ルート直下 `object.obj` ごと `_archive/sledgehammer-cad/` へ退避. 複製 PNG の `object/` は削除)
 - [x] 重複・旧作業コピー 4 件の削除: ルート直下 `gt_mass_distr.csv` (sledgehammer 配下とバイト一致, 139 MB), `object_cad_gt.csv` / `object_cad_gt_2.csv` (target 外の古い作業コピー), `xml_models/targets/_sledgehammer/` (クリーンアップ前スナップショット) (2026-08-25 起票, done 同日: 削除前に `cmp` でバイト一致を再確認済み)
-- [ ] CAD ソースと計測 CSV の `.gitignore` 追加: `sledgehammer/sledgehammer/` `OldVersions/` `object.iam` `object/` (SolidWorks/Inventor ソース一式) と `gt_mass_distr*.csv`. 他の target は CAD ソースを持たずコミット対象にしない方針 (2026-08-25 起票)
+- [x] CAD ソースと計測 CSV の `.gitignore` 追加 (2026-08-25 解消: `xml_models/targets/_archive/` を新設して CAD ソース一式と `gt_mass_distr*.csv` を退避し, `_archive/` を .gitignore に追加. あわせて使用実績のない 17 ターゲットを `_archive/` へ git mv で退避 (残置 7: hammer, sledgehammer, loaded_dice, chair, teapot_ceramic, wooden-tray, wooden-tray-2. 全 7 つで読み込み+50 ステップ実行を検証済み). loaded_dice の変換残骸 `mjcf/` も `_archive/loaded_dice-mjcf/` へ. hammer/chair の `ground_truth.csv:Zone.Identifier` は削除)
 - [x] リポジトリ直下と `configurations/trajectories/` のデバッグ残骸 13 ファイルの削除 (done 2026-08-25: `debug_*` 5 件, `spline.json/png`, `inverse_spline.json`, `debug_tyro.py`, `test_merge.py`, `tracking_*.png` 2 件, `image.png`. すべて未追跡のため履歴影響なし)

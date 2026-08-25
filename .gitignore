@@ -177,3 +177,6 @@ results/*
 # pixi environments
 .pixi/*
 !.pixi/config.toml
+
+# archived target CAD sources and large GT dumps (kept locally, untracked)
+xml_models/targets/_archive/
