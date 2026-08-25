@@ -38,7 +38,9 @@ def generate_model_data(
 
     # Set camera position
     aabb_scale = manipulator.custom.numeric["target/aabb_scale"].data[0]  # type: ignore
-    track_cam_pos = [0, 0, 5 * aabb_scale]
+    # Default 5.0: a cube's diagonal (sqrt(3) * aabb_scale) needs >= 4.18 * aabb_scale to fit a
+    # 45 deg fov; slender objects (e.g. hammer) may want a smaller factor to fill more of the frame.
+    track_cam_pos = [0, 0, cfg.recorder.track_cam_distance_factor * aabb_scale]
     track_cam = manipulator.find("camera", cfg.recorder.track_cam_name)
     track_cam.pos = track_cam_pos  # type: ignore
 

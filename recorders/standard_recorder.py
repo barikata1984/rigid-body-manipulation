@@ -36,6 +36,7 @@ def split_file_name(name_prefix: str, suffix: str, primary_prefix: str) -> str:
 class StandardRecorderConfig(BaseRecorderConfig):
     target_class: str = "StandardRecorder"
     track_cam_name: str = "tracking"
+    track_cam_distance_factor: float = 5.0
     fig_height: int = 800
     fig_width: int = 800
     videoname: str = "output.mp4"
