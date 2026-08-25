@@ -52,7 +52,7 @@
 ## データセット出荷 (2026-08-06)
 
 - [ ] 出荷先 `datasets/neural-mass-fields/loaded_dice/` の `transforms.json` と train/valid/test 分割を, 同ディレクトリ同梱の `unperturbed_*.json.bak` へ差し替える (→ notes/LOGS/2026-08-06_loaded-dice-wrench-inconsistency.md)
-- [ ] `global_gt` をセンサ座標系へ変換して書き出すよう生成側を修正する (`main.py:147-148` で `transfer_iparams(simulation.pose_sen_obj.inv(), gt_iparams)`. 現状は物体 aabb 系で書かれ, センサ系の `regressor` と不一致)
+- [ ] ~~`global_gt` をセンサ座標系へ変換して書き出すよう生成側を修正する~~ → 取り消し (2026-08-25 決定: 10 次元慣性パラメータは全て物体 aabb 系に統一. センサ系への変換は出荷前チェックの内部でのみ行う. 学習側で真値と推定値が出会う場所は全て aabb 系のため. ユーザー承認済み. → notes/DECISIONS.md 2026-08-25)
 - [ ] 摂動版だけが `transforms.json` を名乗る命名規則 (`recorders/standard_recorder.py:171-173`) を見直す, または `perturb_wrench` の状態を JSON 最上位に記録して下流が検知できるようにする
   - [x] 命名規則の見直し (2026-08-25 判明: 8/3 セッションで実装済みだった. `split_file_name` + `primary_prefix` により非摂動系列があれば `unperturbed_transforms` が素の `.json` を取る. → notes/LOGS/2026-08-03_wisp-dataset-compatibility.md)
   - [ ] `perturb_wrench` の状態を JSON 最上位に記録する (未着手のまま残る)
@@ -65,7 +65,7 @@
 
 → notes/LOGS/2026-08-03_wisp-dataset-compatibility.md
 
-- [ ] 座標系の統一方針を決定する: 8/3 実装は `ls`/`tls` を物体 aabb 系へ寄せ, 8/6 の上記 TODO は `global_gt` をセンサ系へ寄せる指示で, 両方実施すると同一 JSON 内で座標系が割れる (→ notes/ISSUES.md [2026-08-06] 項)
+- [x] 座標系の統一方針を決定する (done 2026-08-25: 10 次元慣性パラメータ 3 組は全て物体 aabb 系に統一 (8/3 実装を維持). per-frame の `regressor`/`wrench` はセンサ系のまま据え置き, これは仕様として明記. センサ系への真値変換は出荷前チェックの内部に閉じる. 分析根拠: 学習側 (pixi-wisp-container) で真値と推定値が突き合わされる経路 (score/md_mse/質量分布距離) は全て aabb 系で, `global_gt` を読む消費者は動かないスクリプト 1 本のみ. ユーザー承認済み)
 - [ ] `simulators/setup.py` のカメラ距離 4→5*aabb_scale 変更の採否を判断する (理由の記録がどの文書にもない)
 - [ ] wisp 側バグ 3 箇所の修正を先方に確認する: `nemd_tracker.py:562`, `md_multiview_trainer.py:678-679`, `:842,855` (慣性テンソル非対角ラベルの取り違え. 7/31 レポート §5 の正誤判定は逆だった. → wisp_handoff_20260803.md §2)
 - [ ] `wandb_add_reference.py:71` のファイル名不一致 (`transform_train.json` → 実体は `transforms_train.json`) と `global_gt` からの自動採点経路 (任意改善, → wisp_handoff_20260803.md §3)
