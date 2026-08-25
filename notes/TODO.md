@@ -73,7 +73,7 @@
 
 ## Code Cleanup
 
-- [ ] `_lqr.py`(旧 LQR 実装)を削除するか残すか判断する
+- [x] `_lqr.py`(旧 LQR 実装)を削除するか残すか判断する (2026-08-25 判明: 2026-06-30 のコミット 3d85322 で削除済みだった. 現行 `controllers/lqr.py` のみ残存し `__init__.py` から参照)
 - [ ] `xml_models/targets/sledgehammer/object.mtl` の未コミット差分の去就を決める: テクスチャ参照を `assets/` から未追跡の `object/` へ変えており, このままコミットすると他マシンで参照が切れる. 同名 PNG は `assets/` に既存のため, 差分破棄 (`assets/` 参照維持) が最小 (2026-08-25 起票)
 - [x] 重複・旧作業コピー 4 件の削除: ルート直下 `gt_mass_distr.csv` (sledgehammer 配下とバイト一致, 139 MB), `object_cad_gt.csv` / `object_cad_gt_2.csv` (target 外の古い作業コピー), `xml_models/targets/_sledgehammer/` (クリーンアップ前スナップショット) (2026-08-25 起票, done 同日: 削除前に `cmp` でバイト一致を再確認済み)
 - [ ] CAD ソースと計測 CSV の `.gitignore` 追加: `sledgehammer/sledgehammer/` `OldVersions/` `object.iam` `object/` (SolidWorks/Inventor ソース一式) と `gt_mass_distr*.csv`. 他の target は CAD ソースを持たずコミット対象にしない方針 (2026-08-25 起票)
