@@ -74,3 +74,7 @@
 ## Code Cleanup
 
 - [ ] `_lqr.py`(旧 LQR 実装)を削除するか残すか判断する
+- [ ] `xml_models/targets/sledgehammer/object.mtl` の未コミット差分の去就を決める: テクスチャ参照を `assets/` から未追跡の `object/` へ変えており, このままコミットすると他マシンで参照が切れる. 同名 PNG は `assets/` に既存のため, 差分破棄 (`assets/` 参照維持) が最小 (2026-08-25 起票)
+- [ ] 重複・旧作業コピー 4 件の削除: ルート直下 `gt_mass_distr.csv` (sledgehammer 配下とバイト一致, 139 MB), `object_cad_gt.csv` / `object_cad_gt_2.csv` (target 外の古い作業コピー), `xml_models/targets/_sledgehammer/` (クリーンアップ前スナップショット) (2026-08-25 起票)
+- [ ] CAD ソースと計測 CSV の `.gitignore` 追加: `sledgehammer/sledgehammer/` `OldVersions/` `object.iam` `object/` (SolidWorks/Inventor ソース一式) と `gt_mass_distr*.csv`. 他の target は CAD ソースを持たずコミット対象にしない方針 (2026-08-25 起票)
+- [x] リポジトリ直下と `configurations/trajectories/` のデバッグ残骸 13 ファイルの削除 (done 2026-08-25: `debug_*` 5 件, `spline.json/png`, `inverse_spline.json`, `debug_tyro.py`, `test_merge.py`, `tracking_*.png` 2 件, `image.png`. すべて未追跡のため履歴影響なし)
