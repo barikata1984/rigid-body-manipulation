@@ -272,7 +272,9 @@ def spawn_target_object(
     target_object_body.add("inertial", **inertial)  # type: ignore
 
     if compare_cad_mujoco:
-        m = MjModel.from_xml_string(target_object.to_xml_string(), assets=assets)
+        m = MjModel.from_xml_string(
+            target_object.to_xml_string(filename_with_hash=False), assets=assets
+        )
         show_comparison(m, "object", ground_truth)
 
     return target_object, assets, ground_truth
