@@ -1,0 +1,31 @@
+<mujoco model="loaded_dice_density">
+  <!-- Inertial properties are computed by MuJoCo from catalog densities (ABS case
+       1060 kg/m^3, brass insert 8470 kg/m^3) applied to the exact signed mesh volumes
+       (inertia="exact"; the case mesh is not watertight, so the legacy solver
+       overestimates its volume 5.44x). The convex collision hull carries no mass:
+       inertiagrouprange restricts the inertia sum to the visual group. -->
+  <compiler angle="radian" inertiagrouprange="2 2"/>
+  <default>
+    <default class="visual">
+      <geom group="2" type="mesh" contype="0" conaffinity="0"/>
+    </default>
+    <default class="collision">
+      <geom group="3" type="mesh"/>
+    </default>
+  </default>
+  <asset>
+    <material name="203,154,59" specular="0.543791" shininess="1.0" rgba="0.796078 0.603922 0.231373 1.000000"/>
+    <material name="204,0,0" specular="1.0" shininess="1.0" rgba="0.800000 0.000000 0.000000 1.000000"/>
+    <mesh file="loaded_dice_0.obj" scale="0.001 0.001 0.001" inertia="exact"/>
+    <mesh file="loaded_dice_1.obj" scale="0.001 0.001 0.001" inertia="exact"/>
+    <mesh file="loaded_dice_collision_0.obj" scale="0.001 0.001 0.001" inertia="exact"/>
+  </asset>
+  <worldbody>
+    <body name="loaded_dice">
+      <freejoint name="loaded_dice_free"/>
+      <geom name="loaded_dice_case" mesh="loaded_dice_0" material="204,0,0" density="1060" class="visual"/>
+      <geom name="loaded_dice_brass" mesh="loaded_dice_1" material="203,154,59" density="8470" class="visual"/>
+      <geom name="loaded_dice_collision" mesh="loaded_dice_collision_0" rgba="0.4086027063060057 0.4204582121954845 0.7997155407939681 1" class="collision"/>
+    </body>
+  </worldbody>
+</mujoco>

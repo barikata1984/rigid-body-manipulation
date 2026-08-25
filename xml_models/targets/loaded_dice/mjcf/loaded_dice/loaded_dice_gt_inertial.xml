@@ -1,0 +1,33 @@
+<mujoco model="loaded_dice_gt_inertial">
+  <!-- The <inertial> element below is measured ground truth, computed from the voxel
+       mass distribution gt_mass_distr.csv at lod=7 (mass, COM and the COM-frame inertia
+       tensor, expressed in the body frame = mesh origin). It carries a discretization
+       bias of about -2.8% in mass relative to the CAD/density model. An explicit
+       <inertial> overrides any geom-derived inertia, so the geoms here are shape only. -->
+  <compiler angle="radian"/>
+  <default>
+    <default class="visual">
+      <geom group="2" type="mesh" contype="0" conaffinity="0"/>
+    </default>
+    <default class="collision">
+      <geom group="3" type="mesh"/>
+    </default>
+  </default>
+  <asset>
+    <material name="203,154,59" specular="0.543791" shininess="1.0" rgba="0.796078 0.603922 0.231373 1.000000"/>
+    <material name="204,0,0" specular="1.0" shininess="1.0" rgba="0.800000 0.000000 0.000000 1.000000"/>
+    <mesh file="loaded_dice_0.obj" scale="0.001 0.001 0.001" inertia="exact"/>
+    <mesh file="loaded_dice_1.obj" scale="0.001 0.001 0.001" inertia="exact"/>
+    <mesh file="loaded_dice_collision_0.obj" scale="0.001 0.001 0.001" inertia="exact"/>
+  </asset>
+  <worldbody>
+    <body name="loaded_dice">
+      <freejoint name="loaded_dice_free"/>
+      <inertial mass="0.331015489" pos="0.010964264 0.010964264 -0.010964264"
+                fullinertia="1.758557e-04 1.758557e-04 1.754376e-04 -1.987842e-05 1.987842e-05 1.987842e-05"/>
+      <geom name="loaded_dice_case" mesh="loaded_dice_0" material="204,0,0" class="visual"/>
+      <geom name="loaded_dice_brass" mesh="loaded_dice_1" material="203,154,59" class="visual"/>
+      <geom name="loaded_dice_collision" mesh="loaded_dice_collision_0" rgba="0.4086027063060057 0.4204582121954845 0.7997155407939681 1" class="collision"/>
+    </body>
+  </worldbody>
+</mujoco>

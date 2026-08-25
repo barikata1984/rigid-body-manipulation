@@ -1,0 +1,24 @@
+<mujoco model="loaded_dice">
+  <default>
+    <default class="visual">
+      <geom group="2" type="mesh" contype="0" conaffinity="0"/>
+    </default>
+    <default class="collision">
+      <geom group="3" type="mesh"/>
+    </default>
+  </default>
+  <asset>
+    <material name="203,154,59" specular="0.543791" shininess="1.0" rgba="0.796078 0.603922 0.231373 1.000000"/>
+    <material name="204,0,0" specular="1.0" shininess="1.0" rgba="0.800000 0.000000 0.000000 1.000000"/>
+    <mesh file="loaded_dice_0.obj"/>
+    <mesh file="loaded_dice_1.obj"/>
+  </asset>
+  <worldbody>
+    <body name="loaded_dice">
+      <geom mesh="loaded_dice_0" material="204,0,0" class="visual"/>
+      <geom mesh="loaded_dice_1" material="203,154,59" class="visual"/>
+      <geom mesh="loaded_dice_0" class="collision"/>
+      <geom mesh="loaded_dice_1" class="collision"/>
+    </body>
+  </worldbody>
+</mujoco>

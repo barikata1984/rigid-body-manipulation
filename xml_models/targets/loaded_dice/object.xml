@@ -1,0 +1,25 @@
+<mujoco model="target">
+  <compiler meshdir="assets" texturedir="assets" autolimits="true"/>
+  <default>
+    <default class="visual">
+      <geom group="2" type="mesh" contype="0" conaffinity="0"/>
+    </default>
+    <default class="collision">
+      <geom group="3" type="mesh"/>
+    </default>
+  </default>
+  <asset>
+    <material name="203,154,59" specular="0.543791" shininess="1.0" rgba="0.796078 0.603922 0.231373 1.000000"/>
+    <material name="204,0,0" specular="1.0" shininess="1.0" rgba="0.800000 0.000000 0.000000 1.000000"/>
+    <mesh file="object_0.obj" scale="0.001 0.001 0.001" inertia="exact"/>
+    <mesh file="object_1.obj" scale="0.001 0.001 0.001" inertia="exact"/>
+    <mesh file="object_collision_0.obj" scale="0.001 0.001 0.001" inertia="exact"/>
+  </asset>
+  <worldbody>
+    <body name="object">
+      <geom mesh="object_0" material="204,0,0" class="visual"/>
+      <geom mesh="object_1" material="203,154,59" class="visual"/>
+      <geom mesh="object_collision_0" rgba="0.4086027063060057 0.4204582121954845 0.7997155407939681 1" class="collision"/>
+    </body>
+  </worldbody>
+</mujoco>

@@ -1,0 +1,25 @@
+Assets are copies of mjcf/loaded_dice/ (kept unchanged for reference):
+  assets/object_0.obj            <- mjcf/loaded_dice/loaded_dice_0.obj            (ABS case, red)
+  assets/object_1.obj            <- mjcf/loaded_dice/loaded_dice_1.obj            (brass insert)
+  assets/object_collision_0.obj  <- mjcf/loaded_dice/loaded_dice_collision_0.obj  (convex hull)
+  assets/material.mtl            <- mjcf/loaded_dice.mtl
+Meshes are in millimetres, so object.xml scales them by 0.001.
+
+object_cad_gt.csv, row 2 (the row the simulator reads):
+  total_mass, cx..cz and ixx..izx are taken from the <inertial> element of
+  mjcf/loaded_dice/loaded_dice_gt_inertial.xml, i.e. the voxel-measured ground truth
+  (gt_mass_distr.csv at lod=7). MuJoCo's fullinertia order (ixx iyy izz ixy ixz iyz)
+  is remapped to this file's order (ixx iyy izz ixy iyz izx).
+  pixx..pizz and rx..rz are the eigen-decomposition of that tensor; the column order
+  reproduces the diaginertia MuJoCo computes for loaded_dice_gt_inertial.xml.
+  aabb_scale = 0.0345 m is max(|vertex coordinate|) over the two visual meshes, the
+  same convention as the other targets (collision geoms are group 3 and not rendered).
+
+object_cad_gt.csv, rows 3+ (component block, not read by the current pipeline):
+  masses computed by MuJoCo from mjcf/loaded_dice/loaded_dice_density.xml (catalog
+  densities, exact signed mesh volumes). They sum to 0.34026 kg, 2.7% above the voxel
+  total_mass above, which is the discretisation bias documented in
+  loaded_dice_gt_inertial.xml.
+
+Not provided: ground_truth.csv (per-voxel mass distribution). main.py only warns when
+it is absent.
