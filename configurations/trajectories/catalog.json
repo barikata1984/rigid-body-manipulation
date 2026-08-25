@@ -288,5 +288,35 @@
     "objective_type": "condition_number",
     "num_harmonics": 5,
     "base_freq": 0.1
+  },
+  {
+    "timestamp": "2026-07-31T11:30:07",
+    "subcommand": "spline",
+    "output_dir": "configurations/trajectories/spline_20260731_113007",
+    "condition_number": null,
+    "config": "configurations/trajectory_generation/spline_6dof.yaml",
+    "objective_type": null,
+    "num_harmonics": null,
+    "base_freq": null
+  },
+  {
+    "timestamp": "2026-07-31T17:26:17",
+    "subcommand": "spline",
+    "output_dir": "configurations/trajectories/spline_20260731_172617",
+    "condition_number": null,
+    "config": "configurations/trajectory_generation/spline_6dof.yaml",
+    "objective_type": null,
+    "num_harmonics": null,
+    "base_freq": null
+  },
+  {
+    "timestamp": "2026-08-03T17:36:38",
+    "subcommand": "spline",
+    "output_dir": "configurations/trajectories/spline_20260803_173638",
+    "condition_number": null,
+    "config": "configurations/trajectory_generation/spline_6dof.yaml",
+    "objective_type": null,
+    "num_harmonics": null,
+    "base_freq": null
   }
 ]
