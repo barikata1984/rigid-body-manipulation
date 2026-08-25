@@ -31,6 +31,8 @@ FTA で `sensors/sensors.py:17-23` のノイズ設定が真因と特定した. `
 
 データセットの `global_gt` は CAD 真値を物体 (aabb) 座標系原点まわりへ移した値であり (`object_cad_gt.csv` と相対差 0), 一方 `regressor` はセンサ座標系で組まれる. 両者は `pose_sen_obj` で関係し, loaded_dice では `mx, my, iyz, izx` の符号反転に相当する. ノイズなしデータで変換を施すと force 残差 0.4105→0.0179 N, torque 残差 0.0536→0.00026 N·m, 最近傍一致 300/300 になる. hammer は重心が z 軸上・慣性テンソルほぼ対角で該当 4 成分が 1e-9 以下のため症状が出ず, 重心が軸から外れた loaded_dice で初めて露呈した. `global_gt` を予測値と突き合わせる利用側 (`wandb_add_reference.py`, 提案中の出荷前チェック) はすべて影響を受ける (詳細: `notes/LOGS/2026-08-06_loaded-dice-wrench-inconsistency.md`).
 
+追記 (2026-08-25): 統一方針が未決定のまま指示が矛盾していることが判明した. 8/3 セッションの未コミット実装は `ls`/`tls` をセンサ系から物体 aabb 系へ寄せた (`global_gt` と揃えた) のに対し, 本 ISSUE 由来の TODO は逆に `global_gt` をセンサ系へ寄せる指示になっている. 両方実施すると同一 JSON 内で `global_gt` と `ls`/`tls` の座標系が割れる. どちらの系に統一するかの決定が先に必要である (→ `notes/LOGS/2026-08-03_wisp-dataset-compatibility.md`).
+
 ## [2026-07-14] 同定精度の評価が total_mass 単体に偏っている
 
 慣性パラメータ同定の精度評価は, 10 個のパラメータ (mass, 一次モーメント mx/my/mz, 慣性テンソル 6 成分) のうち total_mass 1 個だけを見て行われてきた. しかし 2026-07-13/14 の wrench ノイズスイープでは, R=20 (現行デフォルト相当) での LS L2 ≈ 0.017 のうち mass の寄与は 0.003 程度で, L2 の大部分は残り 9 パラメータが担っている.

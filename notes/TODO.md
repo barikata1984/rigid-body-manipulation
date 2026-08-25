@@ -54,10 +54,22 @@
 - [ ] 出荷先 `datasets/neural-mass-fields/loaded_dice/` の `transforms.json` と train/valid/test 分割を, 同ディレクトリ同梱の `unperturbed_*.json.bak` へ差し替える (→ notes/LOGS/2026-08-06_loaded-dice-wrench-inconsistency.md)
 - [ ] `global_gt` をセンサ座標系へ変換して書き出すよう生成側を修正する (`main.py:147-148` で `transfer_iparams(simulation.pose_sen_obj.inv(), gt_iparams)`. 現状は物体 aabb 系で書かれ, センサ系の `regressor` と不一致)
 - [ ] 摂動版だけが `transforms.json` を名乗る命名規則 (`recorders/standard_recorder.py:171-173`) を見直す, または `perturb_wrench` の状態を JSON 最上位に記録して下流が検知できるようにする
+  - [x] 命名規則の見直し (2026-08-25 判明: 8/3 セッションで実装済みだった. `split_file_name` + `primary_prefix` により非摂動系列があれば `unperturbed_transforms` が素の `.json` を取る. → notes/LOGS/2026-08-03_wisp-dataset-compatibility.md)
+  - [ ] `perturb_wrench` の状態を JSON 最上位に記録する (未着手のまま残る)
 - [ ] 出荷前の自己整合性チェックを組み込む: `‖regressor @ gt_sen − wrench‖ / ‖wrench‖` が force <1e-2 / torque <2e-2 (`global_gt` はセンサ系へ変換してから判定する. 変換なし・torque 1e-2 では正しいファイルを誤検出で弾く)
 - [ ] `Sensors` の乱数種を固定し, `SimulatorConfig.config_export_path` を既定で有効にする (現状, 摂動系列も生成コマンドも再現不能)
-- [ ] 重心が軸上にない物体を回帰テストに含める (hammer は重心が z 軸上・慣性テンソルほぼ対角のため座標系バグを検出できない)
+- [ ] 重心が軸上にない物体を回帰テストに含める (hammer は重心が z 軸上・慣性テンソルほぼ対角のため座標系バグを検出できない) (2026-08-25: 単体レベルは `tests/test_iparams_transfer.py` の z 軸 180° 回転符号反転テストが部分的に担う. パイプライン全体の E2E 回帰テストは未着手)
 - [ ] hammer データ (`hammer_spline_20260731_113007_run1`) が実機由来か否かを提供元に確認する (ディレクトリ構成が本リポジトリのシミュレータ出力と一致する)
+
+## wisp 互換性対応 (2026-07-31〜08-03, 記録は 2026-08-25 に事後再構成)
+
+→ notes/LOGS/2026-08-03_wisp-dataset-compatibility.md
+
+- [ ] 座標系の統一方針を決定する: 8/3 実装は `ls`/`tls` を物体 aabb 系へ寄せ, 8/6 の上記 TODO は `global_gt` をセンサ系へ寄せる指示で, 両方実施すると同一 JSON 内で座標系が割れる (→ notes/ISSUES.md [2026-08-06] 項)
+- [ ] `simulators/setup.py` のカメラ距離 4→5*aabb_scale 変更の採否を判断する (理由の記録がどの文書にもない)
+- [ ] wisp 側バグ 3 箇所の修正を先方に確認する: `nemd_tracker.py:562`, `md_multiview_trainer.py:678-679`, `:842,855` (慣性テンソル非対角ラベルの取り違え. 7/31 レポート §5 の正誤判定は逆だった. → wisp_handoff_20260803.md §2)
+- [ ] `wandb_add_reference.py:71` のファイル名不一致 (`transform_train.json` → 実体は `transforms_train.json`) と `global_gt` からの自動採点経路 (任意改善, → wisp_handoff_20260803.md §3)
+- [ ] hammer の `ground_truth.csv` の Windows 側からのサルベージ状況を確認する
 
 ## Code Cleanup
 
