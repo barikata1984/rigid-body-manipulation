@@ -71,6 +71,8 @@
 - [ ] `wandb_add_reference.py:71` のファイル名不一致 (`transform_train.json` → 実体は `transforms_train.json`) と `global_gt` からの自動採点経路 (任意改善, → wisp_handoff_20260803.md §3)
 - [ ] hammer の `ground_truth.csv` の Windows 側からのサルベージ状況を確認する
 
+- [ ] シミュレーション設定の合成順を直す: 現状「クラス既定 → YAML → CLI」の最後で, CLI 側が未指定項目も既定値で埋まった完全なオブジェクトになるため, YAML に書いた値が警告なく既定値で上書きされる. `recorder.track_cam_distance_factor` (2026-08-25 新設) を YAML で物体ごとに指定したい場合はこの修正が前提 (既存の全項目に共通の構造問題)
+
 ## Code Cleanup
 
 - [x] `_lqr.py`(旧 LQR 実装)を削除するか残すか判断する (2026-08-25 判明: 2026-06-30 のコミット 3d85322 で削除済みだった. 現行 `controllers/lqr.py` のみ残存し `__init__.py` から参照)
