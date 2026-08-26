@@ -13,13 +13,16 @@ class Sensors:
         noise_scale: float = 1.0,
         force_noise_scale: float = 1.0,
         torque_noise_scale: float = 1.0,
+        seed: int | None = None,
     ) -> None:
         self.m = m
         self.d = d
         self._sensordata = d.sensordata
+        # Translation: repeatability of industrial ball-screw linear axes (+-5 to 20 um, THK/IAI/Yamaha
+        # class); rotation: effective joint angle error of UR5e-class cobots (between +-5 arcsec
+        # repeatability and ~1 arcmin gearbox transmission error, calibration residual included)
         self.jointpos_stddev = noise_scale * np.array(
-            [5.0e-4, 5.0e-4, 5.0e-4, 1.0e-3, 1.0e-3, 1.0e-3]  # [m, m, m, rad, rad, rad], may strong
-            # [1.0e-4, 1.0e-4, 1.0e-4, 5.0e-4, 5.0e-4, 5.0e-4]  # [m, m, m, rad, rad, rad], may weak
+            [2.0e-5, 2.0e-5, 2.0e-5, 1.0e-4, 1.0e-4, 1.0e-4]  # [m, m, m, rad, rad, rad]
         )
         # Robotiq FT 300-S signal noise: 0.1 N on Fx/Fy/Fz, 0.005 Nm on Mx/My, 0.003 Nm on Mz
         self.force_stddev = force_noise_scale * 0.1 * np.ones(3)  # [N]
@@ -30,7 +33,9 @@ class Sensors:
         #   coeffs [1, -2, 1], sum of squares 6 -> sqrt(6) * fps**2
         self.jointvel_noise_scaler = np.sqrt(2) * fps
         self.jointacc_noise_scaler = np.sqrt(6) * fps**2
-        self.rng = np.random.default_rng()
+        self.rng = np.random.default_rng(seed)
+        # When seed is None the generator draws OS entropy; expose it so runs stay reproducible
+        self.seed = self.rng.bit_generator.seed_seq.entropy  # type: ignore[attr-defined]
         self._force_idx = get_sensor_measurement_idx(m, name="force")
         self._torque_idx = get_sensor_measurement_idx(m, name="torque")
 

@@ -64,6 +64,7 @@ class SimulatorConfig(BaseSimulatorConfig):
     perturb_wrench: bool = True
     force_noise_scale: float = 1.0
     torque_noise_scale: float = 1.0
+    seed: int | None = None
 
 
 # Naming convention of spatial and dynamics variables:
@@ -146,7 +147,11 @@ class Simulator:
             noise_scale=cfg.noise_scale,
             force_noise_scale=cfg.force_noise_scale,
             torque_noise_scale=cfg.torque_noise_scale,
+            seed=cfg.seed,
         )
+        # Record the seed actually used (drawn from OS entropy when cfg.seed is None) so that
+        # every transforms*.json carries it
+        self.recorder.base_transform["noise_seed"] = self.sensors.seed
         self.perturb_wrench = cfg.perturb_wrench
 
         _params = setup_robot_dynamics_parameters(self.m, self.d)
