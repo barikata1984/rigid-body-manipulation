@@ -5,15 +5,6 @@
 `coefficients`/`q0` 等を `None` に変更したが, tyro が `str` 型として MISSING を検出する警告が残っている.
 動作には影響しないが出力がうるさい.
 
-## [2026-08-26] MuJoCo 状態と力覚値が 2 ms ずれて記録される
-
-`simulators/simulator.py` は `mj_step` 後の `qpos/qvel` と、積分前の forward 計算で得た `qacc/sensordata` を次の反復で同じ frame に保存する。
-積分刻み 0.002 秒の時刻ずれにより、D-opt 8π 軌道では GT 相対残差が 4.78e-3 まで増えた。
-`mj_step` 後に `mj_forward` を挟む診断では、D-opt 軌道の OLS L2 が 1.87e-16、元の nomain 軌道が 5.56e-16 になった。
-MuJoCo の物理計算や座標変換ではなく、シミュレータ側のデータ取得タイミングが原因である。
-ソース修正、回帰試験、5 条件評価と配布 zip の再生成は未実施である。
-詳細は `notes/LOGS/2026-08-26_dataset-merge-and-noise-model.md` を参照。
-
 ## [2026-06-30] Excited 軌道最適化が遅い
 
 6DOF で約 30 秒/反復. 実用上の問題になりうる.

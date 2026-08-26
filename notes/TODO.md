@@ -84,7 +84,7 @@
 
 ## 2026-08-26 起票 (データセット合成とノイズモデル)
 
-- [ ] `simulators/simulator.py` の 2 ms 時刻同期バグを修正する. `mj_step` 後の `qpos/qvel` と積分前の `qacc/sensordata` が同じ frame に保存されている. 診断では `mj_forward` 追加により元軌道・D-opt 軌道ともクリーン OLS が機械精度で GT と一致した (→ notes/LOGS/2026-08-26_dataset-merge-and-noise-model.md)
+- [x] `simulators/simulator.py` の 2 ms 時刻同期バグを修正する (done 2026-08-26: 記録 frame の直前だけ `mj_forward` を実行し、loaded_dice の clean 条件で `regressor @ GT` と wrench の機械精度一致を回帰試験化. → notes/LOGS/2026-08-26_mujoco-time-sync-fix.md)
 - [ ] 同期修正後に 5 条件 (clean / control only / record joint only / wrench only / all) を再生成し, 旧配布 zip を置き換える
 - [ ] 元の nomain 軌道と D-opt 8π 軌道をノイズ入りで比較する. 質量・重心・慣性対角を主評価とし, 非対角と L2 は副指標にする
 - [ ] 最初の 3 並進軸の位置ノイズ水準を直動軸の実機データで確定する. 現在の `empirical` profile は回転 3 軸のみ実機ログに基づき, 並進 3 軸は暫定値

@@ -28,3 +28,5 @@
 - 2026-08-26 制御器にはノイズ付き関節位置と MuJoCo の瞬時速度・加速度を入力する / 却下: 記録用の 34 ms 派生速度を制御器へ入力する — ユーザー確認済み ([議事録](LOGS/2026-08-26_dataset-merge-and-noise-model.md))
 - 2026-08-26 OLS は質量・重心・慣性対角を主評価、慣性非対角を副評価とし、L2 は診断指標に下げる / 却下: L2 単独評価 — ユーザー確認済み ([議事録](LOGS/2026-08-26_dataset-merge-and-noise-model.md))
 - 2026-08-26 状態と力覚値の時刻同期を修正するまで、旧ループの OLS 数値と配布 zip を確定結果として扱わない — エージェント判断 ([議事録](LOGS/2026-08-26_dataset-merge-and-noise-model.md))
+- 2026-08-26 記録 frame の直前だけ `mj_forward` を実行する / 却下: 各 `mj_step` 後の forward、積分前 state の退避 — エージェント判断 ([議事録](LOGS/2026-08-26_mujoco-time-sync-fix.md))
+- 2026-08-26 データセットと配布 zip の再生成は同期修正とは別の後続作業とする — ユーザー確認済み ([議事録](LOGS/2026-08-26_mujoco-time-sync-fix.md))

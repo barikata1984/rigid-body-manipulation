@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 import matplotlib as mpl
 import numpy as np
 from matplotlib import pyplot as plt
-from mujoco._functions import mj_differentiatePos, mj_step
+from mujoco._functions import mj_differentiatePos, mj_forward, mj_step
 from mujoco._structs import MjData, MjModel
 from omegaconf import MISSING
 from tqdm import tqdm
@@ -20,6 +20,16 @@ from sensors import Sensors
 from visualization.visualization import ax_plot_lines, ax_plot_lines_w_tgt
 
 from .base_simulator import BaseSimulatorConfig
+
+
+def _refresh_derived_data(model: MjModel, data: MjData) -> None:
+    """Synchronize MuJoCo's derived values with its current state.
+
+    ``mj_step`` computes acceleration-dependent sensors before integration, so its
+    returned ``qpos``/``qvel`` are one timestep newer than ``qacc``/``sensordata``.
+    A forward pass refreshes those derived values without advancing time.
+    """
+    mj_forward(model, data)
 
 
 @dataclass
@@ -214,6 +224,13 @@ class Simulator:
             raise RuntimeError("VideoWriter failed to open. Check codec and output path.")
 
         for _step in tqdm(range(self.n_steps), desc="Progress"):
+            should_record = self.data.frame_count <= self.d.time * self.fps
+            if should_record:
+                # mj_step leaves derived quantities at the pre-integration state.
+                # Refresh only when they will be recorded, rather than at every
+                # 2 ms physics step.
+                _refresh_derived_data(self.m, self.d)
+
             observed_jointvars = self.sensors.sample_jointvars()
             true_jointvars = np.stack(self.sensors.get("jointvars", perturbed=False))  # type: ignore
             control_jointvars = (
@@ -223,7 +240,7 @@ class Simulator:
             )
             record_jointvars = observed_jointvars if self.record_joint_noise else true_jointvars
 
-            if self.data.frame_count <= self.d.time * self.fps:
+            if should_record:
                 _tgt_traj = self.target_trajectory.frames[self.data.frame_count]
                 tgt_traj = np.array(_tgt_traj)
                 self._store_current_data(tgt_traj, record_jointvars)
