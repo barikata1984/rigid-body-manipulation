@@ -318,5 +318,15 @@
     "objective_type": null,
     "num_harmonics": null,
     "base_freq": null
+  },
+  {
+    "timestamp": "2026-08-25T16:41:21",
+    "subcommand": "spline",
+    "output_dir": "configurations/trajectories/spline_20260825_164121",
+    "condition_number": null,
+    "config": "configurations/trajectory_generation/spline_6dof_rot_only.yaml",
+    "objective_type": null,
+    "num_harmonics": null,
+    "base_freq": null
   }
 ]

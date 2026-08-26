@@ -1,0 +1,7 @@
+config_class: SplineTrajectoryConfig
+type: quintic
+duration: 5.0
+fps: 60.0
+start_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+# rotation-only for NeRF viewpoint coverage: pi tilt + 8pi turn, no translation
+end_pos: [0.0, 0.0, 0.0, 3.141592653589793, 0.0, 25.1327412287]
