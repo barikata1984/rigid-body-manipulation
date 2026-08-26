@@ -21,6 +21,8 @@ dependencies = [
 
 [project.scripts]
 generate-trajectory = "trajectories.generate:main"
+merge-datasets = "recorders.merge:main"
+export-dynamics-csv = "recorders.export_dynamics_csv:main"
 
 [project.optional-dependencies]
 dev = ["pytest"]
