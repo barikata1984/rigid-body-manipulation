@@ -27,6 +27,8 @@ FTA で `sensors/sensors.py:17-23` のノイズ設定が真因と特定した. `
 
 追記 (2026-07-13/14): wrench (force/torque) 側は実機グラウンディングにより律速要因から外れたと判明した. Robotiq FT300-S の公称シグナルノイズ (force σ=0.1N, torque σ=0.005Nm) は現行コードのデフォルト (2N/0.1Nm) のちょうど 1/20 である. kinematics ノイズ (noise_scale=0.1) と同時に与えた場合, wrench 側の寄与は kinematics 起因の誤差フロアに完全に埋もれて検出できなかった. kinematics ノイズを厳密にゼロにした極端条件のスイープでも, Robotiq 公称値相当 (R=1) では total_mass 誤差 <0.03%, L2 ≤0.0013 と無害だった. これにより本問題の律速要因は kinematics (qacc) ノイズ側に絞られた. ただし本問題自体は未解決である (詳細: `notes/LOGS/log_trajectory_optimization.md` 2026-07-13/14 エントリ).
 
+追記 (2026-08-26): 本問題の中心だった qacc ノイズ過大は 2 段階で解消した. 第 1 段は `jointpos_stddev` の実機グラウンディングで, 並進 5e-4→2.0e-5 m, 回転 1e-3→1.0e-4 rad とした (コミット df76d91). 第 2 段は速度・加速度の係数で, 現行の `√2·fps` / `√6·fps²` が「位置を平滑化せずに 2 回差分する」最悪ケースの増幅率であり実機と式の形が違うと判明した. UR5e の実測記録から実効微分窓幅 32.6ms を推定し, 速度 43 (fps 非依存), 加速度 1840 (fps の 1 乗に比例, 60fps 時) に変更した. 回帰行列の相対ノイズは 0.197→0.042 (4.7 分の 1), ハンマーの OLS L2 は 0.0850→0.0139 (6.1 倍改善, 種 5 個の対応のある t=+49.7) となり, mz は −47.3%→−7.4%, ixx は −69.6%→−15.6% に改善した. 残る課題は loaded_dice の慣性成分 (真値 2.55e-4 kg·m² に対し推定値の標準偏差が 1〜3 倍) と, 回転方向の励起振幅不足 (実機の加速度 SNR に並ぶには 13〜34 倍必要) である (詳細: `notes/LOGS/2026-08-26_dataset-merge-and-noise-model.md`).
+
 ## [2026-08-06] `global_gt` が物体座標系, `regressor` がセンサ座標系で書かれている
 
 データセットの `global_gt` は CAD 真値を物体 (aabb) 座標系原点まわりへ移した値であり (`object_cad_gt.csv` と相対差 0), 一方 `regressor` はセンサ座標系で組まれる. 両者は `pose_sen_obj` で関係し, loaded_dice では `mx, my, iyz, izx` の符号反転に相当する. ノイズなしデータで変換を施すと force 残差 0.4105→0.0179 N, torque 残差 0.0536→0.00026 N·m, 最近傍一致 300/300 になる. hammer は重心が z 軸上・慣性テンソルほぼ対角で該当 4 成分が 1e-9 以下のため症状が出ず, 重心が軸から外れた loaded_dice で初めて露呈した. `global_gt` を予測値と突き合わせる利用側 (`wandb_add_reference.py`, 提案中の出荷前チェック) はすべて影響を受ける (詳細: `notes/LOGS/2026-08-06_loaded-dice-wrench-inconsistency.md`).
@@ -34,6 +36,8 @@ FTA で `sensors/sensors.py:17-23` のノイズ設定が真因と特定した. `
 追記 (2026-08-25): 統一方針が未決定のまま指示が矛盾していることが判明した. 8/3 セッションの未コミット実装は `ls`/`tls` をセンサ系から物体 aabb 系へ寄せた (`global_gt` と揃えた) のに対し, 本 ISSUE 由来の TODO は逆に `global_gt` をセンサ系へ寄せる指示になっている. 両方実施すると同一 JSON 内で `global_gt` と `ls`/`tls` の座標系が割れる. どちらの系に統一するかの決定が先に必要である (→ `notes/LOGS/2026-08-03_wisp-dataset-compatibility.md`).
 
 解決 (2026-08-25, ユーザー承認済み): 10 次元慣性パラメータ 3 組 (`global_gt`/`ls`/`tls`) は全て物体 aabb 系に統一し, per-frame の `regressor`/`wrench` はセンサ系のままとすることを仕様として確定した. センサ系への真値変換は出荷前チェックの内部でのみ行う. これにより 8/6 の「チェックは真値をセンサ系へ変換して行う」決定と 8/3 の「`ls`/`tls` を aabb 系で書く」実装は両立する. 矛盾していたのは決定を「書き出し時に変換する」と読み替えた TODO の 1 項目だけだった. 本 ISSUE のうち座標系の混在部分はこれで閉じ, 残るのは出荷前チェックの実装のみ (TODO 参照).
+
+追記 (2026-08-26): 同一の座標系取り違えが, 本 ISSUE の解決後に新規作成した手順書 `notes/ols-identification-procedure.md` (コミット 32c65f5) で再発した. センサ系の OLS 解を `global_gt` と直接引き算する手順を書いており, loaded_dice で mx, my, iyz, izx の 4 成分が符号反転して現れた. `transfer_iparams` による変換を挟むと L2 は 0.01027→0.0000246 になる. 手順書と `notes/debug/2026-08-26_merged-dataset-and-ols-results.md` を訂正した (コミット 916ade4). ハンマーで表面化しなかった理由は本 ISSUE 本文と同じである (詳細: `notes/LOGS/2026-08-26_dataset-merge-and-noise-model.md`).
 
 ## [2026-07-14] 同定精度の評価が total_mass 単体に偏っている
 
