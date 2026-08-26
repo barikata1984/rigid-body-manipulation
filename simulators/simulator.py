@@ -60,7 +60,17 @@ class SimulatorConfig(BaseSimulatorConfig):
     generate_trajectory: str | None = None
     diffpos_dt: float = 1.0
     get_unperturbed: bool = True
+    noise_profile: str = "empirical"
+    control_noise: bool = True
+    control_derived_velocity: bool = False
+    record_noise: bool = True
+    record_joint_noise: bool = True
+    record_wrench_noise: bool = True
+    joint_bias_scale: float = 0.0
+    wrench_bias_scale: float = 0.0
     noise_scale: float = 1.0
+    translation_noise_scale: float = 1.0
+    rotation_noise_scale: float = 1.0
     perturb_wrench: bool = True
     force_noise_scale: float = 1.0
     torque_noise_scale: float = 1.0
@@ -145,14 +155,31 @@ class Simulator:
             self.d,
             self.fps,
             noise_scale=cfg.noise_scale,
+            translation_noise_scale=cfg.translation_noise_scale,
+            rotation_noise_scale=cfg.rotation_noise_scale,
             force_noise_scale=cfg.force_noise_scale,
             torque_noise_scale=cfg.torque_noise_scale,
+            noise_profile=cfg.noise_profile,
+            joint_bias_scale=cfg.joint_bias_scale,
+            wrench_bias_scale=cfg.wrench_bias_scale,
             seed=cfg.seed,
         )
-        # Record the seed actually used (drawn from OS entropy when cfg.seed is None) so that
-        # every transforms*.json carries it
-        self.recorder.base_transform["noise_seed"] = self.sensors.seed
+        self.control_noise = cfg.control_noise
+        self.control_derived_velocity = cfg.control_derived_velocity
+        self.record_noise = cfg.record_noise
+        self.record_joint_noise = self.record_noise and cfg.record_joint_noise
+        self.record_wrench_noise = self.record_noise and cfg.record_wrench_noise
         self.perturb_wrench = cfg.perturb_wrench
+        noise_metadata = self.sensors.metadata()
+        noise_metadata.update(
+            control_noise=self.control_noise,
+            control_velocity_source="recorded_derived" if self.control_derived_velocity else "simulator",
+            record_noise=self.record_noise,
+            record_joint_noise=self.record_joint_noise,
+            record_wrench_noise=self.record_wrench_noise and self.perturb_wrench,
+        )
+        self.recorder.base_transform["noise_model"] = noise_metadata
+        self.recorder.base_transform["noise_seed"] = self.sensors.seed
 
         _params = setup_robot_dynamics_parameters(self.m, self.d)
         self.poses = _params.poses
@@ -186,20 +213,35 @@ class Simulator:
         if not self.recorder.videowriter.isOpened():
             raise RuntimeError("VideoWriter failed to open. Check codec and output path.")
 
-        for step in tqdm(range(self.n_steps), desc="Progress"):
-            act_traj = np.stack(self.sensors.get("jointvars", perturbed=True))  # type: ignore
+        for _step in tqdm(range(self.n_steps), desc="Progress"):
+            observed_jointvars = self.sensors.sample_jointvars()
+            true_jointvars = np.stack(self.sensors.get("jointvars", perturbed=False))  # type: ignore
+            control_jointvars = (
+                self.sensors.sample_control_jointvars(derived_velocity=self.control_derived_velocity)
+                if self.control_noise
+                else true_jointvars
+            )
+            record_jointvars = observed_jointvars if self.record_joint_noise else true_jointvars
 
             if self.data.frame_count <= self.d.time * self.fps:
                 _tgt_traj = self.target_trajectory.frames[self.data.frame_count]
                 tgt_traj = np.array(_tgt_traj)
-                self._store_current_data(tgt_traj, act_traj)
+                self._store_current_data(tgt_traj, record_jointvars)
                 self.data.frame_count += 1
 
             frame_idx = min(int(self.d.time * self.fps), len(self.target_trajectory.frames) - 1)
             tgt_traj = np.array(self.target_trajectory.frames[frame_idx])
-            self._set_ctrl(tgt_traj, act_traj)
+            self._set_ctrl(tgt_traj, control_jointvars)
 
+            previous_time = float(self.d.time)
             mj_step(self.m, self.d)
+            if float(self.d.time) <= previous_time or not all(
+                np.isfinite(values).all() for values in (self.d.qpos, self.d.qvel, self.d.qacc)
+            ):
+                raise RuntimeError(
+                    f"MuJoCo simulation became unstable after t={previous_time:.6f} s; "
+                    "refusing to emit a partial dataset"
+                )
 
         # Compose frames =========================================================
         data_containers = [
@@ -279,7 +321,7 @@ class Simulator:
         linacc_sen_obji = get_linacc(twist_sen, dtwist_sen, self.pose_sen_obji)
         self.data.linaccs_sen_obji.append(linacc_sen_obji)
 
-        wrench = self.sensors.get("wrench", perturbed=self.perturb_wrench)
+        wrench = self.sensors.get("wrench", perturbed=self.record_wrench_noise and self.perturb_wrench)
         self.data.wrenches.append(wrench)
 
         self.data.regressors.append(regressor)

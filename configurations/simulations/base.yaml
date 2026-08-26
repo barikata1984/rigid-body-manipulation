@@ -1,5 +1,13 @@
 manipulator: xml_models/manipulators/sequential
 reset_keyframe: initial_state
+noise_profile: empirical
+control_noise: true
+control_derived_velocity: false
+record_noise: true
+record_joint_noise: true
+record_wrench_noise: true
+translation_noise_scale: 1.0
+rotation_noise_scale: 1.0
 recorder:
   target_class: StandardRecorder
   track_cam_name: tracking

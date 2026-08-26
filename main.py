@@ -148,6 +148,7 @@ def main():
     if result.get("unperturbed_frames") is not None:
         # Ship the noise-free series: it, not the perturbed one, keeps the bare .json name
         simulation.recorder.primary_prefix = "unperturbed_transforms"
+    simulation.recorder.base_transform["noise_model"]["output_series"] = "selected_record"
     simulation.recorder.finish(result["frames"], gt_iparams, ls_iparams, tls_iparams)
 
     if result.get("unperturbed_frames") is not None:
@@ -157,6 +158,7 @@ def main():
             "wrenches": result["unperturbed_wrenches"],
         }
         gt_iparams, ls_iparams_u, tls_iparams_u = identify_inertial_params(unperturbed_result, gt, pose_obj_sen)
+        simulation.recorder.base_transform["noise_model"]["output_series"] = "unperturbed_reference"
         simulation.recorder.write_split_transforms(
             result["unperturbed_frames"],
             gt_iparams,
