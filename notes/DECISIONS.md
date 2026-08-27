@@ -30,3 +30,4 @@
 - 2026-08-26 状態と力覚値の時刻同期を修正するまで、旧ループの OLS 数値と配布 zip を確定結果として扱わない — エージェント判断 ([議事録](LOGS/2026-08-26_dataset-merge-and-noise-model.md))
 - 2026-08-26 記録 frame の直前だけ `mj_forward` を実行する / 却下: 各 `mj_step` 後の forward、積分前 state の退避 — エージェント判断 ([議事録](LOGS/2026-08-26_mujoco-time-sync-fix.md))
 - 2026-08-26 データセットと配布 zip の再生成は同期修正とは別の後続作業とする — ユーザー確認済み ([議事録](LOGS/2026-08-26_mujoco-time-sync-fix.md))
+- 2026-08-27 第5関節 pitch の ±45°制約を関節空間 LQR の安定性要件として扱わず、実機可動範囲へ置き換える / 却下: ±45°を特異姿勢回避の安全余裕として維持する — エージェント判断 ([議事録](LOGS/2026-08-27_pitch-joint-range-control-validation.md))
