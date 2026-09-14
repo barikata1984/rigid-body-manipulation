@@ -76,6 +76,7 @@ loaded_dice で 5000 step を 5 回計測した。
 - データセットと zip の変更は None
 
 ## Open Items
-- 同期修正後に clean / control only / record joint only / wrench only / all を再生成し、旧配布 zip を置き換える
-- 元の nomain 軌道と D-opt 8π 軌道をノイズ入りで再比較する
-- 同期修正後のデータで FT300-S 実測 profile のトルクノイズ寄与と loaded_dice の 10 種評価をやり直す
+- [x] 同期修正後に clean / control only / record joint only / wrench only / all を再生成する (done: `datasets/validation_sync_20260827/`)
+- [ ] 同期後データセットで旧配布 zip を置き換える
+- [x] 元の nomain 軌道と D-opt 8π 軌道をノイズ入りで再比較する (done. 条件の交絡を別途確認し、同一 base trajectory の objective 比較も実施)
+- [x] 同期修正後のデータで FT300-S 実測 profile のトルクノイズ寄与と loaded_dice の 10 種評価をやり直す (done: `datasets/validation_sync_20260827/condition_vs_dopt/`)

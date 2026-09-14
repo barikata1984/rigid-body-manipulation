@@ -33,6 +33,10 @@ FTA で `sensors/sensors.py:17-23` のノイズ設定が真因と特定した. `
 実機準拠のノイズ過程は実装したが、同定誤差への寄与は同期修正後に再評価する。
 この ISSUE の過去数値は経緯として残すが、現行 profile の最終評価には使わない。
 
+追記 (2026-08-27): 同期後評価に使った `empirical` profile は、並進位置 `2.0e-5 m`、回転位置 `1.5e-5 rad`、34 ms の因果差分速度、ゲイン 10 の一次 LPF 加速度だった。評価時の並進値は実機で未校正の暫定値である。同期修正後の 5 条件・seed 1〜10 の再評価では、clean は機械精度で一致し、wrench-only より joint-only の影響が大きかった。joint-only の質量誤差中央値は hammer 約 1.52%、loaded_dice 約 0.21〜0.28%、重心誤差はそれぞれ約 11〜12 mm、約 6.6〜6.9 mm で、慣性推定は物理的に不適切な負値を含んだ。結果は `datasets/validation_sync_20260827/condition_vs_dopt/` に保存した。時刻同期後も joint 観測由来の EIV 問題は残るが、並進軸と回転軸を同時に乱した評価なので原因軸は未分離である。
+
+追記 (2026-08-27 続): 後続のユーザー判断により、現行 `empirical` 系 profile の並進位置は `1.0e-5 m` とした。これは UR5e 手先観測等価値の保守的丸めであり、物理直動軸の校正値ではない。上記の同期後評価は `2.0e-5 m` 条件なので、新設定での再評価が必要である。
+
 ## [2026-08-06] `global_gt` が物体座標系, `regressor` がセンサ座標系で書かれている
 
 データセットの `global_gt` は CAD 真値を物体 (aabb) 座標系原点まわりへ移した値であり (`object_cad_gt.csv` と相対差 0), 一方 `regressor` はセンサ座標系で組まれる. 両者は `pose_sen_obj` で関係し, loaded_dice では `mx, my, iyz, izx` の符号反転に相当する. ノイズなしデータで変換を施すと force 残差 0.4105→0.0179 N, torque 残差 0.0536→0.00026 N·m, 最近傍一致 300/300 になる. hammer は重心が z 軸上・慣性テンソルほぼ対角で該当 4 成分が 1e-9 以下のため症状が出ず, 重心が軸から外れた loaded_dice で初めて露呈した. `global_gt` を予測値と突き合わせる利用側 (`wandb_add_reference.py`, 提案中の出荷前チェック) はすべて影響を受ける (詳細: `notes/LOGS/2026-08-06_loaded-dice-wrench-inconsistency.md`).
@@ -52,6 +56,15 @@ FTA で `sensors/sensors.py:17-23` のノイズ設定が真因と特定した. `
 したがって、±45°制約は実機可動範囲へ置き換える方針とする。
 モデルには関節位置限界とアクチュエータ飽和がないため、実機範囲の確認と最適化済み励起軌道での再検証は未完了である。
 詳細は `notes/LOGS/2026-08-27_pitch-joint-range-control-validation.md` を参照する。
+
+## [2026-08-28] 採択した D-opt 軌道が SLSQP の形式的収束に達していない
+
+D-opt の seed 42 から 45 までの全 24 restart は、SLSQP status 8 の `Positive directional derivative for linesearch` で終了した。
+選択した seed44 は 500 Hz 再評価でも公称制約内にあり、許容した制約誤差内の feasible incumbent である。
+ただし、ソルバーが局所最適性を宣言した解ではない。
+追従安定性も未検証である。
+現行パイプラインでは seed44 を使うが、論文では未収束を明記するか、微分・制約定式化・ソルバーを見直して status 0 の解を得る必要がある。
+詳細は `notes/LOGS/2026-08-28_inertial-identification-data-collection-rationale.md` を参照する。
 
 ## [2026-08-27] 非整数の `duration * fps` で目標 frame が枯渇する
 

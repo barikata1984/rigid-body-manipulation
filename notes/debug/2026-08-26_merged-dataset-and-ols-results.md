@@ -8,7 +8,7 @@
 > 積分後の `qpos/qvel` と積分前の `qacc/sensordata` を同じ frame に保存していた旧ループから
 > 計算した。2 ms の時刻ずれを `mj_forward` で解消する診断では、元軌道と D-opt 軌道の
 > クリーン OLS がともに機械精度で GT と一致した。表は旧実装の再現記録として省略せず残すが、
-> ノイズ寄与や軌道の採否を確定する値には使わない。同期修正後の再生成が必要である。
+> ノイズ寄与や軌道の採否を確定する値には使わない。同期修正後の結果は 4.7 節を正本とする。
 
 ## 1. 合成データセットを作った目的
 
@@ -427,9 +427,67 @@ hammerのmx、my、ixy、iyz、izxはGTがほぼ0なので、表の割合は数�
 
 この結果はノイズモデルの単体統計を否定しない。
 ただし A から E の OLS 値には時刻ずれが混入しているため、条件間の最終比較には使わない。
-質量、重心、慣性対角を主評価とし、同期修正後に全条件を再生成する。
+質量、重心、慣性対角を主評価とし、同期修正後に全条件を再生成する方針とした。
+
+### 4.7 同期修正後の再評価 (2026-08-27)
+
+時刻同期修正はコミット `44bde35` で実装した。2 物体について clean / control only / record joint only / wrench only / all を再生成し、noisy 条件は seed 1〜10 を実行した。生成物は `datasets/validation_sync_20260827/` に保存した。
+
+同期後評価に使用した `empirical` profile は、並進位置 `2.0e-5 m`、回転位置 `1.5e-5 rad`、34 ms の因果差分速度、ゲイン 10 の一次 LPF 加速度を使う。4.5 節の旧評価は並進ノイズ 0 だったため、同期後の joint-only 条件とは同一条件ではない。
+
+clean の GT 相対残差は hammer で `6.176e-10`、loaded_dice で `3.894e-16` であり、座標変換と回帰式は整合した。joint-only の質量誤差中央値は hammer で約 `1.52%`、loaded_dice で `0.21〜0.28%`、重心誤差はそれぞれ `11〜12 mm`、`6.6〜6.9 mm` だった。慣性推定は両物体で負値を含み、実用的に成立していない。wrench-only は joint-only より小さく、all は joint-only に近かったため、現行条件では joint 観測誤差が支配的である。
+
+条件数最小化と D-opt の apples-to-apples 比較は、同一 base trajectory、同一 endpoint、同一最適化予算で行った。全 1,640 パラメータ行を `datasets/validation_sync_20260827/condition_vs_dopt/raw.csv`、集約を同ディレクトリの `summary.csv`、`paired.csv`、`wins.csv`、監査情報を `audit.json` に保存した。D-opt は joint-only の慣性誤差を減らす傾向があるが、質量・重心を含む全指標で一意に優位ではない。この比較は nomain 軌道の採否を決めない。
+
+未完了なのは、並進 3 軸と回転 3 軸のノイズ寄与分離、現行の並進 `1.0e-5 m` 条件での5条件・複数seed再評価、物理直動軸ノイズが必要な場合の実機校正である。現行値による単一seedの全ノイズ配布データとzipは4.8節のとおり生成済みである。
+
+### 4.8 現行並進 1.0e-5 m 条件の配布データ再生成 (2026-08-27)
+
+seed 42、empirical profile、control_noise / record_joint_noise / record_wrench_noise をすべて有効にし、hammer と loaded_dice を再生成した。並進位置標準偏差は 1.0e-5 m、回転位置標準偏差は 1.5e-5 rad である。画像側は回転のみスプライン 300 frame、動力学側は nomain 純励起 600 frame とし、後者を全区間から 300 frame に等間隔抽出して合成した。
+
+生成直後の初回マージでは、D.4 の目録ファイル入れ替えを実施せず、素の unperturbed_transforms.json を選択した。この出力は output_series=unperturbed_reference で OLS が機械精度一致したため無効と判定し、.invalid-unperturbed 名へ退避した。その後、4 run すべてでノイズ入り transforms.json.bak を transforms.json へ昇格し、ノイズなし参照を unperturbed_transforms.json.bak へ退避して再マージした。修正版は output_series=selected_record である。
+
+以下は修正版の座標変換後 OLS。誤差は推定値−GT で、割合には変換していない。mass は kg、mx/my/mz は kg m、慣性6成分は kg m^2 である。
+
+#### hammer
+
+| parameter | GT | OLS estimate | error |
+|---|---:|---:|---:|
+| mass | 1.116e+00 | 1.122e+00 | +5.582e-03 |
+| mx | 5.463e-09 | -3.651e-05 | -3.652e-05 |
+| my | -5.372e-09 | -7.414e-06 | -7.409e-06 |
+| mz | 1.703e-01 | 1.639e-01 | -6.424e-03 |
+| ixx | 3.295e-02 | 5.822e-02 | +2.527e-02 |
+| iyy | 3.222e-02 | -1.606e-02 | -4.828e-02 |
+| izz | 1.001e-03 | -2.126e-03 | -3.127e-03 |
+| ixy | -4.737e-12 | -2.069e-02 | -2.069e-02 |
+| iyz | 8.796e-10 | 8.174e-04 | +8.174e-04 |
+| izx | -1.088e-09 | 1.733e-02 | +1.733e-02 |
+
+OLS L2 は 6.148e-02、センサ系相対残差は 6.055e-02。
+
+#### loaded_dice
+
+| parameter | GT | OLS estimate | error |
+|---|---:|---:|---:|
+| mass | 3.310e-01 | 3.326e-01 | +1.569e-03 |
+| mx | 3.629e-03 | 3.608e-03 | -2.134e-05 |
+| my | 3.629e-03 | 3.632e-03 | +2.224e-06 |
+| mz | -3.629e-03 | 1.863e-02 | +2.226e-02 |
+| ixx | 2.554e-04 | -9.763e-03 | -1.002e-02 |
+| iyy | 2.554e-04 | 2.029e-04 | -5.253e-05 |
+| izz | 2.550e-04 | -4.694e-03 | -4.949e-03 |
+| ixy | -5.967e-05 | 7.869e-04 | +8.466e-04 |
+| iyz | 5.967e-05 | 1.943e-03 | +1.883e-03 |
+| izx | 5.967e-05 | -5.834e-04 | -6.431e-04 |
+
+OLS L2 は 2.505e-02、センサ系相対残差は 7.275e-02。
+
+修正版 zip は exports/merged_datasets_20260827_empirical_10um.zip。両物体の合成データ、dynamics.csv、OLS 手順書、励起側 tracking_qpos.png / tracking_acc_ft.png / output.mp4 を収録した。容量は 12,313,543 byte、SHA-256 は 701beb15c36e030195eef0d9c9e751d952bca9131cbe220f4d28621ab4be979d。unzip -t はエラーなし、各合成データは JSON 300 frame、画像 300 枚、マスク 300 枚、CSV 300 行、非有限値 0 である。
 
 ## 5. ZIP の置換と検証
+
+> **状態更新 (2026-08-27):** 以下は 2026-08-26 時点の旧 zip の置換記録である。同期修正後・並進 1.0e-5 m の新配布物は4.8節に記録した。
 
 `exports/merged_datasets_20260825.zip` は、文書編集に先立って置換した。変更はデータ側の 2 件の
 `transforms.json` の最上位 `ls` のみで、座標変換後の OLS 値を記録した。`tls`、`global_gt`、

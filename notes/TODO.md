@@ -33,10 +33,10 @@
 - [ ] TLS 慣性パラメータ同定の精度検証: L2 誤差 0.209(spline) vs 0.140(excited)の差を定量的に評価する
 - [ ] センサーノイズ (`sensors/sensors.py:17-23` の jointpos_stddev / jointvar_noise_scaler) と同定パイプラインの整合をとる設計判断: (a) `SimulatorConfig` に `perturbation: bool` フラグを追加してユーザーが実験毎に切り替え, (b) ノイズなしを default にして「実機模擬モード」だけ明示的に on, (c) MuJoCo 真値 (`d.qpos/qvel/qacc`) をメタデータ保存して事後にノイズ再合成可能にする, (d) EIV (errors-in-variables) を明示的に扱う回帰式に変更する, のどの組み合わせを取るか. FTA 結果: ノイズを切れば TLS L2=0.000173 でほぼ完全同定可能. 詳細: notes/LOGS/log_trajectory_optimization.md 2026-07-12 (続 2) エントリ, notes/ISSUES.md
   - [x] `get_unperturbed` ノイズなしデータ出力の実装 (done 2026-07-12: `SimulatorConfig.get_unperturbed` を追加し, ノイズなし複製 (`jointvars_clean` 込み) をシミュレーションから直接出力可能にした. 同一軌道 (cond=9.64) で検証: ノイズあり TLS L2=0.183 → ノイズなし TLS L2=3.2e-5 (5700x 改善). 詳細: notes/LOGS/log_trajectory_optimization.md 2026-07-12 (続 3) エントリ)
-  - [x] 適切なセンサーノイズ σ を決定する (基準 (実機センサー仕様 vs 許容同定 L2) + σ スイープが必要. `sensors.py` の qacc ノイズ `jointpos_stddev * (sqrt(2)*fps)**2` という fps² 差分増幅モデルの妥当性も精査する) (2026-07-12 (続 4): fps² 差分増幅モデル自体は正しいが, 二階中心差分の係数二乗和は `sqrt(2)²=2` ではなく `[1,-2,1]` の二乗和 6 であるべきと判明し, `jointacc_noise_scaler` を `sqrt(6)*fps²` に修正した (qacc ノイズ約 22% 増). `noise_scale` ノブを追加し 6 点の基準 σ スイープを実施, TLS L2 が 0.05 を割るのは noise_scale≈0.25(qacc_sigma≈1.1 m/s²)からと判明. ただし基準 `jointpos_stddev` そのものの実機グラウンディングは未着手のまま残る (下記新規 TODO 参照). 詳細: notes/LOGS/log_trajectory_optimization.md 2026-07-12 (続 4) エントリ)
+  - [x] 旧独立差分モデルの係数訂正と `noise_scale` 感度評価を行う (done 2026-07-12: 二階差分の係数を `sqrt(6)*fps^2` に訂正し、6 点の σ sweep を実施. この項目は旧 `legacy` model の検証であり、現行 `empirical` profile の並進軸校正完了を意味しない. 詳細: notes/LOGS/log_trajectory_optimization.md 2026-07-12 (続 4))
   - [x] wrench (force/torque) センサーに独立スケールのノイズを追加する (2026-07-13: `force_noise_scale`/`torque_noise_scale`/`perturb_wrench` を実装)
-  - [x] `jointpos_stddev` を実機の関節エンコーダ仕様に基づいてグラウンディングする (2026-07-13/14: `force_stddev`/`torque_stddev` は Robotiq FT300-S 公称スペック (force σ=0.1N, torque σ=0.005Nm) に基づき決定済み. `jointpos_stddev` (並進 prismatic 5e-4 m, 回転 revolute 1e-3 rad. 単位が異なるため分けて評価する) は未着手のまま残る. マニピュレータ `xml_models/manipulators/sequential` が実在機の模擬か汎用仮想機かの素性確認も含む) (done 2026-08-25: 回転は UR5e のポーズ繰返し精度 ±0.03mm から逆算した 2.4e-5 rad とエンコーダ分解能 1.7e-6 rad を踏まえ, 校正残差込みの実効誤差として 1.0e-4 rad. 並進は直動軸の繰返し位置決め精度 ±5-20µm の上端として 2.0e-5 m. コミット df76d91. → notes/LOGS/2026-08-26_dataset-merge-and-noise-model.md)
-  - [x] 速度・加速度のノイズ係数を実機に合わせる (2026-08-26 起票, done 同日: 現行の √2·fps / √6·fps² は「位置を平滑化せずに 2 回差分する」最悪ケースの増幅率だった. UR5e の実測記録から実効微分窓幅 32.6ms を推定し, 速度 43 (fps 非依存), 加速度 1840 (fps の 1 乗に比例, 60fps 時) に変更. 加速度は独立 2 経路で検算 (連鎖則 1841 / 直接測定 1479). ハンマーの OLS L2 は 0.0850→0.0139 (6.1 倍改善, 対応のある t=+49.7). 未コミット. → notes/LOGS/2026-08-26_dataset-merge-and-noise-model.md)
+  - [x] 回転 3 軸の `jointpos_stddev` を実機ログで校正する (done 2026-08-26: 約 500 Hz の UR5e 静止断片で得た短期変動 `0.983e-5`〜`1.76e-5 rad` に基づき、現行 `empirical` profile を `1.5e-5 rad` とした. 先行して採った `1.0e-4 rad` は仕様値からの工学的見積もりであり、現行値ではない. 並進 3 軸は下記の別 TODO に残す. → notes/dataset-generation-procedure.md D.3)
+  - [x] 回転 3 軸の速度・加速度観測過程を実機ログに合わせる (done 2026-08-26: 同じ位置観測系列から 34 ms の因果差分で速度を求め、その後退差分へゲイン 10 の一次ローパスフィルタを適用して加速度を生成する `empirical` profile を実装. 旧 `√2·fps` / `√6·fps²` の独立ノイズ増幅モデルは `legacy` profile に限定. → notes/dataset-generation-procedure.md D.3)
   - [ ] 実機調査で FT ノイズが運動学ノイズに対し不均衡に大きいと分かった場合に限り, 列ごとの既知 σ を重みとして `scipy.odr` に渡す scaled/generalized TLS への変更を検討する (素の `total_lstsq` は [Y|τ] 全列の等分散を仮定するため) (2026-07-13/14: kinematics=0 スイープにより, 素の TLS の異分散バイアスは wrench ノイズの絶対量ではなく Y と τ の誤差比で決まると判明した. Robotiq 公称値相当の実測ノイズ下では total_mass 誤差 <0.03% と無害で, 異分散病理が顕在化するのは kinematics ノイズがほぼゼロという非現実的条件のみだった. 優先度は低いと判断する)
   - [x] `Sensors` に seed パラメータを追加し, ノイズスイープ比較を再現可能にする (done 2026-08-26: `Sensors`/`SimulatorConfig` に `seed` を追加し CLI `--seed` で指定可能に. 未指定時も実際に引かれた値を目録ファイル最上位の `noise_seed` に記録する. 同一 seed でレンチ・回帰行列がビット単位一致することを検証済み. コミット df76d91. → notes/LOGS/2026-08-26_dataset-merge-and-noise-model.md)
   - [x] `sensors/sensors.py` のデフォルト値 (force_stddev=2N, torque_stddev=0.1Nm) を Robotiq FT300-S 公称スペック (force_stddev=0.1N, torque σ=[0.005, 0.005, 0.003]Nm) に変更する (2026-07-13/14: 値の決定は完了したがコード変更は未実施. 現行デフォルトは公称値のちょうど 20 倍過大. 2026-08-06: この未実装が下流に実害を出した — loaded_dice の torque 信号 RMS 0.023-0.033Nm に対し σ=0.1Nm で SNR≈0.3 となり摂動版が同定不能になった. 公称値なら SNR≈6 で足りる. → notes/LOGS/2026-08-06_loaded-dice-wrench-inconsistency.md) (done 2026-08-25: 作業ツリーに未コミットで存在した変更を確認しコミットした. 変更自体は 8 月上旬のセッションで実施済みだったが記録が残っていなかった)
@@ -88,15 +88,27 @@
 ## 2026-08-26 起票 (データセット合成とノイズモデル)
 
 - [x] `simulators/simulator.py` の 2 ms 時刻同期バグを修正する (done 2026-08-26: 記録 frame の直前だけ `mj_forward` を実行し、loaded_dice の clean 条件で `regressor @ GT` と wrench の機械精度一致を回帰試験化. → notes/LOGS/2026-08-26_mujoco-time-sync-fix.md)
-- [ ] 同期修正後に 5 条件 (clean / control only / record joint only / wrench only / all) を再生成し, 旧配布 zip を置き換える
-- [ ] 元の nomain 軌道と D-opt 8π 軌道をノイズ入りで比較する. 質量・重心・慣性対角を主評価とし, 非対角と L2 は副指標にする
-- [ ] 最初の 3 並進軸の位置ノイズ水準を直動軸の実機データで確定する. 現在の `empirical` profile は回転 3 軸のみ実機ログに基づき, 並進 3 軸は暫定値
+- [x] 同期修正後に 5 条件 (clean / control only / record joint only / wrench only / all; prismatic `2.0e-5 m` 条件) を再生成して評価する (done 2026-08-27: 2 物体、noisy 条件は seed 1〜10. `datasets/validation_sync_20260827/` に保存. clean は機械精度一致、joint-only が主な OLS 劣化要因であることを再確認)
+- [x] 同期修正後の現行 1.0e-5 m データセットを新配布 zip として作成し、内容とハッシュを検証する (done 2026-08-27: exports/merged_datasets_20260827_empirical_10um.zip、SHA-256 701beb15c36e030195eef0d9c9e751d952bca9131cbe220f4d28621ab4be979d)
+- [x] 元の nomain 軌道と D-opt 8π 軌道をノイズ入りで比較する (done 2026-08-27: 5 条件、2 物体、noisy 条件は seed 1〜10. ただし objective、base trajectory、最適化予算が同時に異なるため軌道目的関数の因果比較には使わない)
+- [x] 同一 base trajectory・同一予算で条件数最小化と D-opt を比較する (done 2026-08-27: `datasets/validation_sync_20260827/condition_vs_dopt/`. joint-only では D-opt が慣性誤差を減らす傾向、wrench-only では優劣が小さい. この比較は nomain 軌道の採否を決めない)
+- [ ] 最初の 3 並進軸について、物理的な直動軸ノイズが必要なら実機データで確定する. 現行 `empirical` profile の `1.0e-5 m` は UR5e 手先観測等価値の保守的丸めであり、直動アクチュエータの校正値ではない
 - [ ] 回転方向の励起振幅の増強. 実機の加速度 SNR 中央値 15.4 に並ぶには回転の加速度ピークが約 4.0 rad/s² 必要で, 現行の純励起軌道 (0.118〜0.303 rad/s²) の 13〜34 倍にあたる. 既存 TODO の「三角不等式の解析的バウンドが保守的すぎる問題」「base_freq=0.1 が同定 SNR を制限している問題」と同じ場所を指す
-- [ ] 補正 LS (Fuller のモーメント法補正, `x = (AᵀA − EᵀE)⁻¹ Aᵀb`) を `regressions/` に正式実装する (2026-08-25 の検証で L2 が LS の 12.6 分の 1, TLS の 8.3 分の 1 になった. EᵀE はデルタ法で近似する. 見積もりが ±30% ずれても TLS を上回る. → scratchpad reports/2026-08-25_231443_eiv-corrected-estimator-vs-ls-tls.md)
+- [ ] 補正 LS (Fuller のモーメント法補正, `x = (AᵀA − EᵀE)⁻¹ Aᵀb`) を `regressions/` に正式実装する (2026-08-25 の未追跡 scratchpad による検証で L2 が LS の 12.6 分の 1, TLS の 8.3 分の 1 になった. EᵀE はデルタ法で近似する. 見積もりが ±30% ずれても TLS を上回る. 当該 scratchpad は現在の作業ツリーと Git 履歴に存在しないため、正式実装時に再検証する)
 - [x] 速度・加速度を同一の位置観測系列から導出する時間相関モデルへ変更する (done 2026-08-26: 34 ms 差分速度と一次フィルタ加速度を `empirical` profile に実装. 制御器はこの記録用速度を使わず瞬時速度を使う. → notes/LOGS/2026-08-26_dataset-merge-and-noise-model.md)
 - [ ] 数十秒の静止記録を 1 本取得する. これによりノイズ推定の留保 3 件 (静止時標準偏差による第 3 の推定法, 低周波誤差とドリフトの可視化, 力覚センサのノイズと構造振動の切り分け) が同時に解消する
 - [ ] スライドの信号対雑音比の表のうち位置の行 (中央値 4590) の扱いを決める. 実測から再現するには信号を関節角の絶対値 (原点を含む生の実効値) とする必要があり, 関節角の原点は校正上の約束事のため測定品質の指標として使えない. 加速度の行 (15.4) は 5% 以内で再現した
 - [x] `sensors/sensors.py` の速度・加速度係数の未コミット変更を実機準拠 profile へ統合する (done 2026-08-26)
-- [ ] 同期修正後のデータで FT300-S 実測 profile のトルクノイズ寄与を再評価する. 旧ループの結論は 2 ms 時刻ずれの影響を含む
-- [ ] 同期修正後にダイスの 10 種評価をやり直し, 平均・中央値とパラメータ別分布を報告する
+- [x] 同期修正後のデータで FT300-S 実測 profile のトルクノイズ寄与を再評価する (done 2026-08-27: wrench-only を 2 物体・2 軌道目的・seed 1〜10 で評価. joint-only より影響は小さく、軌道目的間の優劣は seed で入れ替わった)
+- [x] 同期修正後にダイスの 10 種評価をやり直し、中央値とパラメータ別分布を報告する (done 2026-08-27: 全 run は `datasets/validation_sync_20260827/`、集約値は `condition_vs_dopt/{raw,summary,paired,wins}.csv` に保存)
+- [ ] joint-only を「並進 3 軸のみ」と「回転 3 軸のみ」に分け、未校正の並進ノイズと回転側の励起 SNR を切り分ける
+- [ ] prismatic `1.0e-5 m` の現行 profile で同期後 5 条件評価を再生成し、`2.0e-5 m` の既存結果と比較する
+- [ ] ノイズ校正の原資料を追跡可能にする. `replay_recording_2026-08-04_09-14-56/` は未追跡で、8 月 26 日議事録が参照する `reports/` の scratchpad 5 件は現在の作業ツリーと Git 履歴に存在しない
 - [ ] `notes/dataset-generation-procedure.md` の未確認事項 1 件. 実際に打ったコマンド文字列がリポジトリに記録されておらず, E 節のコマンド列は生成物からの再構成である
+
+## 2026-08-28 慣性同定用 D-opt 励起軌道
+
+- [x] D-opt、raw 条件数、列等化条件数を同一 base・制約・予算で各 4 seed 比較する (done: 12 本、各 6 restart、`max_iter=300`。→ [議事録](LOGS/2026-08-28_inertial-identification-data-collection-rationale.md))
+- [ ] D-opt seed44 を追従シミュレーションへ通し、`q/dq/ddq` と制御入力の安定性を確認する。データセット生成はユーザー承認後に開始する (→ [議事録](LOGS/2026-08-28_inertial-identification-data-collection-rationale.md))
+- [ ] D-opt の SLSQP status 8 を解消するか、論文では feasible incumbent であることを明記する (→ [議事録](LOGS/2026-08-28_inertial-identification-data-collection-rationale.md))
+- [ ] 比較スクリプト、直接制約・無次元化、checkpoint・resume 対応、現行 noise profile 変更を再現可能な単位で commit する (→ [議事録](LOGS/2026-08-28_inertial-identification-data-collection-rationale.md))

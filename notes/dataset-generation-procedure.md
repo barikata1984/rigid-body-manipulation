@@ -692,12 +692,14 @@ $$K = \left(R + B^{\top} P B\right)^{+} B^{\top} P A$$
 `empirical` の関節位置標準偏差は次の値である。
 
 ```text
-noise_scale * [2.0e-5, 2.0e-5, 2.0e-5, 1.5e-5, 1.5e-5, 1.5e-5]
+noise_scale * [1.0e-5, 1.0e-5, 1.0e-5, 1.5e-5, 1.5e-5, 1.5e-5]
                [ m,      m,      m,    rad,    rad,    rad ]
 ```
 
 回転軸の値は約500 HzのUR5e静止断片で得た短期変動 `0.983e-5`〜`1.76e-5 rad` に基づく。
-実機ログは全軸回転であるため、先頭3軸の並進値 `2.0e-5 m` は実測で校正されていない暫定値である。
+実機ログは全軸回転であるため、物理的な直動アクチュエータのノイズは校正できない。
+先頭3軸の `1.0e-5 m` は、回転関節ノイズ `1.5e-5 rad` を UR5e の並進ヤコビアンで手先位置へ伝播して得た
+軸別値 `[7.289e-6, 5.131e-6, 8.398e-6] m` を保守的に丸めた、手先観測等価の暫定値である。
 
 速度と加速度へ独立な正規分布は加えない。
 記録系列では同じ位置観測系列を使い、速度は幅 `T = 34 ms` の因果的な差分で求める。
@@ -951,6 +953,16 @@ zip に同梱されている `notes/ols-identification-procedure.md` は、こ�
 通常の最小二乗で慣性パラメータ 10 成分を推定する手順を記した別文書である。特に、回帰行列と
 レンチが力覚センサ座標系で記録されているのに対して真値 `global_gt` が物体 AABB 座標系で
 定義されているため、比較の前に座標変換が必要である点が記されている。
+
+### E.5 2026-08-27 empirical 10 um 配布物
+
+現行 empirical profile (並進 1.0e-5 m、回転 1.5e-5 rad) と seed 42 で、hammer / loaded_dice のスプライン側 300 frame と nomain 励起側 600 frame を生成した。control_noise、record_joint_noise、record_wrench_noise はすべて真である。D.4 の手順どおり各 run のノイズ入り transforms.json.bak を transforms.json へ昇格してから合成し、励起側を全区間から 300 frame に等間隔抽出した。
+
+出力は datasets/hammer/merged_empirical_10um_20260827 と datasets/loaded_dice/merged_empirical_10um_20260827。各出力は transforms.json 300 frame、complete 300 枚、masks 300 枚、dynamics.csv 300 行で、CSV の非有限値は 0。noise_model.output_series は selected_record、seed は 42 である。
+
+配布物は exports/merged_datasets_20260827_empirical_10um.zip。合成データ2件と OLS 手順書に加え、両物体の励起側 tracking_qpos.png、tracking_acc_ft.png、10秒の output.mp4 を含む。容量 12,313,543 byte、SHA-256 は 701beb15c36e030195eef0d9c9e751d952bca9131cbe220f4d28621ab4be979d。unzip -t はエラーなし。
+
+初回生成物は目録ファイル入れ替え漏れにより unperturbed_reference を合成していたため、*.invalid-unperturbed へ退避した。配布対象ではない。
 
 ---
 
