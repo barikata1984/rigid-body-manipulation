@@ -52,18 +52,21 @@ def test_empirical_joint_velocity_is_derived_from_one_position_stream(model_data
         assert np.allclose(observation[2], 0.0, atol=1e-12)
 
 
-def test_empirical_stationary_joint_noise_has_hardware_scale(model_data):
+def test_empirical_stationary_joint_noise_has_configured_scale(model_data):
     model, data = model_data
     sensors = Sensors(model, data, fps=60.0, seed=7, noise_profile="empirical")
     samples = []
     for sample_index in range(20_000):
         data.time = sample_index * model.opt.timestep
         samples.append(sensors.sample_jointvars())
-    samples = np.asarray(samples)[2_000:, :, 3:]
+    samples = np.asarray(samples)[2_000:]
 
-    assert np.allclose(samples[:, 0].std(axis=0), 1.5e-5, rtol=0.08)
-    assert np.allclose(samples[:, 1].std(axis=0), 6.24e-4, rtol=0.10)
-    assert np.allclose(samples[:, 2].std(axis=0), 6.2e-3, rtol=0.15)
+    position_stddev = np.array([1.0e-5] * 3 + [1.5e-5] * 3)
+    velocity_stddev = np.array([4.16e-4] * 3 + [6.24e-4] * 3)
+    acceleration_stddev = np.array([4.13e-3] * 3 + [6.2e-3] * 3)
+    assert np.allclose(samples[:, 0].std(axis=0), position_stddev, rtol=0.08)
+    assert np.allclose(samples[:, 1].std(axis=0), velocity_stddev, rtol=0.10)
+    assert np.allclose(samples[:, 2].std(axis=0), acceleration_stddev, rtol=0.15)
 
     metadata = sensors.metadata()
     assert metadata["profile"] == "empirical"
@@ -159,6 +162,12 @@ def test_four_cell_noise_switches_are_explicit():
     assert config.record_wrench_noise is True
     assert config.translation_noise_scale == 1.0
     assert config.rotation_noise_scale == 1.0
+
+
+def test_empirical_profiles_share_task_space_equivalent_prismatic_scale():
+    expected = (1.0e-5,) * 3
+    assert get_noise_profile("empirical").jointpos_stddev[:3] == expected
+    assert get_noise_profile("empirical_degraded").jointpos_stddev[:3] == expected
 
 
 def test_legacy_profile_and_unknown_profile():

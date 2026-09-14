@@ -58,12 +58,13 @@ PROFILES = {
         wrench_quantization=(0.0,) * 6,
     ),
     # Revolute-joint values and FT statistics are calibrated from UR5e and
-    # good-session FT300-S recordings. The first three prismatic entries remain
-    # an engineering placeholder because the available UR logs are all revolute.
+    # good-session FT300-S recordings. The first three prismatic entries use a
+    # conservative 10 um approximation of the UR5e task-space-equivalent noise;
+    # they are not a calibration of physical prismatic actuators.
     "empirical": NoiseProfile(
         name="empirical",
         joint_model="derived",
-        jointpos_stddev=(2.0e-5, 2.0e-5, 2.0e-5, 1.5e-5, 1.5e-5, 1.5e-5),
+        jointpos_stddev=(1.0e-5, 1.0e-5, 1.0e-5, 1.5e-5, 1.5e-5, 1.5e-5),
         velocity_window_s=34.0e-3,
         acceleration_filter_gain=10.0,
         wrench_model="var1_quantized",
@@ -85,7 +86,7 @@ PROFILES = {
     "empirical_degraded": NoiseProfile(
         name="empirical_degraded",
         joint_model="derived",
-        jointpos_stddev=(2.0e-5, 2.0e-5, 2.0e-5, 1.5e-5, 1.5e-5, 1.5e-5),
+        jointpos_stddev=(1.0e-5, 1.0e-5, 1.0e-5, 1.5e-5, 1.5e-5, 1.5e-5),
         velocity_window_s=34.0e-3,
         acceleration_filter_gain=10.0,
         wrench_model="var1_quantized",
