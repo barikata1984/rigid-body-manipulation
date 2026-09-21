@@ -122,7 +122,7 @@ def identify_inertial_params(result, gt, pose_obj_sen):
     # there while the ground truth is described in the object's aabb frame. Bring the estimates to
     # the object frame so that the comparison and the values written to the dataset are consistent.
     ls_iparams_sen = lstsq(regressors.reshape(-1, 10), wrenches.reshape(-1))[0]
-    tls_iparams_sen = total_lstsq(regressors.reshape(-1, 10), wrenches.reshape(-1))[0]
+    tls_iparams_sen = total_lstsq(regressors.reshape(-1, 10), wrenches.reshape(-1))
     ls_iparams = transfer_iparams(pose_obj_sen, ls_iparams_sen)
     tls_iparams = transfer_iparams(pose_obj_sen, tls_iparams_sen)
     l2_ls = norm(ls_iparams - gt_iparams, 2)
