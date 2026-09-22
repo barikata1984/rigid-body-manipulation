@@ -64,8 +64,9 @@ finite-difference or smooth joint observations. Standard deviations per axis:
 | Rotation | 0.00015 rad | 0.0075 rad/s | 1.125 rad/s² |
 
 The velocity and acceleration scales are respectively 50 and 7500 times the
-position standard deviation. FT noise retains the empirical correlated,
-quantized model. `--no-record-noise` uses raw MuJoCo observations.
+position standard deviation. FT noise uses catalog standard deviations
+(0.1 N on Fx/Fy/Fz, 0.005 N m on Tx/Ty, 0.003 N m on Tz), retaining
+the empirical correlation, 60 Hz sampling, and quantization. `--no-record-noise` uses raw MuJoCo observations.
 Control independently selects the same noisy state or the raw MuJoCo state
 with `--control-noise` or `--no-control-noise`. Position differencing, acceleration
 smoothing, and the legacy noise profiles have been removed.

@@ -46,14 +46,8 @@ NOISE_PROFILE = NoiseProfile(
     joint_model="independent_gaussian",
     jointpos_stddev=(1.0e-5, 1.0e-5, 1.0e-5, 1.5e-4, 1.5e-4, 1.5e-4),
     wrench_model="var1_quantized",
-    wrench_stddev=(
-        0.06683422226806739,
-        0.08307149015340570,
-        0.06544192698460599,
-        0.0033795472576403475,
-        0.003021464734417728,
-        0.0009894570112356854,
-    ),
+    # FT 300-S manual §5.3: standard deviations measured over one second.
+    wrench_stddev=(0.1, 0.1, 0.1, 0.005, 0.005, 0.003),
     wrench_lag1=_FT300_GOOD_LAG1,
     wrench_correlation=_FT300_GOOD_CORRELATION,
     wrench_sample_rate_hz=60.0,
