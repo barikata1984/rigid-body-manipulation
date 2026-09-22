@@ -1,1 +1,12 @@
-https://grabcad.com/library/sledgehammer-10
+Visual and collision assets are preserved from the archived target:
+  ../_sledgehammer/
+
+Original model source:
+  https://grabcad.com/library/sledgehammer-10
+
+object_cad_gt.csv is generated from every voxel row of:
+  ../_sledgehammer/ground_truth.csv
+
+The legacy summary stored in the first two rows of ground_truth.csv is ignored.
+The legacy filename object_cad_gt.csv is retained because the simulator loader
+requires it; its values are voxel-derived rather than CAD mass properties.
