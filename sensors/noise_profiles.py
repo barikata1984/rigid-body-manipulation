@@ -12,17 +12,15 @@ class NoiseProfile:
     name: str
     joint_model: str
     jointpos_stddev: tuple[float, ...]
-    velocity_window_s: float
-    acceleration_filter_gain: float
     wrench_model: str
     wrench_stddev: tuple[float, ...]
     wrench_lag1: tuple[float, ...]
     wrench_correlation: tuple[tuple[float, ...], ...]
     wrench_sample_rate_hz: float
     wrench_quantization: tuple[float, ...]
+    jointvel_noise_scaler: float = 50.0
+    jointacc_noise_scaler: float = 7500.0
 
-
-_IDENTITY_6 = tuple(tuple(float(i == j) for j in range(6)) for i in range(6))
 
 _FT300_GOOD_CORRELATION = (
     (1.0, -0.1243749925814589, 0.2468252620755953, 0.0780073129869112, -0.2960004638408706, 0.0055611010236395),
@@ -43,68 +41,24 @@ _FT300_GOOD_LAG1 = (
 )
 
 
-PROFILES = {
-    "legacy": NoiseProfile(
-        name="legacy",
-        joint_model="independent_gaussian",
-        jointpos_stddev=(2.0e-5, 2.0e-5, 2.0e-5, 1.0e-4, 1.0e-4, 1.0e-4),
-        velocity_window_s=32.6e-3,
-        acceleration_filter_gain=10.0,
-        wrench_model="independent_gaussian",
-        wrench_stddev=(0.1, 0.1, 0.1, 0.005, 0.005, 0.003),
-        wrench_lag1=(0.0,) * 6,
-        wrench_correlation=_IDENTITY_6,
-        wrench_sample_rate_hz=60.0,
-        wrench_quantization=(0.0,) * 6,
+NOISE_PROFILE = NoiseProfile(
+    name="independent_50_150",
+    joint_model="independent_gaussian",
+    jointpos_stddev=(1.0e-5, 1.0e-5, 1.0e-5, 1.5e-4, 1.5e-4, 1.5e-4),
+    wrench_model="var1_quantized",
+    wrench_stddev=(
+        0.06683422226806739,
+        0.08307149015340570,
+        0.06544192698460599,
+        0.0033795472576403475,
+        0.003021464734417728,
+        0.0009894570112356854,
     ),
-    # Revolute-joint values and FT statistics are calibrated from UR5e and
-    # good-session FT300-S recordings. The first three prismatic entries use a
-    # conservative 10 um approximation of the UR5e task-space-equivalent noise;
-    # they are not a calibration of physical prismatic actuators.
-    "empirical": NoiseProfile(
-        name="empirical",
-        joint_model="derived",
-        jointpos_stddev=(1.0e-5, 1.0e-5, 1.0e-5, 1.5e-5, 1.5e-5, 1.5e-5),
-        velocity_window_s=34.0e-3,
-        acceleration_filter_gain=10.0,
-        wrench_model="var1_quantized",
-        wrench_stddev=(
-            0.06683422226806739,
-            0.08307149015340570,
-            0.06544192698460599,
-            0.0033795472576403475,
-            0.003021464734417728,
-            0.0009894570112356854,
-        ),
-        wrench_lag1=_FT300_GOOD_LAG1,
-        wrench_correlation=_FT300_GOOD_CORRELATION,
-        wrench_sample_rate_hz=60.0,
-        wrench_quantization=(0.01, 0.01, 0.01, 0.001, 0.001, 0.001),
-    ),
-    # Stress profile: degraded-session marginal levels with the nominal
-    # correlation structure. It is not labelled as a calibrated fit.
-    "empirical_degraded": NoiseProfile(
-        name="empirical_degraded",
-        joint_model="derived",
-        jointpos_stddev=(1.0e-5, 1.0e-5, 1.0e-5, 1.5e-5, 1.5e-5, 1.5e-5),
-        velocity_window_s=34.0e-3,
-        acceleration_filter_gain=10.0,
-        wrench_model="var1_quantized",
-        wrench_stddev=(0.128, 0.223, 0.114, 0.0140, 0.00811, 0.00281),
-        wrench_lag1=_FT300_GOOD_LAG1,
-        wrench_correlation=_FT300_GOOD_CORRELATION,
-        wrench_sample_rate_hz=60.0,
-        wrench_quantization=(0.01, 0.01, 0.01, 0.001, 0.001, 0.001),
-    ),
-}
-
-
-def get_noise_profile(name: str) -> NoiseProfile:
-    try:
-        return PROFILES[name]
-    except KeyError as exc:
-        choices = ", ".join(sorted(PROFILES))
-        raise ValueError(f"Unknown noise profile {name!r}; expected one of: {choices}") from exc
+    wrench_lag1=_FT300_GOOD_LAG1,
+    wrench_correlation=_FT300_GOOD_CORRELATION,
+    wrench_sample_rate_hz=60.0,
+    wrench_quantization=(0.01, 0.01, 0.01, 0.001, 0.001, 0.001),
+)
 
 
 def covariance_from_profile(profile: NoiseProfile, force_scale: float, torque_scale: float) -> np.ndarray:

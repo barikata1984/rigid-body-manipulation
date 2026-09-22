@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from collections import deque
-
 import numpy as np
 from mujoco._structs import MjData, MjModel
 
 from utilities import get_element_id
 
-from .noise_profiles import covariance_from_profile, get_noise_profile
+from .noise_profiles import NOISE_PROFILE, covariance_from_profile
 
 
 class Sensors:
@@ -22,15 +20,13 @@ class Sensors:
         rotation_noise_scale: float = 1.0,
         torque_noise_scale: float = 1.0,
         seed: int | None = None,
-        noise_profile: str = "empirical",
-        joint_bias_scale: float = 0.0,
         wrench_bias_scale: float = 0.0,
     ) -> None:
         self.m = m
         self.d = d
         self.fps = fps
         self._sensordata = d.sensordata
-        self.profile = get_noise_profile(noise_profile)
+        self.profile = NOISE_PROFILE
         seed_sequence = np.random.SeedSequence(seed)
         self.seed = seed_sequence.entropy
         joint_seed, wrench_seed = seed_sequence.spawn(2)
@@ -40,27 +36,20 @@ class Sensors:
         nq = len(d.qpos)
         axis_scale = self._axis_values((translation_noise_scale,) * 3 + (rotation_noise_scale,) * 3, nq)
         self.jointpos_stddev = noise_scale * axis_scale * self._axis_values(self.profile.jointpos_stddev, nq)
-        self.joint_bias_stddev = joint_bias_scale * self.jointpos_stddev
-        self._joint_bias = self._get_noise(self.joint_bias_stddev)
 
         self.force_stddev = force_noise_scale * np.asarray(self.profile.wrench_stddev[:3], dtype=float)
         self.torque_stddev = torque_noise_scale * np.asarray(self.profile.wrench_stddev[3:], dtype=float)
         self.wrench_bias_stddev = wrench_bias_scale * np.concatenate((self.force_stddev, self.torque_stddev))
         self._wrench_bias = self._get_noise(self.wrench_bias_stddev, self._wrench_rng)
 
-        # Public compatibility attributes for legacy diagnostics.
-        self.jointvel_noise_scaler = np.sqrt(2) / self.profile.velocity_window_s
-        self.jointacc_noise_scaler = self.jointvel_noise_scaler * np.sqrt(2) / (2 / fps)
+        self.jointvel_noise_scaler = self.profile.jointvel_noise_scaler
+        self.jointacc_noise_scaler = self.profile.jointacc_noise_scaler
 
         self._force_idx = get_sensor_measurement_idx(m, name="force")
         self._torque_idx = get_sensor_measurement_idx(m, name="torque")
 
-        history_length = max(4, int(np.ceil(self.profile.velocity_window_s / m.opt.timestep)) + 3)
-        self._qpos_history: deque[tuple[float, np.ndarray]] = deque(maxlen=history_length)
         self._joint_observation: np.ndarray | None = None
         self._joint_observation_time: float | None = None
-        self._previous_qvel: np.ndarray | None = None
-        self._previous_qacc: np.ndarray | None = None
 
         self._wrench_state = np.zeros(6)
         self._wrench_observation: np.ndarray | None = None
@@ -91,44 +80,10 @@ class Sensors:
     def _raw_jointvars(self) -> np.ndarray:
         return np.stack((self.d.qpos.copy(), self.d.qvel.copy(), self.d.qacc.copy()))
 
-    def _legacy_joint_observation(self) -> np.ndarray:
+    def _independent_joint_observation(self) -> np.ndarray:
         qpos = self.d.qpos + self._get_noise(self.jointpos_stddev)
         qvel = self.d.qvel + self._get_noise(self.jointpos_stddev * self.jointvel_noise_scaler)
         qacc = self.d.qacc + self._get_noise(self.jointpos_stddev * self.jointacc_noise_scaler)
-        return np.stack((qpos, qvel, qacc))
-
-    def _position_at(self, target_time: float) -> np.ndarray:
-        history = list(self._qpos_history)
-        for (time_a, qpos_a), (time_b, qpos_b) in zip(history, history[1:], strict=False):
-            if time_a <= target_time <= time_b:
-                if time_b == time_a:
-                    return qpos_b
-                weight = (target_time - time_a) / (time_b - time_a)
-                return (1.0 - weight) * qpos_a + weight * qpos_b
-        return history[0][1]
-
-    def _derived_joint_observation(self, time: float) -> np.ndarray:
-        window = self.profile.velocity_window_s
-        qpos = self.d.qpos.copy() + self._joint_bias + self._get_noise(self.jointpos_stddev)
-
-        if not self._qpos_history:
-            qpos_past = self.d.qpos - window * self.d.qvel
-            qpos_past += self._joint_bias + self._get_noise(self.jointpos_stddev)
-            self._qpos_history.append((time - window, qpos_past))
-        self._qpos_history.append((time, qpos.copy()))
-
-        qvel = (qpos - self._position_at(time - window)) / window
-        if self._previous_qvel is None or self._joint_observation_time is None:
-            qacc = self.d.qacc.copy()
-        else:
-            dt = time - self._joint_observation_time
-            raw_qacc = (qvel - self._previous_qvel) / dt
-            gain = self.profile.acceleration_filter_gain
-            alpha = gain * dt / (1.0 + gain * dt)
-            qacc = alpha * raw_qacc + (1.0 - alpha) * self._previous_qacc
-
-        self._previous_qvel = qvel.copy()
-        self._previous_qacc = qacc.copy()
         return np.stack((qpos, qvel, qacc))
 
     def sample_jointvars(self) -> np.ndarray:
@@ -142,30 +97,11 @@ class Sensors:
         if self._joint_observation_time == time and self._joint_observation is not None:
             return self._joint_observation.copy()
 
-        if self.profile.joint_model == "independent_gaussian":
-            observation = self._legacy_joint_observation()
-        else:
-            observation = self._derived_joint_observation(time)
+        observation = self._independent_joint_observation()
 
         self._joint_observation = observation
         self._joint_observation_time = time
         return observation.copy()
-
-    def sample_control_jointvars(self, *, derived_velocity: bool = False) -> np.ndarray:
-        """Return the controller observation without conflating it with logged state.
-
-        The empirical 34 ms velocity estimate reproduces the externally recorded
-        signal. It is not evidence for the estimator used inside the robot servo.
-        By default, control therefore sees the noisy encoder position together
-        with MuJoCo's instantaneous velocity and acceleration estimates.
-        """
-
-        observation = self.sample_jointvars()
-        if derived_velocity:
-            return observation
-        raw = self._raw_jointvars()
-        observation[1:] = raw[1:]
-        return observation
 
     def _raw_wrench(self) -> np.ndarray:
         return np.concatenate((self._sensordata[self._force_idx], self._sensordata[self._torque_idx]), axis=None)
@@ -196,12 +132,6 @@ class Sensors:
         self._wrench_observation_time = time
         return observation.copy()
 
-    def _perturbed_wrench(self) -> np.ndarray:
-        if self.profile.wrench_model == "independent_gaussian":
-            stddev = np.concatenate((self.force_stddev, self.torque_stddev))
-            return self._raw_wrench() + self._get_noise(stddev, self._wrench_rng)
-        return self._empirical_wrench_observation()
-
     def get(self, key: str, perturbed: bool = False) -> np.ndarray | tuple[np.ndarray, ...]:
         if key in {"jointpos", "jointvel", "jointacc", "jointvars"}:
             jointvars = self.sample_jointvars() if perturbed else self._raw_jointvars()
@@ -209,7 +139,7 @@ class Sensors:
                 return tuple(jointvars)
             return jointvars[{"jointpos": 0, "jointvel": 1, "jointacc": 2}[key]]
 
-        wrench = self._perturbed_wrench() if perturbed else self._raw_wrench()
+        wrench = self._empirical_wrench_observation() if perturbed else self._raw_wrench()
         if key == "force":
             return wrench[:3]
         if key == "torque":
@@ -219,20 +149,21 @@ class Sensors:
         raise ValueError(f"Unknown sensor key: {key}")
 
     def metadata(self) -> dict:
-        return {
+        metadata = {
             "profile": self.profile.name,
             "seed": self.seed,
             "joint_model": self.profile.joint_model,
             "jointpos_stddev": self.jointpos_stddev.tolist(),
-            "joint_bias_stddev": self.joint_bias_stddev.tolist(),
-            "velocity_window_s": self.profile.velocity_window_s,
-            "acceleration_filter_gain": self.profile.acceleration_filter_gain,
             "wrench_model": self.profile.wrench_model,
             "wrench_stddev": [*self.force_stddev.tolist(), *self.torque_stddev.tolist()],
             "wrench_bias_stddev": self.wrench_bias_stddev.tolist(),
             "wrench_sample_rate_hz": self.profile.wrench_sample_rate_hz,
             "wrench_quantization": list(self.profile.wrench_quantization),
         }
+
+        metadata["jointvel_stddev"] = (self.jointpos_stddev * self.jointvel_noise_scaler).tolist()
+        metadata["jointacc_stddev"] = (self.jointpos_stddev * self.jointacc_noise_scaler).tolist()
+        return metadata
 
 
 def get_sensor_measurement_idx(

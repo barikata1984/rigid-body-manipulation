@@ -51,3 +51,34 @@ pixi run generate-trajectory spline --config configurations/trajectory_generatio
 ```
 
 Supported subcommands: `spline`, `fourier`, `excited`.
+
+## Joint observation noise
+
+Joint observations add independent zero-mean Gaussian
+noise directly to MuJoCo position, velocity, and acceleration. It does not
+finite-difference or smooth joint observations. Standard deviations per axis:
+
+| Component | Position | Velocity | Acceleration |
+| --- | --- | --- | --- |
+| Translation | 0.00001 m | 0.0005 m/s | 0.075 m/s² |
+| Rotation | 0.00015 rad | 0.0075 rad/s | 1.125 rad/s² |
+
+The velocity and acceleration scales are respectively 50 and 7500 times the
+position standard deviation. FT noise retains the empirical correlated,
+quantized model. `--no-record-noise` uses raw MuJoCo observations.
+Control independently selects the same noisy state or the raw MuJoCo state
+with `--control-noise` or `--no-control-noise`. Position differencing, acceleration
+smoothing, and the legacy noise profiles have been removed.
+
+For a paired 2×3 observation plot without image/video recording, run:
+
+```sh
+pixi run python -m experiments.compare_joint_noise \
+  --object xml_models/targets/sledgehammer \
+  --target-trajectory /path/to/trajectory.json \
+  --no-control-noise --seed 42 \
+  --recorder.dataset-dir /tmp/joint_noise_comparison
+```
+
+This compares noisy and clean observations of the same motion and writes PNG/SVG
+plots, joint-state arrays, configuration, and an OLS comparison CSV.

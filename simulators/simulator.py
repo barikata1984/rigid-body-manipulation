@@ -70,13 +70,10 @@ class SimulatorConfig(BaseSimulatorConfig):
     generate_trajectory: str | None = None
     diffpos_dt: float = 1.0
     get_unperturbed: bool = True
-    noise_profile: str = "empirical"
     control_noise: bool = True
-    control_derived_velocity: bool = False
     record_noise: bool = True
     record_joint_noise: bool = True
     record_wrench_noise: bool = True
-    joint_bias_scale: float = 0.0
     wrench_bias_scale: float = 0.0
     noise_scale: float = 1.0
     translation_noise_scale: float = 1.0
@@ -169,13 +166,10 @@ class Simulator:
             rotation_noise_scale=cfg.rotation_noise_scale,
             force_noise_scale=cfg.force_noise_scale,
             torque_noise_scale=cfg.torque_noise_scale,
-            noise_profile=cfg.noise_profile,
-            joint_bias_scale=cfg.joint_bias_scale,
             wrench_bias_scale=cfg.wrench_bias_scale,
             seed=cfg.seed,
         )
         self.control_noise = cfg.control_noise
-        self.control_derived_velocity = cfg.control_derived_velocity
         self.record_noise = cfg.record_noise
         self.record_joint_noise = self.record_noise and cfg.record_joint_noise
         self.record_wrench_noise = self.record_noise and cfg.record_wrench_noise
@@ -183,7 +177,7 @@ class Simulator:
         noise_metadata = self.sensors.metadata()
         noise_metadata.update(
             control_noise=self.control_noise,
-            control_velocity_source="recorded_derived" if self.control_derived_velocity else "simulator",
+            control_velocity_source="independent_noisy" if self.control_noise else "simulator",
             record_noise=self.record_noise,
             record_joint_noise=self.record_joint_noise,
             record_wrench_noise=self.record_wrench_noise and self.perturb_wrench,
@@ -233,11 +227,7 @@ class Simulator:
 
             observed_jointvars = self.sensors.sample_jointvars()
             true_jointvars = np.stack(self.sensors.get("jointvars", perturbed=False))  # type: ignore
-            control_jointvars = (
-                self.sensors.sample_control_jointvars(derived_velocity=self.control_derived_velocity)
-                if self.control_noise
-                else true_jointvars
-            )
+            control_jointvars = observed_jointvars if self.control_noise else true_jointvars
             record_jointvars = observed_jointvars if self.record_joint_noise else true_jointvars
 
             if should_record:
