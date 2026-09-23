@@ -1,0 +1,17 @@
+The simulator assets were generated from:
+  ../loaded dice filled/loaded dice.obj
+  ../loaded dice filled/loaded dice.mtl
+
+Conversion command (obj2mjcf 0.0.25):
+  obj2mjcf --obj-dir <staging-dir> --obj-filter '^loaded_dice_filled\.obj$' --save-mjcf --compile-model --decompose --overwrite
+
+The OBJ's mtllib entry was normalized from "loaded dice.mtl" to
+"loaded_dice_filled.mtl" in the staging copy because obj2mjcf treats an
+unquoted space as the end of the material-library path. The source OBJ and MTL
+were not modified.
+
+object_cad_gt.csv is generated from every row of:
+  ../loaded dice filled/gt_mass_distr.csv
+
+The legacy filename object_cad_gt.csv is retained because the simulator loader
+requires it; its values are voxel-derived rather than CAD mass properties.
