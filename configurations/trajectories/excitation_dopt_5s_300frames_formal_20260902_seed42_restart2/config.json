@@ -1,0 +1,96 @@
+{
+  "duration": 5.0,
+  "fps": 60.0,
+  "num_joints": 6,
+  "num_harmonics": 5,
+  "base_freq": 0.2,
+  "manipulator": "xml_models/manipulators/sequential",
+  "object": "xml_models/targets/hammer",
+  "ee_body_name": "link6",
+  "max_iter": 100,
+  "q_min": [
+    -0.5,
+    -0.5,
+    -0.5,
+    -3.141592653589793,
+    -3.141592653589793,
+    -3.141592653589793
+  ],
+  "q_max": [
+    0.5,
+    0.5,
+    0.5,
+    3.141592653589793,
+    3.141592653589793,
+    3.141592653589793
+  ],
+  "dq_max": [
+    0.5,
+    0.5,
+    0.5,
+    3.141592653589793,
+    3.141592653589793,
+    3.141592653589793
+  ],
+  "ddq_max": [
+    1.0,
+    1.0,
+    1.0,
+    6.283185307179586,
+    6.283185307179586,
+    6.283185307179586
+  ],
+  "ee_speed_max": 1.0,
+  "optimizer_constraint_safety_factor": 0.99,
+  "dense_constraint_tolerance_ratio": 0.001,
+  "coeff_bounds": [
+    "Infinity",
+    "Infinity",
+    "Infinity",
+    "Infinity",
+    "Infinity",
+    "Infinity"
+  ],
+  "decision_variable_scale": [
+    0.5,
+    0.5,
+    0.5,
+    3.141592653589793,
+    3.141592653589793,
+    3.141592653589793
+  ],
+  "use_analytical_bounds": false,
+  "column_scale": false,
+  "objective_type": "d_optimal",
+  "optimizer_method": "SLSQP",
+  "finite_diff_rel_step": 1e-06,
+  "active_constraint_working_set": false,
+  "active_constraint_update_interval": 10,
+  "n_restarts": 1,
+  "seed": 42,
+  "early_stop_patience": 1000000,
+  "target_condition_number": null,
+  "main_trajectory": {
+    "target_class": "SplineTrajectory",
+    "module_name": "trajectories",
+    "type": "quintic",
+    "duration": 5.0,
+    "fps": 60.0,
+    "start_pos": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "end_pos": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  }
+}
