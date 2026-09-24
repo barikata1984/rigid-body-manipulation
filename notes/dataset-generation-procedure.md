@@ -565,7 +565,7 @@ $$\mathrm{idx}(i) = \operatorname{round}\!\left(\frac{i\,(M-1)}{n-1}\right),\qqu
 - `image_source`: 文字列 `"spline"`
 - `dynamics_source`: 文字列 `"excited"`
 
-目録ファイルの最上位には `merge_sources` が入る (`recorders/merge.py:139-155`)。
+目録ファイルの最上位には `merge_sources` が入る (`recorders/merge.py:139-163`)。
 
 | 項目 | 内容 |
 | --- | --- |
@@ -573,13 +573,20 @@ $$\mathrm{idx}(i) = \operatorname{round}\!\left(\frac{i\,(M-1)}{n-1}\right),\qqu
 | `image.run_dir` | 画像側 run のディレクトリ (文字列) |
 | `image.frames` | 画像側 run の元のフレーム数 |
 | `image.source_indices` | 採用した添字の配列 (長さ `n`) |
+| `image.noise_seed` | 画像側 run の乱数の種 (無い run では `null`) |
+| `image.noise_model` | 画像側 run のノイズ設定 (無い run では `null`) |
 | `dynamics.role` | `"dynamics"` |
 | `dynamics.run_dir` | 動力学側 run のディレクトリ |
 | `dynamics.frames` | 動力学側 run の元のフレーム数 |
 | `dynamics.source_indices` | 採用した添字の配列 |
+| `dynamics.noise_seed` | 動力学側 run の乱数の種 (無い run では `null`) |
+| `dynamics.noise_model` | 動力学側 run のノイズ設定 (無い run では `null`) |
 | `merged_frames` | 合成後のフレーム数 `n` |
 | `subsampling` | `"even"` |
 | `dynamics_keys` | 実際に上書きされた動力学の項目名の配列 |
+
+最上位の `noise_seed` / `noise_model` は画像側 run の値のままである (既存の読み手を壊さない
+ため)。動力学側の種は `merge_sources.dynamics.noise_seed` でのみ辿れる。
 
 実データ (`datasets/hammer/merged_wrenchonly/transforms.json`) の実測値:
 `image.run_dir` = `datasets/hammer/spline_rotonly_wrenchonly`、`image.frames` = 300、
