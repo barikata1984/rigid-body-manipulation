@@ -774,27 +774,26 @@ D=\operatorname{diag}(\rho_1,\ldots,\rho_6),\qquad
 **ファイル命名の規則**: 目録ファイルは「ちょうど 1 つだけが素の `.json` 拡張子を保ち、
 残りは `.bak` を足す」規則で名付けられる (`recorders/standard_recorder.py:22-32`)。
 どの系列が素の名前を取るかは `primary_prefix` が決める
-(`recorders/standard_recorder.py:70-72`)。`main.py:148-151` は、ノイズなし系列が書かれるときに
-`primary_prefix` を `"unperturbed_transforms"` に切り替える。分割 (train / valid / test) の
-目録は常に `.bak` が付く (`recorders/standard_recorder.py:30`)。
+(`recorders/standard_recorder.py:70-72`)。既定値は `"transforms"` のままで、`main.py` は
+これを書き換えない。したがってノイズあり系列が素の名前を取り、ノイズなし系列は
+`unperturbed_transforms.json.bak` になる。分割 (train / valid / test) の目録は常に `.bak`
+が付く (`recorders/standard_recorder.py:30`)。
 
-**生成後の手動リネーム**: 本文書が扱う実際の run
-(`datasets/hammer/excited_nomain10s_wrenchonly` など) では、素の `transforms.json` が
-ノイズあり系列 (`jointvars_clean` を持たない) で、ノイズなし系列が
-`unperturbed_transforms.json.bak` になっている。これは上記の命名規則が生む配置と逆であるが、
-コードの不整合ではない。合成処理 `recorders/merge.py:41-53` が素の `transforms.json` を
-優先して選ぶ仕様であり、合成データセットの動力学量にはノイズあり系列を入れたいので、
-シミュレーション実行の直後に次の 2 コマンドで入れ替えている。
+**生成後のリネームは不要**: 1 回の run が書き出す目録ファイルは次の配置になる。
 
-```sh
-mv unperturbed_transforms.json unperturbed_transforms.json.bak
-mv transforms.json.bak transforms.json
-```
+| ファイル | 系列 | `noise_model.output_series` |
+| --- | --- | --- |
+| `transforms.json` | ノイズあり (`jointvars_clean` を持たない) | `selected_record` |
+| `transforms_{train,valid,test}.json.bak` | ノイズあり の分割 | `selected_record` |
+| `unperturbed_transforms.json.bak` | ノイズなし (`jointvars_clean` を持つ) | `unperturbed_reference` |
+| `unperturbed_transforms_{train,valid,test}.json.bak` | ノイズなし の分割 | `unperturbed_reference` |
 
-この入れ替えは E 節の手順に含まれる。実行しなければ、合成データセットの動力学量は
-ノイズなし系列から採られることになる。系列の判別は、素の名前ではなくフレームの内容
-(`jointvars_clean` の有無) で行うのが確実である。同じ注意は
-`notes/ols-identification-procedure.md:104-108` にも記録されている。
+合成処理 `recorders/merge.py:41-53` は素の `transforms.json` を優先して選ぶので、この配置の
+まま `merge-datasets` を掛ければ合成データセットの動力学量はノイズあり系列から採られる。
+以前は素の名前がノイズなし系列に付いていたため実行直後に `mv` で入れ替えていたが、その手順は
+廃止した。過去に生成した run は入れ替え前後のどちらの配置もありうるので、系列の判別は素の
+名前ではなくフレームの内容 (`jointvars_clean` の有無) か `noise_model.output_series` で行う。
+同じ注意は `notes/ols-identification-procedure.md` の「系列と既知の注意点」にも記録されている。
 
 ### D.5 乱数の種
 
@@ -973,8 +972,9 @@ zip に同梱されている `notes/ols-identification-procedure.md` は、こ�
 
 解決済みの項目を参考までに残す。
 
-- 目録ファイル名の向き: コードの不整合ではなく、シミュレーション実行の直後に手動で
-  入れ替えているためである (D.4 と E.3 を参照)。
+- 目録ファイル名の向き: 現在はノイズあり系列が素の `transforms.json` を取り、リネームは
+  不要である (D.4 を参照)。E.5 までの run は、当時の規則に従い実行直後に手動で入れ替えて
+  いた。
 - 積分刻み幅: `xml_models/` に `timestep` の指定が無いため MuJoCo の既定値が使われる。
   実測して 0.002 s (500 Hz) であることを確認した。記録の毎秒フレーム数 60 に対し、
   1 フレームあたり約 8.3 ステップが進む。

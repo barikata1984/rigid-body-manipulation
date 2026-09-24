@@ -67,8 +67,8 @@ class StandardRecorder:
         self.cam_fovy = radians(m.cam_fovy[self.cam_id])
         self.cam_focus = 0.5 * self.fig_height / tan(0.5 * self.cam_fovy)
         self.cam_fovx = 2 * atan2(0.5 * self.fig_width, self.cam_focus)
-        # Which transforms series is shipped, i.e. keeps the bare ".json" name. Overridden to
-        # "unperturbed_transforms" by main when a noise-free series is written alongside.
+        # Which transforms series is shipped, i.e. keeps the bare ".json" name. The perturbed
+        # series is the shipped one; a noise-free series written alongside gets ".bak".
         self.primary_prefix = "transforms"
         self.dataset_dir = Path(cfg.dataset_dir)
         self.complete_image_dir = self.dataset_dir / "complete"

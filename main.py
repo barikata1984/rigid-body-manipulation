@@ -145,9 +145,6 @@ def main():
     simulation, result = run_simulation(cfg, m, d, target_trajectory)
     pose_obj_sen = simulation.pose_sen_obj.inv()
     gt_iparams, ls_iparams, tls_iparams = identify_inertial_params(result, gt, pose_obj_sen)
-    if result.get("unperturbed_frames") is not None:
-        # Ship the noise-free series: it, not the perturbed one, keeps the bare .json name
-        simulation.recorder.primary_prefix = "unperturbed_transforms"
     simulation.recorder.base_transform["noise_model"]["output_series"] = "selected_record"
     simulation.recorder.finish(result["frames"], gt_iparams, ls_iparams, tls_iparams)
 

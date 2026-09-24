@@ -86,12 +86,13 @@
 
 - 種を指定しない場合も、実際に引かれた値が記録される。したがって過去の run も後から
   再現できる。記録先は目録ファイル最上位の `noise_seed` で、ノイズあり・なしの両系列と
-  train / valid / test の各分割すべてに同じ値が載る。ファイル名は下の「系列と既知の
-  注意点」にあるとおり run によって入れ替わるので、実在するファイルを確認して読む。
+  train / valid / test の各分割すべてに同じ値が載る。どのファイルから読んでも値は同じだが、
+  ファイル名は下の「系列と既知の注意点」にあるとおり run によって入れ替わるので、実在する
+  ファイルを確認して読む。
 
   ```python
-  # 例: ノイズなし系列が素の名前を取っている run の場合
-  seed = json.load(open("<dataset>/unperturbed_transforms.json"))["noise_seed"]
+  # 現行の配置ではノイズあり系列が素の名前を取る
+  seed = json.load(open("<dataset>/transforms.json"))["noise_seed"]
   ```
 
 - 単一の種で測った差は、その 1 実現に固有のばらつきを含む。条件間の比較 (ノイズ源の分離、
@@ -101,11 +102,13 @@
 
 ## 系列と既知の注意点
 
-- ノイズあり・なしの系列を併記する run では、ファイル名は recorder の
-  `primary_prefix` に依存する。`transforms.json` を無条件にノイズなし系列とみなさず、
-  フレームの内容と `jointvars_clean` などの付加情報を確認する。今回の 600 フレーム
-  run では `transforms.json` がノイズ入り、`unperturbed_transforms.json.bak` が同一 run
-  のノイズなし系列である。
+- ノイズあり・なしの系列を併記する run では、現在は素の `transforms.json` がノイズあり
+  系列、`unperturbed_transforms.json.bak` が同一 run のノイズなし系列である
+  (`recorders/standard_recorder.py:70-72` の `primary_prefix` の既定値による。`main.py` は
+  これを書き換えない)。ただし以前の規則で生成した run はこの向きが逆になっているので、
+  ファイル名だけで判断せず、フレームに `jointvars_clean` があるか、目録最上位の
+  `noise_model.output_series` が `selected_record` (ノイズあり) か
+  `unperturbed_reference` (ノイズなし) かで確認する。
 - マージ済みデータセットは `merge_sources` を持つ。画像・カメラ姿勢は画像側 run、
   動力学量（`pose_sen_obj`、`twist_sen`、`dtwist_sen`、`wrench`、`regressor`）は
   動力学側 run から採用される。フレーム数を揃えるための等間隔間引きの添字も同項目で
