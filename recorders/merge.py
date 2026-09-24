@@ -136,18 +136,24 @@ def merge(spline_dir: Path, excited_dir: Path, out_dir: Path, force: bool = Fals
     for key in ("ls", "tls"):
         if key in metas["excited"]:
             out[key] = metas["excited"][key]
+    # The top-level noise_seed/noise_model stay the spline run's (existing readers depend on that),
+    # so the excited run's seed would otherwise be lost; record both sides here.
     out["merge_sources"] = {
         "image": {
             "role": "image+camera_pose",
             "run_dir": str(spline_dir),
             "frames": len(spline_frames),
             "source_indices": spline_idx,
+            "noise_seed": metas["spline"].get("noise_seed"),
+            "noise_model": metas["spline"].get("noise_model"),
         },
         "dynamics": {
             "role": "dynamics",
             "run_dir": str(excited_dir),
             "frames": len(excited_frames),
             "source_indices": excited_idx,
+            "noise_seed": metas["excited"].get("noise_seed"),
+            "noise_model": metas["excited"].get("noise_model"),
         },
         "merged_frames": n,
         "subsampling": "even",  # indices spread evenly over the source run, endpoints included
@@ -185,6 +191,7 @@ def main() -> None:
     print(f"wrote {path} with {len(meta['frames'])} frames")
     print(f"  images+poses from {src['image']['run_dir']} ({src['image']['frames']} frames available)")
     print(f"  dynamics from    {src['dynamics']['run_dir']} ({src['dynamics']['frames']} frames available)")
+    print(f"  dynamics noise_seed: {src['dynamics']['noise_seed']}")
 
 
 if __name__ == "__main__":

@@ -113,3 +113,32 @@ def test_merged_dataset_looks_like_a_single_run(tmp_path):
     meta = json.loads(roots[0].read_text())
     assert all((out / f["file_path"]).is_file() for f in meta["frames"])
     assert np.array([f["wrench"] for f in meta["frames"]]).shape == (3, 6)
+
+
+def test_merge_sources_records_both_noise_seeds(tmp_path):
+    spline = _make_run(tmp_path / "spline", "spline", 3, noise_seed=42, noise_model={"profile": "img"})
+    excited = _make_run(tmp_path / "excited", "excited", 3, noise_seed=3, noise_model={"profile": "dyn"})
+    out = tmp_path / "merged"
+    merge(spline, excited, out)
+    meta = json.loads((out / "transforms.json").read_text())
+
+    src = meta["merge_sources"]
+    assert src["image"]["noise_seed"] == 42
+    assert src["dynamics"]["noise_seed"] == 3
+    assert src["image"]["noise_model"] == {"profile": "img"}
+    assert src["dynamics"]["noise_model"] == {"profile": "dyn"}
+    # top level keeps the image run's values so existing readers are unaffected
+    assert meta["noise_seed"] == 42
+    assert meta["noise_model"] == {"profile": "img"}
+
+
+def test_merge_tolerates_runs_without_noise_keys(tmp_path):
+    spline = _make_run(tmp_path / "spline", "spline", 2)
+    excited = _make_run(tmp_path / "excited", "excited", 2)
+    out = tmp_path / "merged"
+    merge(spline, excited, out)
+    src = json.loads((out / "transforms.json").read_text())["merge_sources"]
+
+    assert src["image"].get("noise_seed") is None
+    assert src["dynamics"].get("noise_seed") is None
+    assert src["dynamics"].get("noise_model") is None
